@@ -297,7 +297,7 @@ function NeedsPanel({ state, profile, activeTask, health, rationale }) {
     const cycleMeta = getCycleMeta(cycleDay);
 
     return (
-        <Card className="needs-card bento-needs-card ui-card-frameless">
+        <Card className="needs-card bento-needs-card">
             <CardHeader eyebrow="Состояние Леры" title="Потребности и Цикл Леры" description="Физиологические нужды, менструальный цикл, эмоциональный фон и финансы." />
             <ProfileCard profile={profile} />
             <div className="needs-compact-grid">
@@ -663,7 +663,7 @@ function KanbanBoard({ schedule = [], activeTask = null, clockAt = null, health,
         ['cancelled', 'Отменено', cancelled, 'Не произошло или больше не актуально']
     ];
     return (
-        <Card className="kanban-card ui-card-frameless">
+        <Card className="kanban-card">
             <CardHeader eyebrow="Жизнь задач" title="Что происходит с планами" description="Каждая карточка проходит путь от приглашения или плана к выполнению, факту или понятной причине отмены." />
             <div className="kanban-board">
                 {columns.map(([key, title, rows, hint]) => (
