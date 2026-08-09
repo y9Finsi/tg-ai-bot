@@ -1,0 +1,44 @@
+{
+  "name": "tg-ai-bot",
+  "type": "module",
+  "dependencies": {
+    "bullmq": "^5.7.0",
+    "express": "^5.2.1",
+    "openai": "^4.33.0",
+    "pg": "^8.11.5",
+    "telegraf": "^4.16.3",
+    "@radix-ui/react-alert-dialog": "^1.1.14",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node --env-file=.env src/bot.js",
+    "dev": "node --env-file=.env src/bot.js",
+    "test": "node --test test/**/*.test.js",
+    "prompts:pull": "node --env-file=.env scripts/pull_prompts.js",
+    "admin:build": "vite build --config admin-v2/vite.config.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/y9Finsi/tg-ai-bot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/y9Finsi/tg-ai-bot/issues"
+  },
+  "homepage": "https://github.com/y9Finsi/tg-ai-bot#readme",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.5.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "vite": "^7.1.12"
+  }
+}

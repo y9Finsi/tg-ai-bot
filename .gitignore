@@ -1,0 +1,10 @@
+node_modules/
+.env
+.DS_Store
+*.log
+database_backup.sql
+*.dump
+src/state/*.json
+!src/state/.gitkeep
+.playwright-cli/
+output/

@@ -1,0 +1,747 @@
+import OpenAI from 'openai';
+import {
+    getHistory, saveMessage, getUser, addApiCost, setUserPrompt,
+    getActiveAiProvider, getUserMemories, getMemorySettings,
+    getLeraPhotoCandidates, getSentPhotos, recordPhotoSent,
+    getRecentConversationEvents, formatConversationEvent, getRecentSimulationReflections,
+    savePromptLog
+} from './database.js';
+import { promptTemplates, getRoutedSystemPrompt } from './prompts.js';
+import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX, IMAGE_STYLES } from './constants/intents.js';
+import { requestLlmCompletion } from './ai/llm_client.js';
+import { extractFactsInBackground, extractConversationEffects } from './ai/memory_extractor.js';
+import { ContextBuilder } from './ai/context_builder.js';
+import { validateUserCommand } from './ai/command_gate.js';
+import { evaluateLeraReply, getQualityFallback } from './ai/response_quality.js';
+import { classifyIntent, getModeGenerationParams, getModeIntentConfig, getRoutingSettings } from './ai/intent_router.js';
+// --- 1. КОНСТАНТЫ И ДИНАМИЧЕСКИЙ КЛИЕНТ ИИ ---
+
+const rateLimitMap = new Map();
+setInterval(() => rateLimitMap.clear(), 60 * 1000);
+
+let activeProviderCache = null;
+let openaiClientInstance = null;
+
+function getMoscowHour() {
+    return Number(new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Moscow', hour: '2-digit', hour12: false
+    }).format(new Date()));
+}
+
+function isUsableTelegramPhotoId(value) {
+    if (typeof value !== 'string') return false;
+    const photoId = value.trim();
+    if (!photoId || photoId === '[object Object]') return false;
+    // Telegram file_id characters, plus a normal remote URL accepted by sendPhoto.
+    return /^https?:\/\/\S+$/.test(photoId) || /^[A-Za-z0-9_-]+$/.test(photoId);
+}
+
+export async function reloadAIClient() {
+    try {
+        activeProviderCache = await getActiveAiProvider();
+        if (activeProviderCache) {
+            openaiClientInstance = new OpenAI({
+                baseURL: activeProviderCache.base_url,
+                apiKey: activeProviderCache.api_key,
+                defaultHeaders: {
+                    'HTTP-Referer': 'https://t.me/your_bot',
+                    'X-Title': 'Telegram AI Bot',
+                }
+            });
+        } else {
+            openaiClientInstance = new OpenAI({
+                baseURL: 'https://inference.dahl.global/v1',
+                apiKey: process.env.OPENROUTER_API_KEY || 'sk-placeholder',
+                defaultHeaders: {
+                    'HTTP-Referer': 'https://t.me/your_bot',
+                    'X-Title': 'Telegram AI Bot',
+                }
+            });
+        }
+    } catch (e) {
+        console.error('❌ Ошибка перезагрузки ИИ-провайдера:', e);
+    }
+    return activeProviderCache;
+}
+
+export async function getOpenAIClientAndModel() {
+    if (!openaiClientInstance) {
+        await reloadAIClient();
+    }
+    const model = activeProviderCache?.model_name || 'deepseek/deepseek-chat';
+    return { client: openaiClientInstance, model };
+}
+
+export { PHOTO_INTENT_REGEX, extractFactsInBackground };
+
+// --- 2. ВСПОМОГАТЕЛЬНЫЕ ХЕЛПЕРЫ ---
+
+async function resolveSystemPrompt(user, userId) {
+    if (user?.roleplay_mode === 'custom' && user?.current_prompt) {
+        return user.current_prompt;
+    }
+    // Стандартный промпт всегда берём из файлов, чтобы изменения не застревали
+    // в старой копии users.current_prompt.
+    return promptTemplates['prompt_flirthot'];
+}
+
+async function loadRecentReflections(limit = 3) {
+    try {
+        return await getRecentSimulationReflections(limit);
+    } catch (error) {
+        console.error('[REFLECTION CONTEXT ERROR]:', error.message);
+        return [];
+    }
+}
+
+function getFormattedTimeMSK() {
+    const now = new Date();
+    const timeString = now.toLocaleString('ru-RU', {
+        timeZone: 'Europe/Moscow',
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    return `\n\n[КОНТЕКСТ ВРЕМЕНИ И ДАТЫ]: Сейчас: ${timeString} (MSK).`;
+}
+
+function cleanAiText(rawText) {
+    if (!rawText) return '';
+    let text = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    text = text.replace(/<think>[\s\S]*/gi, '').trim();
+    text = text.replace(/\[IMAGE:[\s\S]*?\]/gi, '').trim();
+    text = text.replace(/\[IMAGE:[\s\S]*/gi, '').trim();
+    text = text.replace(/\[RECOMMEND\]/gi, '').trim();
+    text = text.replace(/\[SYSTEM\]:?/gi, '').trim();
+    text = text.replace(/SYSTEM:?/gi, '').trim();
+    text = text.replace(/\[СИСТЕМНАЯ ЗАДАЧА[\s\S]*?\]/gi, '').trim();
+    text = text.replace(/\[СИСТЕМНАЯ КОМАНДА[\s\S]*?\]/gi, '').trim();
+    text = text.replace(/\[СИСТЕМНЫЙ БЛОК[\s\S]*?\]/gi, '').trim();
+    text = text.replace(/\[Лера отправила[\s\S]*?\]/gi, '').trim();
+    text = text.replace(/\[Лера переслала[\s\S]*?\]/gi, '').trim();
+    text = text.replace(/\[D:[^\]]+\]|\[(?:M|R|PHOTO|VOICE|VIDEO|STICKER|INITIATIVE|REMEMBER|FORGET|MUTE|SYSTEM)[^\]]*\]/gi, '').trim();
+    text = text.replace(/Лера отправила личное фото:?[\s\S]*/gi, '').trim();
+    text = text.replace(/Лера переслала пост:?[\s\S]*/gi, '').trim();
+
+    // CJK / Иероглифы
+    text = text.replace(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fa5\uac00-\ud7af]+/g, '');
+
+    // Эмодзи
+    try {
+        text = text.replace(/\p{Extended_Pictographic}/gu, '');
+        text = text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, '');
+    } catch (e) {
+        text = text.replace(/[\u1F600-\u1F64F\u1F300-\u1F5FF\u1F680-\u1F6FF\u2600-\u26FF\u2700-\u27BF]/g, '');
+    }
+
+    // Удаляем смайлики-скобки и скобки (сохраняя слова)
+    text = text.replace(/[()]+/g, '');
+
+    // Тире, дефисы и буллеты в начале фраз (- – — ― ‒ ‑ ﹣ － • ⁃ ▪ ▫ ~ 〜 〰)
+    text = text.replace(/^[\s-–—―‒‑﹣－•⁃▪▫~〜〰]+[\s]*/gm, '');
+
+    // Дублирующиеся тире в середине текста
+    text = text.replace(/[-–—―‒‑﹣－]{2,}/g, ' ');
+
+    return text.split('\n').map(line => line.trim()).filter(line => line.length > 0).join('\n');
+}
+
+async function getFreeLocalPhotoStream(user = null, userText = '') {
+    try {
+        const isPremium = user && user.is_premium;
+        const accessLevel = isPremium ? 'vip' : 'free';
+
+        const hour = getMoscowHour();
+        let currentTimeOfDay = 'day';
+        if (hour >= 5 && hour < 12) currentTimeOfDay = 'morning';
+        else if (hour >= 12 && hour < 18) currentTimeOfDay = 'day';
+        else if (hour >= 18 && hour < 23) currentTimeOfDay = 'evening';
+        else currentTimeOfDay = 'night';
+
+        const sentPhotoIds = user ? await getSentPhotos(user) : [];
+
+        let candidates = await getLeraPhotoCandidates({ access_level: accessLevel, time_of_day: currentTimeOfDay });
+        let available = [];
+
+        if (candidates && candidates.length > 0) {
+            available = candidates.filter(c => isUsableTelegramPhotoId(c.file_id)
+                && !sentPhotoIds.includes(String(c.id)) && !sentPhotoIds.includes(String(c.file_id)));
+        }
+
+        if (available.length === 0) {
+            const allCandidates = await getLeraPhotoCandidates({ access_level: accessLevel, time_of_day: null });
+            if (allCandidates && allCandidates.length > 0) {
+                available = allCandidates.filter(c => isUsableTelegramPhotoId(c.file_id)
+                    && !sentPhotoIds.includes(String(c.id)) && !sentPhotoIds.includes(String(c.file_id)));
+            }
+
+            if (available.length === 0 && allCandidates && allCandidates.length > 0) {
+                const lastSent = sentPhotoIds[sentPhotoIds.length - 1];
+                available = allCandidates.filter(c => isUsableTelegramPhotoId(c.file_id)
+                    && String(c.id) !== String(lastSent) && String(c.file_id) !== String(lastSent));
+                if (available.length === 0) {
+                    available = allCandidates.filter(c => isUsableTelegramPhotoId(c.file_id));
+                }
+            }
+        }
+
+        if (available && available.length > 0) {
+            let selectedPhoto = null;
+
+            if (available.length === 1) {
+                selectedPhoto = available[0];
+            } else {
+                const photoOptionsText = available.map(c => `- ID ${c.id} [${c.time_of_day || 'любое время'}]: ${c.caption || (c.tags ? c.tags.join(', ') : '') || 'Фото Леры'}`).join('\n');
+
+                try {
+                    const selectionPrompt = `Пользователь написал в чат: "${userText || 'пришли фото'}".
+Доступные варианты фотографий Леры:
+${photoOptionsText}
+
+Выбери ТОЛЬКО ОДИН ID фотографии, сюжет которой наиболее логично подходит под контекст.
+Ответь СТРОГО одной цифрой ID (например: 5).`;
+
+                    const aiRes = await requestLlmCompletion(user || { roleplay_mode: 'flirthot' }, [
+                        { role: 'system', content: 'Ты классификатор и подборщик релевантного фото. Выдавай только ID числом.' },
+                        { role: 'user', content: selectionPrompt }
+                    ], false, getOpenAIClientAndModel, { trace: true, userId: user?.telegram_id || 0, kind: 'PHOTO_SELECTOR', userText });
+
+                    const aiChoiceText = aiRes?.rawText || '';
+                    const matchedId = parseInt(aiChoiceText.replace(/[^0-9]/g, ''), 10);
+                    selectedPhoto = available.find(c => c.id === matchedId);
+                } catch (selectErr) {
+                    console.error("[PHOTO SELECTOR ERROR]", selectErr.message);
+                }
+
+                if (!selectedPhoto) {
+                    selectedPhoto = available[Math.floor(Math.random() * available.length)];
+                }
+            }
+
+            if (selectedPhoto && isUsableTelegramPhotoId(selectedPhoto.file_id)) {
+                const photoTime = selectedPhoto.time_of_day || 'any';
+                const isDifferentTime = photoTime !== 'any' && photoTime !== currentTimeOfDay;
+                return {
+                    id: selectedPhoto.id,
+                    file_id: selectedPhoto.file_id,
+                    caption: selectedPhoto.caption,
+                    tags: selectedPhoto.tags,
+                    time_of_day: photoTime,
+                    isDifferentTime
+                };
+            }
+        }
+
+        // No unfiltered fallback: free users must never receive premium/vip rows.
+    } catch (err) {
+        console.error("Ошибка загрузки фото Леры:", err);
+    }
+    return null;
+}
+
+async function generatePhotoForPrompt(userId, user, imagePrompt, preselectedPhoto = null) {
+    if (preselectedPhoto) {
+        if (user && preselectedPhoto.id) {
+            await recordPhotoSent(user, preselectedPhoto.id || preselectedPhoto.file_id);
+        }
+        return preselectedPhoto;
+    }
+
+    // Исключительно подбираем готовое фото Леры из базы данных
+    const dbPhoto = await getFreeLocalPhotoStream(user, imagePrompt);
+    if (dbPhoto) {
+        if (user && dbPhoto.id) {
+            await recordPhotoSent(user, dbPhoto.id || dbPhoto.file_id);
+        }
+        return dbPhoto;
+    }
+
+    return null;
+}
+
+// --- 3. ПАЙПЛАЙН AI ДВИЖКА ---
+
+async function buildMessagePayload(user, userId, { userText, isInitiative, routingMode = 'CASUAL', routingEnabled = false, initiativeReason = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null }) {
+    const productionRoutingSettings = routingEnabled ? await getRoutingSettings() : null;
+    const productionIntentConfig = routingEnabled ? getModeIntentConfig(routingMode, productionRoutingSettings) : null;
+    const [history, baseSystemPromptText, conversationEvents, memories] = await Promise.all([
+        getHistory(userId, 10),
+        routingEnabled ? getRoutedSystemPrompt(routingMode, productionIntentConfig) : resolveSystemPrompt(user, userId),
+        getRecentConversationEvents(userId, 10).catch(() => []),
+        getUserMemories(userId, 30).catch(() => [])
+    ]);
+
+    const mediaLogInstruction = "\n\nПометки вида [Лера отправила личное фото: ...] в истории диалога — это служебные логи отправленных медиафайлов. Никогда не повторяй текст этих пометок в своих ответах!";
+
+    let isPhotoRequest = false;
+    let preselectedPhoto = null;
+
+    if (!isInitiative && userText) {
+        isPhotoRequest = PHOTO_INTENT_REGEX.test(userText);
+    }
+
+    const hour = getMoscowHour();
+    const currentTimeOfDay = hour >= 5 && hour < 12
+        ? 'morning'
+        : (hour >= 12 && hour < 18 ? 'day' : (hour >= 18 && hour < 23 ? 'evening' : 'night'));
+
+    const timeRuMap = {
+        morning: 'утреннее (утро)',
+        day: 'дневное (день)',
+        evening: 'вечернее (вечер)',
+        night: 'ночное (ночь)'
+    };
+
+    if (isPhotoRequest) {
+        preselectedPhoto = await getFreeLocalPhotoStream(user, userText || '');
+    }
+
+    const now = new Date();
+    // Передаём в ContextBuilder однозначный момент времени, а не локализованную
+    // строку без timezone: иначе сервер в UTC может повторно прибавить смещение.
+    const currentTime = now.toISOString();
+    const currentBatchIds = new Set((eventIds || []).map(Number));
+    const priorEvents = conversationEvents.filter(event => !currentBatchIds.has(Number(event.id)) && event.status === 'COMPLETED');
+    const lastEvent = priorEvents.at(-1);
+    const gapSeconds = Number.isFinite(Number(preMessageGapSeconds))
+        ? Math.max(0, Number(preMessageGapSeconds))
+        : (lastEvent ? Math.max(0, Math.floor((new Date(firstMessageAt || now).getTime() - new Date(lastEvent.occurred_at).getTime()) / 1000)) : 0);
+    let modeInstruction = `\n\n[ИНСТРУКЦИЯ ПО ФОТОГРАФИЯМ И КИНУТЫМ МЕДИА]:
+Ты в любой момент можешь прислать собеседнику свое фото. Для этого ДОБАВЬ В САМЫЙ КОНЕЦ ответа тег [IMAGE: краткое описание фото на английском].
+- СТРОГОЕ ПРАВИЛО: Если пользователь просит фото, или если ты сама в тексте говоришь «ща скину», «держи фотку», «покажусь», «глянь фотку» и т.п., ты ОБЯЗАНА ДОБАВИТЬ ТЕГ [IMAGE: ...] в самый конец сообщения! Без этого тега фото не отправится!`;
+
+    if (preselectedPhoto) {
+        const photoDesc = preselectedPhoto.caption || (preselectedPhoto.tags && preselectedPhoto.tags.length > 0 ? preselectedPhoto.tags.join(', ') : 'Твое личное фото');
+        const photoTime = preselectedPhoto.time_of_day;
+        const photoTimeRu = timeRuMap[photoTime] || photoTime;
+        const currentRealTimeRu = timeRuMap[currentTimeOfDay] || currentTimeOfDay;
+
+        modeInstruction += `\n\n[ГОТОВОЕ ФОТО ДЛЯ ОТПРАВКИ]:
+Если ты прикрепляешь фото, будет отправлен кадр со следующим сюжетом:
+- Описание кадра: "${photoDesc}"
+- Время суток на фото: ${photoTimeRu} (сейчас реальное время: ${currentRealTimeRu})`;
+
+        if (preselectedPhoto.isDifferentTime) {
+            modeInstruction += `\n⚠️ ВАЖНОЕ ПРАВИЛО (Фото из другого времени суток / архив): Этот кадр сделан в другое время суток (${photoTimeRu}), а у вас сейчас ${currentRealTimeRu}.
+Прочитай описание кадра выше и ОБЯЗАТЕЛЬНО объясни в тексте, почему ты скидываешь именно его (например: «Ой, нашла вот вчерашнее фото...», «Это я вчера вечером/с утра фоткалась», «Смотри, это вчера сделала фотку, когда...»). Опиши сюжет снимка своими словами!`;
+        } else {
+            modeInstruction += `\nОписанное выше фото подходит под ваше текущее время суток (${currentRealTimeRu}). Подпиши его естественно от первого лица, слегка опираясь на сюжет кадра.`;
+        }
+    }
+
+    if (isInitiative) {
+        modeInstruction = `\n\n[ИНИЦИАТИВА]: Напиши 1 короткую, живую фразу первой. Причина инициативы: ${initiativeReason || 'пользователь не писал больше 24 часов'}. Не раскрывай приватные данные других пользователей. При желании прикрепи тег [IMAGE: подробный промпт на английском].`;
+    }
+
+    const lastLeraText = [...priorEvents].reverse().find(event => event.role === 'lera' && event.content)?.content || '';
+    let tamagotchiInstruction = "";
+    let radiantContextText = "";
+    let radiantLayers = {};
+    try {
+        const detailedContext = await ContextBuilder.buildTelegramContextDetailed(userId, {
+            overrides: { preMessageGapSeconds: gapSeconds, previousActivityAt: lastEvent?.occurred_at, currentTime }
+        });
+        const radiantContext = detailedContext.text;
+        radiantContextText = radiantContext;
+        radiantLayers = detailedContext.layers;
+        const memoryText = memories.length > 0
+            ? memories.map(m => `- ${m.fact}`).join('\n')
+            : 'Пока нет сохраненных фактов о пользователе.';
+
+        const promptModules = productionIntentConfig?.promptModules || {};
+        tamagotchiInstruction = [
+            promptModules.context === false ? '' : `\n\n${radiantContext}`,
+            promptModules.memory === false ? '' : `\n\n=== 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===\n${memoryText}`
+        ].filter(Boolean).join('');
+    } catch (tamagotchiErr) {
+        console.error("⚠️ Ошибка формирования контекста Леры:", tamagotchiErr.message);
+    }
+
+    const systemPrompt = baseSystemPromptText + mediaLogInstruction + tamagotchiInstruction + modeInstruction;
+    const messages = [{ role: 'system', content: systemPrompt }];
+
+    // Добавляем историю прошлых сообщений в массив сообщений для LLM
+    const chatHistoryEvents = priorEvents.filter(ev =>
+        ev.content && (ev.event_type === 'MESSAGE' || ev.event_type === 'INITIATIVE' || ev.role === 'user' || ev.role === 'lera' || ev.role === 'assistant')
+    ).slice(-10);
+
+    if (productionIntentConfig?.promptModules?.history !== false) {
+        if (chatHistoryEvents.length > 0) {
+            chatHistoryEvents.forEach(ev => {
+                const role = (ev.role === 'lera' || ev.role === 'assistant') ? 'assistant' : 'user';
+                messages.push({ role, content: ev.content });
+            });
+        } else if (history && history.length > 0) {
+            history.forEach(msg => {
+                const role = (msg.role === 'lera' || msg.role === 'assistant') ? 'assistant' : 'user';
+                messages.push({ role, content: msg.content });
+            });
+        }
+    }
+
+    // Передаем последнее текущее сообщение пользователя, если оно ещё не было занесено
+    if (!isInitiative && userText) {
+        const lastMsg = messages.at(-1);
+        if (!lastMsg || lastMsg.role !== 'user' || lastMsg.content !== userText) {
+            messages.push({ role: 'user', content: userText });
+        }
+    }
+
+    return {
+        messages,
+        isPhotoRequest,
+        preselectedPhoto,
+        lastLeraText,
+        recentReplyTexts: priorEvents
+            .filter(event => event.role === 'lera' || event.role === 'assistant')
+            .map(event => event.content)
+            .filter(Boolean)
+            .slice(-5),
+        memories,
+        systemPrompt,
+        radiantContext: radiantContextText,
+        leraState: tamagotchiInstruction ? radiantLayers : null
+    };
+}
+
+async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingRecommendationPost = null, preselectedPhoto = null) {
+    let workingText = rawText || '';
+    let imagePrompt = null;
+
+    const fullMatch = workingText.match(/\[IMAGE:([\s\S]*?)\]/i);
+    if (fullMatch) {
+        imagePrompt = fullMatch[1].trim();
+        workingText = workingText.replace(/\[IMAGE:[\s\S]*?\]/gi, '').trim();
+    } else {
+        const unclosedMatch = workingText.match(/\[IMAGE:([\s\S]*)/i);
+        if (unclosedMatch) {
+            imagePrompt = unclosedMatch[1].trim();
+            workingText = workingText.replace(/\[IMAGE:[\s\S]*/gi, '').trim();
+        }
+    }
+
+    let photoSendPayload = null;
+    let photoCaption = null;
+    let showBuyButton = false;
+    let finalAiText = cleanAiText(workingText);
+
+    if (imagePrompt) {
+        const photoObj = await generatePhotoForPrompt(userId, user, imagePrompt, preselectedPhoto);
+
+        if (photoObj) {
+            if (typeof photoObj === 'string') {
+                photoSendPayload = photoObj;
+            } else if (photoObj && photoObj.file_id) {
+                photoSendPayload = photoObj.file_id;
+                photoCaption = photoObj.caption;
+            } else if (photoObj && photoObj.source) {
+                photoSendPayload = photoObj;
+            }
+        }
+    }
+
+    return {
+        text: finalAiText,
+        photo: photoSendPayload,
+        photoCaption,
+        recommendationPost: existingRecommendationPost,
+        showBuyButton
+    };
+}
+
+async function recordAiTransaction(userId, userText, text, usage, isInitiative, recPost = null, photoCaption = null) {
+    let cost = 0;
+    if (usage) {
+        cost = (usage.prompt_tokens * 0.13 / 1000000) + (usage.completion_tokens * 0.28 / 1000000);
+        await addApiCost(userId, cost);
+    }
+
+    if (!isInitiative && userText) {
+        await saveMessage(userId, 'user', userText, 0);
+    }
+
+    if (text || recPost || photoCaption) {
+        let historyContent = text || "";
+        if (photoCaption) {
+            historyContent = (historyContent ? historyContent + "\n" : "") + `[Лера отправила личное фото: "${photoCaption}"]`;
+        }
+        if (recPost && recPost.text) {
+            historyContent = (historyContent ? historyContent + "\n" : "") + `[Лера переслала пост из канала: "${recPost.text}"]`;
+        }
+        await saveMessage(userId, 'assistant', historyContent, cost);
+    }
+
+    console.log(`🤖 [${isInitiative ? 'AI INITIATIVE' : 'BOT'} ${userId}]: ${text}`);
+}
+
+// --- 4. ДЕКЛАРАТИВНЫЙ ЕДИНЫЙ ДВИЖОК ---
+
+async function runAiEngine(userId, { userText = null, isInitiative = false, routingMode = 'CASUAL', routingEnabled = false, classifierResult = null, initiativeReason = null, commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null } = {}) {
+    const user = await getUser(userId);
+    if (!user) return null;
+
+    // 1. Формирование контекста сообщений (с параллельными запросами БД)
+    const {
+        messages, isPhotoRequest, recommendationPost, preselectedPhoto, lastLeraText,
+        recentReplyTexts, memories, leraState, systemPrompt, radiantContext
+    } = await buildMessagePayload(user, userId, { userText, isInitiative, routingMode, routingEnabled, initiativeReason, batchId, eventIds, preMessageGapSeconds, firstMessageAt });
+    const routingSettings = routingEnabled ? await getRoutingSettings() : null;
+    const generationParams = routingEnabled ? getModeGenerationParams(routingMode, routingSettings) : {};
+
+    // Логирование вызова LLM в prompt_logs. Никогда не блокирует генерацию ответа.
+    const writePromptLog = (extra = {}) => {
+        const promptTokens = Number(extra.usage?.prompt_tokens || 0);
+        const completionTokens = Number(extra.usage?.completion_tokens || 0);
+        savePromptLog({
+            userId,
+            kind: isInitiative ? 'INITIATIVE' : 'CHAT',
+            mode: routingEnabled ? routingMode : (user.roleplay_mode || 'flirthot'),
+            userText,
+            systemPrompt,
+            radiantContext,
+            messages,
+            stateSnapshot: leraState || {},
+            memoryUsed: (memories || []).map(m => m.fact || m),
+            isPhotoRequest,
+            commandGateStatus: commandGate?.code || null,
+            commandGateReason: commandGate?.accepted ? null : commandGate?.willingness ? `Willingness ${commandGate.willingness.value}%` : null,
+            costUsd: extra.costUsd ?? ((promptTokens * 0.13 / 1000000) + (completionTokens * 0.28 / 1000000)),
+            routingMode: routingEnabled ? routingMode : 'LEGACY',
+            classifier: classifierResult ? {
+                mode: classifierResult.mode,
+                providerName: classifierResult.providerName,
+                model: classifierResult.model,
+                latencyMs: classifierResult.latencyMs,
+                usage: classifierResult.usage
+            } : null,
+            ...extra
+        }).catch(() => null);
+    };
+
+    // 2. Вызов нейросети через модуль llm_client
+    let llmResult;
+    try {
+        llmResult = await requestLlmCompletion(user, messages, isPhotoRequest, getOpenAIClientAndModel, generationParams);
+    } catch (llmErr) {
+        writePromptLog({ errorText: llmErr.message });
+        throw llmErr;
+    }
+
+    let { rawText, usage } = llmResult;
+    let { model, providerName, latencyMs } = llmResult;
+    if (!rawText) {
+        writePromptLog({ model, providerName, latencyMs, errorText: 'Пустой ответ от LLM' });
+        return { text: "❌ Произошла ошибка на стороне нейросети.", photo: null, recommendationPost: null };
+    }
+
+    // 3. Чистка текста и генерация/выборка фото
+    let { text, photo, photoCaption, recommendationPost: finalRecPost, showBuyButton } = await processLlmOutput(userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto);
+
+    const normalizeReply = value => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    const looksLikeGreeting = /^(привет|приветик|здравствуй|доброе утро|добрый вечер|хай|хелло)/i.test(String(userText || '').trim());
+    const greetingPrefix = /^(приветик?|здравствуй(?:те)?|доброе утро|добрый вечер|хай|хелло)[!,.\s-]*/i;
+    const repeatsGreeting = !looksLikeGreeting
+        && greetingPrefix.test(text || '')
+        && greetingPrefix.test(lastLeraText || '');
+    const qualityIssues = evaluateLeraReply(text, userText, null, {
+        mode: routingEnabled ? routingMode : null,
+        recentReplies: recentReplyTexts
+    }).violations;
+    const needsQualityRetry = !isInitiative && qualityIssues.some(issue => [
+        'noRecentRepeat'
+    ].includes(issue));
+    if (!isInitiative && userText && (
+        (lastLeraText && (normalizeReply(text) === normalizeReply(lastLeraText) || repeatsGreeting) && !looksLikeGreeting)
+        || needsQualityRetry
+    )) {
+        // Preserve the first real call before issuing the anti-repeat retry.
+        writePromptLog({
+            model,
+            providerName,
+            latencyMs,
+            rawResponse: rawText,
+            parsedResponse: text,
+            usage
+        });
+        const retryMessages = [
+            messages[0],
+            { role: 'system', content: needsQualityRetry
+                ? 'СТОП: предыдущий ответ повторяет недавнюю фразу. Перепиши ответ именно на последнюю реплику и не повторяй недавний текст.'
+                : 'СТОП: предыдущий ответ совпал с прошлой репликой. Сгенерируй новый ответ именно на последнюю CURRENT_MESSAGE. Не повторяй приветствие и прошлый текст.' },
+            ...messages.slice(1)
+        ];
+        const firstUsage = usage || {};
+        const retry = await requestLlmCompletion(user, retryMessages, isPhotoRequest, getOpenAIClientAndModel, generationParams);
+        rawText = retry.rawText || rawText;
+        usage = {
+            prompt_tokens: Number(firstUsage.prompt_tokens || 0) + Number(retry.usage?.prompt_tokens || 0),
+            completion_tokens: Number(firstUsage.completion_tokens || 0) + Number(retry.usage?.completion_tokens || 0),
+            total_tokens: Number(firstUsage.total_tokens || 0) + Number(retry.usage?.total_tokens || 0)
+        };
+        model = retry.model || model;
+        providerName = retry.providerName || providerName;
+        latencyMs = retry.latencyMs || latencyMs;
+        ({ text, photo, photoCaption, recommendationPost: finalRecPost, showBuyButton } = await processLlmOutput(
+            userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto
+        ));
+        // The final log below must contain the exact retry messages, not the first call.
+        messages.splice(0, messages.length, ...retryMessages);
+    }
+
+    const finalQuality = evaluateLeraReply(text, userText, null, {
+        mode: routingEnabled ? routingMode : null,
+        recentReplies: recentReplyTexts
+    });
+    if (!isInitiative && userText && !finalQuality.passed) {
+        writePromptLog({
+            kind: 'QUALITY_FALLBACK',
+            model,
+            providerName,
+            latencyMs,
+            rawResponse: rawText,
+            parsedResponse: text,
+            usage,
+            errorText: `Quality Gate после retry: ${finalQuality.violations.join(', ')}`
+        });
+        text = getQualityFallback(routingEnabled ? routingMode : 'CASUAL');
+        photo = null;
+        photoCaption = null;
+        finalRecPost = null;
+    }
+
+    if (!isInitiative && userText && !looksLikeGreeting && greetingPrefix.test(text || '') && greetingPrefix.test(lastLeraText || '')) {
+        text = text.replace(greetingPrefix, '').trim();
+    }
+
+    if (photo && (text === "..." || !text)) {
+        text = "";
+    }
+
+    if (finalRecPost && (!text || text === "...")) {
+        text = "о, зацени че в новостях вычитала 👇";
+    }
+
+    // 4. Логирование и БД (с учётом отправленной фотографии в истории)
+    await recordAiTransaction(userId, userText, text, usage, isInitiative, finalRecPost, photoCaption);
+
+    // 4.1 Полный лог промпта и ответа для инспектора (в фоне, не блокирует ответ)
+    writePromptLog({
+        kind: (!isInitiative && messages[1]?.content?.startsWith('СТОП: предыдущий ответ')) ? 'RETRY' : (isInitiative ? 'INITIATIVE' : 'CHAT'),
+        model,
+        providerName,
+        latencyMs,
+        rawResponse: rawText,
+        parsedResponse: text,
+        usage
+    });
+
+    // 5. Асинхронная экстракция долгосрочных фактов в память в фоне (не блокирует ответ)
+    if (!isInitiative && userText) {
+        extractFactsInBackground(userId, userText).catch(mErr =>
+            console.error(`⚠️ Ошибка фонового извлечения памяти (${userId}):`, mErr.message)
+        );
+    }
+    extractConversationEffects(userId, userText).catch(effectError =>
+        console.error(`⚠️ Ошибка фоновых эффектов диалога (${userId}):`, effectError.message)
+    );
+
+    return {
+        text: text || "",
+        photo,
+        recommendationPost: finalRecPost,
+        showBuyButton,
+        debugInfo: {
+            state_snapshot: leraState,
+            memory_used: (memories && memories.length > 0) ? memories.map(m => m.fact || m) : "Память пока пуста (в БД PostgreSQL для этого юзера еще нет фактов)",
+            rawPrompt: messages,
+            rawText,
+            usage
+        }
+    };
+}
+
+// --- 5. ЭКСПОРТИРУЕМЫЕ ФУНКЦИИ-ОБЕРТКИ ---
+
+export async function generateResponse(userId, text, envelope = {}) {
+    const userReqs = rateLimitMap.get(userId) || 0;
+    if (userReqs >= 10) {
+        return { text: "⏳ Вы превысили лимит запросов (10/мин). Подождите немного.", photo: null, showBuyButton: false };
+    }
+    rateLimitMap.set(userId, userReqs + 1);
+
+    console.log(`\n[USER ${userId}]: ${text}`);
+    const user = await getUser(userId);
+
+    if (VOICE_INTENT_REGEX.test(text)) {
+        return {
+            text: "💬 Мои голосовые сообщения доступны только в VIP-пакете! Приобрети его в магазине, чтобы услышать мой стон... 😈",
+            photo: null,
+            showBuyButton: true
+        };
+    }
+
+    const command = await validateUserCommand(text, { userId, batchId: envelope.batchId });
+    if (command.isCommand && !command.accepted) {
+        savePromptLog({
+            userId,
+            kind: 'COMMAND_GATE',
+            mode: 'strict-command-gate',
+            userText: text,
+            rawResponse: 'COMMAND_REFUSED',
+            parsedResponse: 'COMMAND_REFUSED',
+            stateSnapshot: { willingness: command.willingness },
+            commandGateStatus: command.code,
+            commandGateReason: `Willingness ${command.willingness?.value ?? 0}%`,
+            latencyMs: 0
+        }).catch(() => null);
+        return {
+            text: 'не сейчас, я реально на нуле и сначала разберусь со своими делами',
+            photo: null,
+            showBuyButton: false,
+            command: command.code,
+            willingness: command.willingness
+        };
+    }
+
+    let routingEnabled = false;
+    let routingMode = 'CASUAL';
+    let classifierResult = null;
+    try {
+        const routingSettings = await getRoutingSettings();
+        routingEnabled = routingSettings.enabled;
+        if (routingEnabled) {
+            const history = await getHistory(userId, 3).catch(() => []);
+            classifierResult = await classifyIntent({ userId, userText: text, history });
+            routingMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(classifierResult.mode)
+                ? classifierResult.mode
+                : 'CASUAL';
+            const usage = classifierResult.usage || {};
+            const classifierCost = (Number(usage.prompt_tokens || 0) * 0.13 / 1000000)
+                + (Number(usage.completion_tokens || 0) * 0.28 / 1000000);
+            if (classifierCost > 0) await addApiCost(userId, classifierCost);
+        }
+    } catch (routingError) {
+        console.error('[INTENT ROUTER] fallback to CASUAL:', routingError.message);
+        classifierResult = { mode: 'CASUAL', error: routingError.message };
+    }
+
+    return await runAiEngine(userId, {
+        userText: text,
+        isInitiative: false,
+        routingEnabled,
+        routingMode,
+        classifierResult,
+        commandGate: command.isCommand ? command : null,
+        batchId: envelope.batchId,
+        eventIds: envelope.eventIds || [],
+        preMessageGapSeconds: envelope.preMessageGapSeconds,
+        firstMessageAt: envelope.firstMessageAt
+    });
+}
+
+export async function generateAiInitiativeResponse(userId, reason = null) {
+    return await runAiEngine(userId, { isInitiative: true, initiativeReason: reason });
+}

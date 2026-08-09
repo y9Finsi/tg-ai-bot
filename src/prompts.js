@@ -1,0 +1,212 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { getSetting, setSetting } from './db/database.js';
+import { ALL_PROMPT_SECTIONS, PROMPT_SECTIONS, ROUTING_PROMPT_SECTIONS } from './prompt_sections.js';
+
+export { ALL_PROMPT_SECTIONS, PROMPT_SECTIONS, ROUTING_PROMPT_SECTIONS };
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export const DEFAULT_LLM_PARAMS = {
+    temperature: 0.7,
+    presence_penalty: 0.1,
+    frequency_penalty: 0.1
+};
+
+const PROMPT_ORDER = [
+    'lera_base',
+    'lera_speech',
+    'lera_intimacy',
+    'lera_jokes',
+    'lera_examples',
+    'lera_virt_examples',
+    'lera_rules'
+];
+
+function loadPromptFile(filename) {
+    try {
+        const filePath = path.join(__dirname, 'prompts', filename);
+        if (fs.existsSync(filePath)) {
+            return fs.readFileSync(filePath, 'utf8').trim();
+        }
+    } catch (err) {
+        console.error(`[PROMPTS ERROR] Не удалось загрузить файл ${filename}:`, err);
+    }
+    return '';
+}
+
+function savePromptFile(filename, content) {
+    try {
+        const filePath = path.join(__dirname, 'prompts', filename);
+        fs.writeFileSync(filePath, content, 'utf8');
+    } catch (err) {
+        console.error(`[PROMPTS ERROR] Не удалось сохранить файл ${filename}:`, err);
+    }
+}
+
+// Кэш промптов в памяти
+const promptsCache = {};
+for (const [key, filename] of Object.entries(PROMPT_SECTIONS)) {
+    promptsCache[key] = loadPromptFile(filename);
+}
+
+const routingPromptDefaults = {
+    routing_core: () => promptsCache.lera_base,
+    routing_common: () => [promptsCache.lera_speech, promptsCache.lera_rules].filter(Boolean).join('\n\n'),
+    routing_casual: () => promptsCache.lera_examples,
+    routing_erotic: () => promptsCache.lera_intimacy,
+    routing_joke: () => `${promptsCache.lera_jokes || ''}\n\n[КОНТЕКСТ ИГРЫ В РЕЖИМЕ JOKE]\nИгровой контекст доступен для понимания состояния Леры, но шутка не обязана быть связана с её текущим занятием, комнатой, едой, кроватью или бытовой сценой.`.trim()
+};
+
+for (const [key, filename] of Object.entries(ROUTING_PROMPT_SECTIONS)) {
+    const loaded = loadPromptFile(filename);
+    promptsCache[key] = loaded || routingPromptDefaults[key]();
+}
+
+// Кэш параметров LLM в памяти
+const llmParamsCache = { ...DEFAULT_LLM_PARAMS };
+
+let isDbInitialized = false;
+
+export async function initPromptsFromDb() {
+    try {
+        const tempStr = await getSetting('llm_temperature', null);
+        const presStr = await getSetting('llm_presence_penalty', null);
+        const freqStr = await getSetting('llm_frequency_penalty', null);
+
+        if (tempStr !== null && tempStr !== undefined) {
+            const parsed = parseFloat(tempStr);
+            if (!isNaN(parsed)) llmParamsCache.temperature = parsed;
+        }
+        if (presStr !== null && presStr !== undefined) {
+            const parsed = parseFloat(presStr);
+            if (!isNaN(parsed)) llmParamsCache.presence_penalty = parsed;
+        }
+        if (freqStr !== null && freqStr !== undefined) {
+            const parsed = parseFloat(freqStr);
+            if (!isNaN(parsed)) llmParamsCache.frequency_penalty = parsed;
+        }
+
+        for (const [key, filename] of Object.entries(PROMPT_SECTIONS)) {
+            const dbVal = await getSetting(`prompt_${key}`, null);
+            if (dbVal !== null && dbVal !== undefined && dbVal.trim() !== '') {
+                promptsCache[key] = dbVal;
+            }
+        }
+        for (const [key] of Object.entries(ROUTING_PROMPT_SECTIONS)) {
+            const dbVal = await getSetting(`prompt_${key}`, null);
+            if (dbVal !== null && dbVal !== undefined && dbVal.trim() !== '') {
+                promptsCache[key] = dbVal;
+            }
+        }
+        isDbInitialized = true;
+    } catch (err) {
+        console.error('[PROMPTS] Ошибка загрузки промптов из БД:', err.message);
+    }
+}
+
+// Фоновая асинхронная инициализация при старте
+initPromptsFromDb().catch(() => {});
+
+export async function getLlmParams() {
+    if (!isDbInitialized) {
+        await initPromptsFromDb().catch(() => {});
+    }
+    return { ...llmParamsCache };
+}
+
+export async function updateLlmParams(newParams) {
+    if (newParams.temperature !== undefined) {
+        const val = parseFloat(newParams.temperature);
+        if (!isNaN(val)) {
+            llmParamsCache.temperature = val;
+            await setSetting('llm_temperature', String(val));
+        }
+    }
+    if (newParams.presence_penalty !== undefined) {
+        const val = parseFloat(newParams.presence_penalty);
+        if (!isNaN(val)) {
+            llmParamsCache.presence_penalty = val;
+            await setSetting('llm_presence_penalty', String(val));
+        }
+    }
+    if (newParams.frequency_penalty !== undefined) {
+        const val = parseFloat(newParams.frequency_penalty);
+        if (!isNaN(val)) {
+            llmParamsCache.frequency_penalty = val;
+            await setSetting('llm_frequency_penalty', String(val));
+        }
+    }
+    return { ...llmParamsCache };
+}
+
+export function getCompiledFlirtHotPrompt() {
+    return PROMPT_ORDER
+        .map(key => promptsCache[key])
+        .filter(Boolean)
+        .join('\n\n');
+}
+
+export async function getLeraPrompts() {
+    if (!isDbInitialized) {
+        await initPromptsFromDb().catch(() => {});
+    }
+    return {
+        prompts: { ...promptsCache },
+        fullPrompt: getCompiledFlirtHotPrompt()
+    };
+}
+
+export async function updateLeraPrompts(promptsObj) {
+    for (const [key, text] of Object.entries(promptsObj)) {
+        if (ALL_PROMPT_SECTIONS[key] !== undefined && typeof text === 'string') {
+            const cleanText = text.trim();
+            promptsCache[key] = cleanText;
+            await setSetting(`prompt_${key}`, cleanText);
+            const filename = ALL_PROMPT_SECTIONS[key];
+            savePromptFile(filename, cleanText);
+        }
+    }
+    return getLeraPrompts();
+}
+
+export async function getRoutingPromptModules() {
+    if (!isDbInitialized) {
+        await initPromptsFromDb().catch(() => {});
+    }
+    return {
+        core: promptsCache.routing_core || routingPromptDefaults.routing_core(),
+        common: promptsCache.routing_common || routingPromptDefaults.routing_common(),
+        casual: promptsCache.routing_casual || routingPromptDefaults.routing_casual(),
+        erotic: promptsCache.routing_erotic || routingPromptDefaults.routing_erotic(),
+        joke: promptsCache.routing_joke || routingPromptDefaults.routing_joke()
+    };
+}
+
+export async function getRoutedSystemPrompt(mode = 'CASUAL', config = {}) {
+    const modules = await getRoutingPromptModules();
+    const normalizedMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(mode) ? mode : 'CASUAL';
+    const selected = normalizedMode === 'EROTIC' ? modules.erotic : normalizedMode === 'JOKE' ? modules.joke : modules.casual;
+    const enabled = config.promptModules || config.prompt_modules || {};
+    const blocks = [
+        enabled.core === false ? '' : modules.core,
+        enabled.common === false ? '' : modules.common,
+        enabled.intent === false ? '' : selected
+    ].filter(Boolean);
+    if (config.systemOverlay || config.system_overlay) {
+        blocks.push(`[SYSTEM PROMPT OVERLAY]\n${String(config.systemOverlay || config.system_overlay).trim()}`);
+    }
+    return blocks.join('\n\n');
+}
+
+export function getContextPromptTemplate() {
+    return promptsCache.context_template || loadPromptFile(PROMPT_SECTIONS.context_template);
+}
+
+export const promptTemplates = {
+    get prompt_flirthot() {
+        return getCompiledFlirtHotPrompt();
+    }
+};

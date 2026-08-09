@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Лера 2.0 — Где Лера? (Санкт-Петербург)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0c10; color: #fff; height: 100vh; overflow: hidden; }
+    #map { width: 100%; height: 100vh; z-index: 1; }
+    
+    .overlay-card {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 40px);
+      max-width: 480px;
+      background: rgba(18, 18, 24, 0.88);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      padding: 16px;
+      z-index: 1000;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+    
+    .header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .lera-status { display: flex; align-items: center; gap: 8px; }
+    .status-dot { width: 10px; height: 10px; background: #00ff88; border-radius: 50%; box-shadow: 0 0 10px #00ff88; }
+    .location-name { font-size: 17px; font-weight: 700; color: #ffffff; }
+    .district-tag { font-size: 11px; background: rgba(255, 107, 129, 0.2); color: #ff6b81; padding: 3px 8px; border-radius: 20px; border: 1px solid rgba(255, 107, 129, 0.3); }
+    
+    .task-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; color: #38bdf8; margin-bottom: 6px; background: rgba(56, 189, 248, 0.1); padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.2); }
+    .action-text { font-size: 13px; color: #a0a0b0; margin-bottom: 12px; line-height: 1.4; }
+    
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px; }
+    .stat-box { text-align: center; }
+    .stat-label { font-size: 10px; color: #6e6e80; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-val { font-size: 13px; font-weight: 600; color: #e0e0e0; margin-top: 2px; }
+    
+    .custom-lera-marker {
+      width: 42px;
+      height: 42px;
+      background: linear-gradient(135deg, #ff4757, #ff6b81);
+      border: 3px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 20px rgba(255, 71, 87, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7); }
+      70% { box-shadow: 0 0 0 15px rgba(255, 71, 87, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="overlay-card">
+    <div class="header-row">
+      <div class="lera-status">
+        <div class="status-dot"></div>
+        <div id="loc-name" class="location-name">Квартира на Петроградке</div>
+      </div>
+      <div id="loc-district" class="district-tag">Петроградский р-н</div>
+    </div>
+
+    <div class="task-row">
+      <span id="task-title">🎯 Таска: Загрузка...</span>
+      <span id="task-timer" style="font-family: monospace; font-weight: bold;">⏳ 15:00</span>
+    </div>
+
+    <div id="loc-action" class="action-text">Загрузка данных симуляции...</div>
+
+    <div class="stats-grid">
+       <div class="stat-box">
+         <div class="stat-label">Статус</div>
+         <div id="val-money" class="stat-val">Публичный</div>
+       </div>
+      <div class="stat-box">
+        <div class="stat-label">Голод</div>
+         <div id="val-hunger" class="stat-val">скрыто</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Пошлость</div>
+         <div id="val-horny" class="stat-val">скрыто</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Цикл</div>
+         <div id="val-cycle" class="stat-val">скрыто</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map', { zoomControl: false }).setView([59.9589, 30.3049], 15);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      subdomains: 'abcd',
+      attribution: '© OpenStreetMap © CARTO'
+    }).addTo(map);
+
+    const leraIcon = L.divIcon({
+      className: 'custom-lera-marker-container',
+      html: '<div class="custom-lera-marker">👧🏻</div>',
+      iconSize: [42, 42],
+      iconAnchor: [21, 21]
+    });
+
+    let leraMarker = L.marker([59.9589, 30.3049], { icon: leraIcon }).addTo(map);
+    let allNodeMarkers = {};
+    let countdownInterval = null;
+    let currentRemainingSeconds = 0;
+
+    function startLocalCountdown(seconds) {
+      currentRemainingSeconds = seconds;
+      if (countdownInterval) clearInterval(countdownInterval);
+      
+      countdownInterval = setInterval(() => {
+        if (currentRemainingSeconds <= 0) {
+          document.getElementById('task-timer').innerText = '⏳ 00:00 (Переключение...)';
+          clearInterval(countdownInterval);
+          setTimeout(fetchMapState, 2000);
+          return;
+        }
+        currentRemainingSeconds--;
+        const mins = Math.floor(currentRemainingSeconds / 60);
+        const secs = currentRemainingSeconds % 60;
+        document.getElementById('task-timer').innerText = `⏳ ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      }, 1000);
+    }
+
+    async function fetchMapState() {
+      try {
+        const response = await fetch('/api/map/state');
+        const data = await response.json();
+        if (data.success) {
+          updateUI(data);
+        }
+      } catch (e) {
+        console.error('Ошибка загрузки карты:', e);
+      }
+    }
+
+    function updateUI(data) {
+      const state = data.state;
+      const currentNode = data.current_node;
+      const allNodes = data.all_nodes || {};
+      const activeTask = state.active_task || {};
+
+      Object.values(allNodes).forEach(node => {
+        if (node.coordinates && !allNodeMarkers[node.id]) {
+          const m = L.circleMarker(node.coordinates, {
+            radius: 7,
+            fillColor: node.id === state.current_node_id ? '#ff4757' : '#70a1ff',
+            color: '#ffffff',
+            weight: 2,
+            opacity: 0.8,
+            fillOpacity: 0.8
+          }).addTo(map);
+          m.bindPopup(`<b>${node.name}</b><br>${node.district || ''}`);
+          allNodeMarkers[node.id] = m;
+        }
+      });
+
+      if (currentNode && currentNode.coordinates) {
+        const coords = currentNode.coordinates;
+        leraMarker.setLatLng(coords);
+        map.panTo(coords, { animate: true });
+      }
+
+      document.getElementById('loc-name').innerText = currentNode ? currentNode.name : state.location_name;
+      document.getElementById('loc-district').innerText = currentNode ? (currentNode.district || 'СПб') : 'СПб';
+      document.getElementById('loc-action').innerText = state.last_action || 'Находится в этой локации';
+      document.getElementById('task-title').innerText = `🎯 Таска: ${activeTask.title || 'Выполнение дел'}`;
+      
+      startLocalCountdown(activeTask.time_remaining_seconds || 0);
+
+       document.getElementById('val-money').innerText = 'Публичный';
+       document.getElementById('val-hunger').innerText = 'скрыто';
+       document.getElementById('val-horny').innerText = 'скрыто';
+       document.getElementById('val-cycle').innerText = 'скрыто';
+    }
+
+    setInterval(fetchMapState, 10000);
+    fetchMapState();
+  </script>
+</body>
+</html>
