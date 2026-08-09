@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { CircleHelp, CloudRain, Database, ExternalLink, EyeOff, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, CircleCheck, CircleOff, Info, Pencil, Search, Command } from 'lucide-react';
+import { CircleHelp, CloudRain, Database, ExternalLink, EyeOff, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Search, Command } from 'lucide-react';
 import './styles.css';
 import { Button } from './components/ui/button.jsx';
 import { Badge } from './components/ui/badge.jsx';
@@ -163,8 +163,20 @@ async function api(path, options = {}) {
 function Progress({ value, tone = 'blue' }) { return <div className="progress"><i className={`progress-${tone}`} style={{ width: `${Math.max(0, Math.min(100, Number(value) || 0))}%` }} /></div>; }
 
 function ConfirmAction({ title, description, confirmText, onConfirm, children, variant = 'outline', disabled = false, size }) {
+    const [open, setOpen] = useState(false);
+    const [pending, setPending] = useState(false);
+    async function confirm(event) {
+        event.preventDefault();
+        setPending(true);
+        try {
+            const completed = await onConfirm?.();
+            if (completed !== false) setOpen(false);
+        } finally {
+            setPending(false);
+        }
+    }
     if (disabled) return <Button size={size} variant="outline" disabled aria-disabled="true">{children}</Button>;
-    return <AlertDialog.Root><AlertDialog.Trigger asChild><Button size={size} variant={variant}>{children}</Button></AlertDialog.Trigger><AlertDialog.Portal><AlertDialog.Overlay className="dialog-overlay" /><AlertDialog.Content className="dialog-content"><AlertDialog.Title>{title}</AlertDialog.Title><AlertDialog.Description>{description}</AlertDialog.Description><div className="dialog-actions"><AlertDialog.Cancel asChild><Button>Отмена</Button></AlertDialog.Cancel><AlertDialog.Action asChild><Button variant="danger" onClick={onConfirm}>{confirmText || 'Подтвердить'}</Button></AlertDialog.Action></div></AlertDialog.Content></AlertDialog.Portal></AlertDialog.Root>;
+    return <AlertDialog.Root open={open} onOpenChange={nextOpen => { if (!pending) setOpen(nextOpen); }}><AlertDialog.Trigger asChild><Button size={size} variant={variant}>{children}</Button></AlertDialog.Trigger><AlertDialog.Portal><AlertDialog.Overlay className="dialog-overlay" /><AlertDialog.Content className="dialog-content"><AlertDialog.Title>{title}</AlertDialog.Title><AlertDialog.Description>{description}</AlertDialog.Description><div className="dialog-actions"><AlertDialog.Cancel asChild><Button disabled={pending}>Отмена</Button></AlertDialog.Cancel><AlertDialog.Action asChild><Button variant="danger" loading={pending} onClick={confirm}>{pending ? 'Выполняю…' : confirmText || 'Подтвердить'}</Button></AlertDialog.Action></div></AlertDialog.Content></AlertDialog.Portal></AlertDialog.Root>;
 }
 
 function Toast({ notice, onDismiss }) {
@@ -985,7 +997,7 @@ function getSandboxConfigChanges(baseConfig, nextConfig) {
 }
 function SandboxCompareChanges({ variantA, variantB }) {
     const changes = getSandboxConfigChanges(variantA, variantB);
-    return <details className="sandbox-compare"><summary>Сравнить изменения <span>{changes.length ? `${changes.length} различий` : 'нет различий'}</span></summary>{changes.length ? <div>{changes.map(([label, left, right]) => <span key={label}><strong>{label}</strong>{String(left)} → {String(right)}</span>)}</div> : <p>Конфигурации одинаковые.</p>}</details>;
+    return <section className={cn('sandbox-compare', !changes.length && 'is-identical')} aria-live="polite"><div className="sandbox-compare-summary"><strong>A/B-сравнение</strong><span>{changes.length ? `${changes.length} различий перед запуском` : 'Варианты идентичны — второй запрос не даст сравнения'}</span></div>{changes.length > 0 && <details><summary>Посмотреть различия</summary><div>{changes.map(([label, left, right]) => <span key={label}><strong>{label}</strong>{String(left)} → {String(right)}</span>)}</div></details>}</section>;
 }
 function SandboxPromptModules({ config, onChange }) {
     return <details className="studio-section"><summary>Модули промпта <span>{STUDIO_MODULES.filter(([key]) => config.promptModules[key] !== false).length} / {STUDIO_MODULES.length} включено</span></summary><div className="studio-module-list">{STUDIO_MODULES.map(([key, label, description]) => <label className="studio-module-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><input type="checkbox" checked={config.promptModules[key] !== false} onChange={event => onChange(updateStudioModule(config, key, event.target.checked))} /></label>)}</div></details>;
@@ -1179,6 +1191,7 @@ function SandboxPanel({ toast }) {
             setStudioState(response);
             setDraftConfigs(studioConfigsFromState(response));
         }
+        return Boolean(response?.intents);
     }
     async function savePreset() {
         const name = presetName.trim();
@@ -1235,12 +1248,13 @@ function SandboxPanel({ toast }) {
     const selectedChatResult = getSandboxSelectedResult(result, abMode, selectedVariant);
     const activeProvider = providers.find(provider => Number(provider.id) === Number(activeConfig.model?.provider_id)) || providers.find(provider => provider.is_active) || providers[0];
     const productionChanges = getSandboxConfigChanges(productionConfig, activeConfig);
+    const contextSummary = [context.location_id && 'локация', context.current_time && 'время', context.status?.task_type && 'занятие', Number.isFinite(context.mood) && 'настроение', context.daily_facts?.length && `события: ${context.daily_facts.length}`, activeConfig.systemOverlay?.trim() && 'system overlay'].filter(Boolean);
     return <div className="studio-shell sandbox-panel">
         <div className="studio-topbar">
             <div><span className="eyebrow">AI Sandbox / Редактор промптов</span><h2>Тестируй ответ как диалог, публикуй как версию</h2><p>Изменения живут в черновике, пока ты явно не сохранишь и не опубликуешь их.</p></div>
             <div className="studio-topbar-meta"><Badge variant={isDirty ? 'yellow' : 'green'}>{isDirty ? 'Есть изменения' : 'Синхронизировано'}</Badge><span>{STUDIO_INTENT_LABELS[activeIntent]} · черновик v{draftVersion} · production v{productionVersion}</span></div>
         </div>
-        <div className="studio-status-strip" aria-label="Статус текущей Sandbox-сессии"><Badge variant="blue">{activeProvider?.name || 'Активный провайдер'} · {activeProvider?.model_name || 'модель по умолчанию'}</Badge><Badge>{selectedContextUser ? `Контекст: ${selectedContextUser.user.first_name || selectedContextUser.user.telegram_id}` : 'Контекст пользователя: не подключён'}</Badge><Badge>История: {history.length}</Badge>{mediaPreview && <Badge variant="yellow">Превью медиа</Badge>}</div>
+        <div className="studio-status-strip" aria-label="Статус текущей Sandbox-сессии"><Badge variant="blue">{activeProvider?.name || 'Активный провайдер'} · {activeProvider?.model_name || 'модель по умолчанию'}</Badge><Badge>{selectedContextUser ? `Контекст: ${selectedContextUser.user.first_name || selectedContextUser.user.telegram_id}` : 'Контекст пользователя: не подключён'}</Badge><Badge>История: {history.length}</Badge><Badge variant="muted">Тестовый контекст: {contextSummary.join(' · ') || 'без overrides'}</Badge>{abMode && <Badge variant="yellow">A/B включён</Badge>}{mediaPreview && <Badge variant="yellow">Превью медиа</Badge>}</div>
         <div className="studio-workbench">
             <aside className="studio-sidebar">
                 <section className="studio-card studio-editor-card">
@@ -1258,6 +1272,7 @@ function SandboxPanel({ toast }) {
                         {abMode && <button type="button" role="tab" aria-selected={editingVariant === 'B'} className={cn('studio-variant-tab', editingVariant === 'B' && 'is-active')} onClick={() => setEditingVariant('B')}>Вариант B</button>}
                     </div>
                     <p className="studio-section-copy">A и B получают одинаковые сообщение, историю, контекст и intent.</p>
+                    {abMode && <SandboxCompareChanges variantA={activeConfig} variantB={abConfig} />}
                     <SandboxSamplingControls intent={activeIntent} config={editableConfig} providers={providers} onChange={updateEditableConfig} />
                 </section>
                 <SandboxPromptModules config={editableConfig} onChange={updateEditableConfig} />
@@ -1327,7 +1342,6 @@ function SandboxPanel({ toast }) {
                                         onChoose={() => continueSandboxChat(selectedChatResult, abMode ? selectedVariant : '')}
                                     />
                                 </div>
-                                {abMode && <SandboxCompareChanges variantA={activeConfig} variantB={abConfig} />}
                             </>}
                         </>}
                     </div>
@@ -1339,13 +1353,22 @@ function SandboxPanel({ toast }) {
     </div>;
 }
 function AiSandboxPromptStudio({ toast }) {
-    return <div className="llm-super-panel"><SandboxPanel toast={toast} /><details className="sandbox-production-settings"><summary>Провайдеры, routing и production-prompts</summary><LlmSettingsPanel toast={toast} /></details></div>;
+    return <Tabs.Root className="llm-super-panel studio-area-tabs" defaultValue="sandbox">
+        <Tabs.List className="studio-area-tablist" aria-label="Рабочая зона AI">
+            <Tabs.Trigger value="sandbox"><WandSparkles size={15} />Sandbox и черновики</Tabs.Trigger>
+            <Tabs.Trigger value="production"><ShieldAlert size={15} />Production: провайдеры и routing</Tabs.Trigger>
+        </Tabs.List>
+        <Tabs.Content value="sandbox"><SandboxPanel toast={toast} /></Tabs.Content>
+        <Tabs.Content value="production"><LlmSettingsPanel toast={toast} /></Tabs.Content>
+    </Tabs.Root>;
 }
 
 function LlmSettingsPanel({ toast }) {
     const [providers, setProviders] = useState([]);
     const [providerForm, setProviderForm] = useState({ name: '', base_url: '', api_key: '', model_name: '' });
     const [providerResults, setProviderResults] = useState([]);
+    const [providerSubmitting, setProviderSubmitting] = useState(false);
+    const [providerTesting, setProviderTesting] = useState(false);
     const [promptData, setPromptData] = useState(null);
     const [promptModules, setPromptModules] = useState({});
     const [promptParams, setPromptParams] = useState({ temperature: 0.7, presence_penalty: 0.1, frequency_penalty: 0.1 });
@@ -1379,20 +1402,61 @@ function LlmSettingsPanel({ toast }) {
         await run(() => api(`/api/admin/providers/${provider.id}/capabilities`, { method: 'PATCH', body: JSON.stringify({ samplingCapabilities }) }), 'Capabilities обновлены');
         loadProviders();
     }
+    async function addProvider(event) {
+        event.preventDefault();
+        const missing = Object.entries(providerForm).find(([, value]) => !String(value || '').trim());
+        if (missing) return toast?.('Заполни имя, Base URL, API key и модель', 'error');
+        setProviderSubmitting(true);
+        try {
+            const result = await run(() => api('/api/admin/providers', { method: 'POST', body: JSON.stringify(providerForm) }), 'Провайдер добавлен');
+            if (!result?.provider) return false;
+            setProviderForm({ name: '', base_url: '', api_key: '', model_name: '' });
+            await loadProviders();
+            return true;
+        } finally {
+            setProviderSubmitting(false);
+        }
+    }
+    async function testProviders() {
+        setProviderTesting(true);
+        try {
+            const result = await run(() => api('/api/admin/providers/test', { method: 'POST' }), 'Проверка завершена');
+            if (result) setProviderResults(result.results || []);
+        } finally {
+            setProviderTesting(false);
+        }
+    }
+    async function moveProvider(provider, direction) {
+        const index = providers.findIndex(item => item.id === provider.id);
+        const neighbor = providers[index + direction];
+        if (!neighbor) return;
+        const result = await run(() => api(`/api/admin/providers/${provider.id}/priority`, { method: 'PATCH', body: JSON.stringify({ priority: neighbor.priority }) }));
+        if (!result) return false;
+        const swapped = await run(() => api(`/api/admin/providers/${neighbor.id}/priority`, { method: 'PATCH', body: JSON.stringify({ priority: provider.priority }) }), 'Порядок fallback обновлён');
+        if (!swapped) return false;
+        await loadProviders();
+        return true;
+    }
+    async function deleteProvider(provider) {
+        const result = await run(() => api(`/api/admin/providers/${provider.id}`, { method: 'DELETE' }), 'Провайдер удалён');
+        if (!result) return false;
+        await loadProviders();
+        return true;
+    }
     return <div className="llm-super-panel">
         <Card className="llm-config-card">
-            <CardHeader eyebrow="Настройки LLM" title="Провайдеры и цепочка генерации" description="Настройте порядок резервных моделей и проверьте доступность цепочки. Ключи не показываются после добавления." />
+            <CardHeader eyebrow="Production" title="Провайдеры и цепочка fallback" description="Первый активный провайдер используется основным. Резервные идут ниже по порядку. Ключи после добавления не показываются." />
             <div className="provider-section">
-                <div className="inline-controls provider-form">
-                    {[['name','Имя'],['base_url','Base URL'],['api_key','API key'],['model_name','Модель']].map(([key, placeholder]) => (
-                        <input key={key} type={key === 'api_key' ? 'password' : 'text'} value={providerForm[key]} placeholder={placeholder} onChange={event => setProviderForm({ ...providerForm, [key]: event.target.value })} />
-                    ))}
-                    <Button onClick={() => run(() => api('/api/admin/providers', { method: 'POST', body: JSON.stringify(providerForm) }), 'Провайдер добавлен').then(loadProviders)}>Добавить</Button>
-                    <Button variant="outline" onClick={() => run(() => api('/api/admin/providers/test', { method: 'POST' }), 'Проверка завершена').then(result => setProviderResults(result?.results || []))}>Проверить цепочку</Button>
-                </div>
+                <form className="provider-form" onSubmit={addProvider}>
+                    <label>Название<input name="name" value={providerForm.name} placeholder="Например, Mistral" onChange={event => setProviderForm({ ...providerForm, name: event.target.value })} /></label>
+                    <label>Base URL<input name="base_url" type="url" value={providerForm.base_url} placeholder="https://api.example.com/v1" onChange={event => setProviderForm({ ...providerForm, base_url: event.target.value })} /></label>
+                    <label>API key<input name="api_key" type="password" autoComplete="off" value={providerForm.api_key} placeholder="Сохраняется только на сервере" onChange={event => setProviderForm({ ...providerForm, api_key: event.target.value })} /></label>
+                    <label>Модель<input name="model_name" value={providerForm.model_name} placeholder="Например, mistral-large-latest" onChange={event => setProviderForm({ ...providerForm, model_name: event.target.value })} /></label>
+                    <div className="provider-form-actions"><Button type="submit" loading={providerSubmitting}>Добавить в цепочку</Button><Button type="button" variant="outline" loading={providerTesting} onClick={testProviders}>Проверить цепочку</Button></div>
+                </form>
                 {providerResults.map(result => <div className={cn('management-note', result.status === 'FAILED' && 'management-note-error')} key={result.id}><strong>{result.name}</strong>: {result.status} {result.durationMs ? `· ${result.durationMs} ms` : ''} {result.error ? `— Ошибка: ${result.error}` : ''}</div>)}
                 <div className="providers-grid">
-                    {providers.map(provider => <div className="managed-row provider-managed-row" key={provider.id}><Settings2 size={15} /><div><strong>{provider.name}</strong><span>{provider.model_name} · {provider.base_url}</span></div><Badge variant={provider.is_active ? 'green' : 'muted'}>{provider.is_active ? 'Активен' : 'Резерв'}</Badge><Button size="sm" onClick={() => run(() => api(`/api/admin/providers/${provider.id}/activate`, { method: 'POST' }), 'Провайдер активирован').then(loadProviders)}>Активировать</Button><ConfirmAction title="Удалить провайдера?" description="Провайдер будет удалён из цепочки LLM." confirmText="Удалить" variant="danger" onConfirm={() => run(() => api(`/api/admin/providers/${provider.id}`, { method: 'DELETE' }), 'Провайдер удалён').then(loadProviders)}>Удалить</ConfirmAction><details className="provider-capabilities"><summary>Sampling capabilities</summary><div>{STUDIO_CAPABILITY_KEYS.map(key => <label className="sandbox-check" key={key}>{STUDIO_SAMPLER_LABELS[key]}<input type="checkbox" checked={!!provider.sampling_capabilities?.[key]} onChange={event => toggleProviderCapability(provider, key, event.target.checked)} /></label>)}</div></details></div>)}
+                    {providers.map((provider, index) => <div className="managed-row provider-managed-row" key={provider.id}><Settings2 size={15} /><div><strong>{provider.name}</strong><span>{provider.model_name} · {provider.base_url}</span></div><Badge variant={provider.is_active ? 'green' : 'muted'}>{provider.is_active ? 'Основной' : `Fallback ${index}`}</Badge><div className="provider-order-controls"><Button size="icon" variant="outline" aria-label={`Поднять ${provider.name} в цепочке`} title="Поднять в цепочке" disabled={provider.is_active || index <= 1} onClick={() => moveProvider(provider, -1)}><ArrowUp size={14} /></Button><Button size="icon" variant="outline" aria-label={`Опустить ${provider.name} в цепочке`} title="Опустить в цепочке" disabled={provider.is_active || index === providers.length - 1} onClick={() => moveProvider(provider, 1)}><ArrowDown size={14} /></Button></div><Button size="sm" disabled={provider.is_active} onClick={() => run(() => api(`/api/admin/providers/${provider.id}/activate`, { method: 'POST' }), 'Провайдер активирован').then(loadProviders)}>{provider.is_active ? 'Основной' : 'Сделать основным'}</Button><ConfirmAction title="Удалить провайдера?" description={provider.is_active ? 'Основной провайдер будет удалён, а первый fallback станет основным.' : 'Провайдер будет удалён из production-цепочки LLM.'} confirmText="Удалить" variant="danger" onConfirm={() => deleteProvider(provider)}>Удалить</ConfirmAction><details className="provider-capabilities"><summary>Sampling capabilities</summary><div>{STUDIO_CAPABILITY_KEYS.map(key => <label className="sandbox-check" key={key}>{STUDIO_SAMPLER_LABELS[key]}<input type="checkbox" checked={!!provider.sampling_capabilities?.[key]} onChange={event => toggleProviderCapability(provider, key, event.target.checked)} /></label>)}</div></details></div>)}
                 </div>
             </div>
         </Card>

@@ -1358,7 +1358,7 @@ export async function getAdminDashboardStats() {
 }
 
 export async function getAiProviders() {
-    const res = await query('SELECT * FROM ai_providers ORDER BY priority ASC, id ASC');
+    const res = await query('SELECT * FROM ai_providers ORDER BY is_active DESC, priority ASC, id ASC');
     return res.rows;
 }
 

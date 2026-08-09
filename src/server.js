@@ -16,6 +16,7 @@ import {
     addAiProvider,
     setActiveAiProvider,
     deleteAiProvider,
+    updateProviderPriority,
     toggleFreeMode,
     isFreeModeEnabled,
     resetAllFreeRequests,
@@ -1179,7 +1180,9 @@ export function startAdminServer() {
             if (!name || !base_url || !api_key || !model_name) {
                 return res.status(400).json({ error: 'Заполните все обязательные поля' });
             }
-            const newProvider = await addAiProvider(name, base_url, api_key, model_name, 1, timeout_ms || 15000);
+            const providers = await getAiProviders();
+            const nextPriority = Math.max(0, ...providers.map(provider => Number(provider.priority) || 0)) + 1;
+            const newProvider = await addAiProvider(name, base_url, api_key, model_name, nextPriority, timeout_ms || 15000);
             await reloadAIClient();
             res.json({ success: true, provider: newProvider });
         } catch (e) {
@@ -1235,9 +1238,27 @@ export function startAdminServer() {
         }
     });
 
+    app.patch('/api/admin/providers/:id/priority', async (req, res) => {
+        try {
+            const priority = Number(req.body?.priority);
+            if (!Number.isInteger(priority) || priority < 1) return res.status(400).json({ error: 'Некорректный приоритет' });
+            const provider = await updateProviderPriority(req.params.id, priority);
+            if (!provider) return res.status(404).json({ error: 'Провайдер не найден' });
+            await reloadAIClient();
+            res.json({ success: true, provider });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.delete('/api/admin/providers/:id', async (req, res) => {
         try {
-            await deleteAiProvider(req.params.id);
+            const deleted = await deleteAiProvider(req.params.id);
+            if (!deleted) return res.status(404).json({ error: 'Провайдер не найден' });
+            if (deleted.is_active) {
+                const [fallback] = await getAiProviders();
+                if (fallback) await setActiveAiProvider(fallback.id);
+            }
             await reloadAIClient();
             res.json({ success: true });
         } catch (e) {

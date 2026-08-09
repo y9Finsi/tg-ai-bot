@@ -123,10 +123,24 @@ test('sandbox uses a chat-first layout and keeps technical controls collapsed', 
     assert.match(source, /type="range"/);
     assert.match(source, /Переопределения контекста/);
     assert.match(source, /className="studio-debug"/);
-    assert.match(source, /sandbox-production-settings/);
+    assert.match(source, /Production: провайдеры и routing/);
+    assert.match(source, /studio-area-tablist/);
     assert.match(css, /\.studio-chat-card \{/);
     assert.match(css, /\.studio-section \{/);
     assert.match(css, /\.sandbox-history-bubble/);
+});
+
+test('provider management exposes the real fallback order and labelled fields', () => {
+    const source = read('admin-v2/src/main.jsx');
+    const server = read('src/server.js');
+
+    assert.match(source, /Провайдеры и цепочка fallback/);
+    assert.match(source, /Поднять .* в цепочке/);
+    assert.match(source, /Опустить .* в цепочке/);
+    assert.match(source, /name="base_url"/);
+    assert.match(source, /name="api_key"/);
+    assert.match(server, /\/api\/admin\/providers\/:id\/priority/);
+    assert.match(server, /updateProviderPriority/);
 });
 
 test('sandbox keeps chat actions and A/B replies in one compact Telegram-like flow', () => {
