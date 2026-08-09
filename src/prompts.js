@@ -25,6 +25,12 @@ const PROMPT_ORDER = [
     'lera_rules'
 ];
 
+const RESPONSE_FORMAT_CONTRACT = `ФОРМАТ ОТВЕТА В TELEGRAM:
+Обычно отвечай одной короткой репликой.
+Если мысль лучше звучит лесенкой, раздели 2–4 короткие реплики буквальным разделителем ||| на одной строке.
+Пример: первая реплика ||| вторая реплика ||| третья реплика.
+Не заменяй ||| обычными переносами строк, не ставь разделитель отдельной строкой и не пиши его в ответе, если нужна одна реплика.`;
+
 function loadPromptFile(filename) {
     try {
         const filePath = path.join(__dirname, 'prompts', filename);
@@ -186,6 +192,7 @@ export async function getRoutedSystemPrompt(mode = 'CASUAL', config = {}) {
         enabled.common === false ? '' : modules.common,
         enabled.intent === false ? '' : selected
     ].filter(Boolean);
+    blocks.push(RESPONSE_FORMAT_CONTRACT);
     if (config.systemOverlay || config.system_overlay) {
         blocks.push(`[SYSTEM PROMPT OVERLAY]\n${String(config.systemOverlay || config.system_overlay).trim()}`);
     }

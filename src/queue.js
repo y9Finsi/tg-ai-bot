@@ -163,8 +163,9 @@ async function processAiJob(bot, job) {
 
                 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-                // Не режем обычный ответ по переносам или предложениям: иначе один
-                // ответ модели выглядит как несколько её самостоятельных сообщений.
+                // Лесенка включается только явным разделителем |||, который
+                // модель получает в формате ответа. Переносы оставляем
+                // fallback-совместимостью для старых сохранённых промптов.
                 let messages = splitResponseMessages(response.text);
 
                 if (messages.length === 0 || messages.length > 10) {

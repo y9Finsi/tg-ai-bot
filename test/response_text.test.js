@@ -14,3 +14,9 @@ test('response splitter restores the ladder for newline-separated replies', () =
     );
 });
 
+test('response splitter uses the explicit Telegram ladder delimiter', () => {
+    assert.deepEqual(
+        splitResponseMessages('нууу... я Лера ||| расскажу о себе ||| только не длинным полотном'),
+        ['нууу... я Лера', 'расскажу о себе', 'только не длинным полотном']
+    );
+});
