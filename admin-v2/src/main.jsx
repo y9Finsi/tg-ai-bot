@@ -1369,9 +1369,7 @@ function LlmSettingsPanel({ toast }) {
     const [providerResults, setProviderResults] = useState([]);
     const [providerSubmitting, setProviderSubmitting] = useState(false);
     const [providerTesting, setProviderTesting] = useState(false);
-    const [promptData, setPromptData] = useState(null);
     const [promptModules, setPromptModules] = useState({});
-    const [promptParams, setPromptParams] = useState({ temperature: 0.7, presence_penalty: 0.1, frequency_penalty: 0.1 });
     const [routingSettings, setRoutingSettings] = useState({});
     const [routingModules, setRoutingModules] = useState({});
     const run = async (action, success) => { try { const result = await action(); if (success && toast) toast(success); return result; } catch (error) { if (toast) toast(error.message, 'error'); return null; } };
@@ -1379,19 +1377,15 @@ function LlmSettingsPanel({ toast }) {
     async function loadPrompts() {
         const result = await run(() => api('/api/admin/llm-settings'));
         if (result) {
-            setPromptData(result);
             setPromptModules(result.prompts || {});
-            setPromptParams(result.llmParams || result.defaultParams || promptParams);
             setRoutingSettings(result.routingSettings || {});
             setRoutingModules(result.routingModules || {});
         }
     }
     async function savePrompts() {
-        const result = await run(() => api('/api/admin/llm-settings', { method: 'POST', body: JSON.stringify({ ...promptParams, prompts: { ...promptModules, ...Object.fromEntries(Object.entries(routingModules).map(([key, value]) => [`routing_${key}`, value])) }, routingSettings }) }), 'Настройки LLM сохранены');
+        const result = await run(() => api('/api/admin/llm-settings', { method: 'POST', body: JSON.stringify({ prompts: { ...promptModules, ...Object.fromEntries(Object.entries(routingModules).map(([key, value]) => [`routing_${key}`, value])) }, routingSettings }) }), 'Настройки маршрутизации сохранены');
         if (result) {
-            setPromptData(result);
             setPromptModules(result.prompts || promptModules);
-            setPromptParams(result.llmParams || promptParams);
             setRoutingSettings(result.routingSettings || routingSettings);
             setRoutingModules(result.routingModules || routingModules);
         }
@@ -1445,7 +1439,7 @@ function LlmSettingsPanel({ toast }) {
     }
     return <div className="llm-super-panel">
         <Card className="llm-config-card">
-            <CardHeader eyebrow="Production" title="Провайдеры и цепочка fallback" description="Первый активный провайдер используется основным. Резервные идут ниже по порядку. Ключи после добавления не показываются." />
+            <CardHeader eyebrow="Production" title="Провайдеры и fallback" description="Основной провайдер стоит первым. Ниже — резервные в порядке вызова. API-ключи после добавления не показываются." />
             <div className="provider-section">
                 <form className="provider-form" onSubmit={addProvider}>
                     <label>Название<input name="name" value={providerForm.name} placeholder="Например, Mistral" onChange={event => setProviderForm({ ...providerForm, name: event.target.value })} /></label>
@@ -1456,24 +1450,34 @@ function LlmSettingsPanel({ toast }) {
                 </form>
                 {providerResults.map(result => <div className={cn('management-note', result.status === 'FAILED' && 'management-note-error')} key={result.id}><strong>{result.name}</strong>: {result.status} {result.durationMs ? `· ${result.durationMs} ms` : ''} {result.error ? `— Ошибка: ${result.error}` : ''}</div>)}
                 <div className="providers-grid">
-                    {providers.map((provider, index) => <div className="managed-row provider-managed-row" key={provider.id}><Settings2 size={15} /><div><strong>{provider.name}</strong><span>{provider.model_name} · {provider.base_url}</span></div><Badge variant={provider.is_active ? 'green' : 'muted'}>{provider.is_active ? 'Основной' : `Fallback ${index}`}</Badge><div className="provider-order-controls"><Button size="icon" variant="outline" aria-label={`Поднять ${provider.name} в цепочке`} title="Поднять в цепочке" disabled={provider.is_active || index <= 1} onClick={() => moveProvider(provider, -1)}><ArrowUp size={14} /></Button><Button size="icon" variant="outline" aria-label={`Опустить ${provider.name} в цепочке`} title="Опустить в цепочке" disabled={provider.is_active || index === providers.length - 1} onClick={() => moveProvider(provider, 1)}><ArrowDown size={14} /></Button></div><Button size="sm" disabled={provider.is_active} onClick={() => run(() => api(`/api/admin/providers/${provider.id}/activate`, { method: 'POST' }), 'Провайдер активирован').then(loadProviders)}>{provider.is_active ? 'Основной' : 'Сделать основным'}</Button><ConfirmAction title="Удалить провайдера?" description={provider.is_active ? 'Основной провайдер будет удалён, а первый fallback станет основным.' : 'Провайдер будет удалён из production-цепочки LLM.'} confirmText="Удалить" variant="danger" onConfirm={() => deleteProvider(provider)}>Удалить</ConfirmAction><details className="provider-capabilities"><summary>Sampling capabilities</summary><div>{STUDIO_CAPABILITY_KEYS.map(key => <label className="sandbox-check" key={key}>{STUDIO_SAMPLER_LABELS[key]}<input type="checkbox" checked={!!provider.sampling_capabilities?.[key]} onChange={event => toggleProviderCapability(provider, key, event.target.checked)} /></label>)}</div></details></div>)}
+                    {!providers.length && <div className="provider-empty-state"><strong>Цепочка пока пустая</strong><span>Добавь основной провайдер выше — после этого можно собрать fallback.</span></div>}
+                    {providers.map((provider, index) => <article className="provider-managed-row" key={provider.id}>
+                        <div className="provider-row-main">
+                            <span className="provider-row-icon" aria-hidden="true"><Settings2 size={15} /></span>
+                            <div className="provider-row-title"><strong>{provider.name}</strong><span>{provider.model_name}</span></div>
+                            <Badge variant={provider.is_active ? 'green' : 'muted'}>{provider.is_active ? 'Основной' : `Fallback ${index}`}</Badge>
+                        </div>
+                        <div className="provider-row-url" title={provider.base_url}>{provider.base_url}</div>
+                        <div className="provider-row-actions">
+                            <div className="provider-order-controls" aria-label={`Порядок ${provider.name} в цепочке`}>
+                                <Button size="icon" variant="outline" aria-label={`Поднять ${provider.name} в цепочке`} title="Поднять в цепочке" disabled={provider.is_active || index <= 1} onClick={() => moveProvider(provider, -1)}><ArrowUp size={14} /></Button>
+                                <Button size="icon" variant="outline" aria-label={`Опустить ${provider.name} в цепочке`} title="Опустить в цепочке" disabled={provider.is_active || index === providers.length - 1} onClick={() => moveProvider(provider, 1)}><ArrowDown size={14} /></Button>
+                            </div>
+                            <Button size="sm" variant="outline" disabled={provider.is_active} onClick={() => run(() => api(`/api/admin/providers/${provider.id}/activate`, { method: 'POST' }), 'Провайдер активирован').then(loadProviders)}>{provider.is_active ? 'Основной' : 'Сделать основным'}</Button>
+                            <ConfirmAction title="Удалить провайдера?" description={provider.is_active ? 'Основной провайдер будет удалён, а первый fallback станет основным.' : 'Провайдер будет удалён из production-цепочки LLM.'} confirmText="Удалить" variant="danger" onConfirm={() => deleteProvider(provider)}>Удалить</ConfirmAction>
+                        </div>
+                        <details className="provider-capabilities"><summary>Параметры sampling</summary><div>{STUDIO_CAPABILITY_KEYS.map(key => <label className="sandbox-check" key={key}>{STUDIO_SAMPLER_LABELS[key]}<input type="checkbox" checked={!!provider.sampling_capabilities?.[key]} onChange={event => toggleProviderCapability(provider, key, event.target.checked)} /></label>)}</div></details>
+                    </article>)}
                 </div>
             </div>
         </Card>
         <Card className="llm-config-card routing-panel">
             <CardHeader
                 eyebrow="Two-Stage Routing"
-                title={routingSettings.enabled ? 'Маршрутизация включена' : 'Legacy Monolithic Prompt'}
+                title="Маршрутизация ответов"
                 description="Сначала классифицируется стиль, затем собирается специализированный prompt. Команды, фото и другие tools остаются backend-логикой."
-                action={<div className="routing-header-actions"><Badge variant={routingSettings.enabled ? 'green' : 'yellow'}>{routingSettings.enabled ? 'Активен routing' : 'Активен legacy'}</Badge><Button onClick={() => setRoutingSettings({ ...routingSettings, enabled: !routingSettings.enabled })}>{routingSettings.enabled ? 'Переключить на legacy' : 'Включить routing'}</Button></div>}
+                action={<Badge variant="green">Активна</Badge>}
             />
-
-            <div className="routing-section routing-toggle-card">
-                <div className="routing-section-head">
-                    <div><span className="eyebrow">Аварийный переключатель</span><strong>{routingSettings.enabled ? 'Two-Stage Routing' : 'Legacy Monolithic Prompt'}</strong><small>Меняет только способ сборки prompt. История, память, игровые данные и провайдеры не затрагиваются.</small></div>
-                    <Badge variant={routingSettings.enabled ? 'green' : 'yellow'}>{routingSettings.enabled ? 'Работает' : 'Резервный путь'}</Badge>
-                </div>
-            </div>
 
             <div className="routing-section">
                 <div className="routing-section-head">
@@ -1514,7 +1518,7 @@ function LlmSettingsPanel({ toast }) {
                     <div><span className="eyebrow">Модули prompt</span><strong>Что получает основная модель</strong><small>Core Persona и общие правила загружаются всегда. Из трёх стилевых карточек выбирается одна.</small></div>
                     <Badge variant="blue">5 модулей</Badge>
                 </div>
-                <div className="routing-module-note">Игровой контекст, текущее время, память пользователя и очищенная история добавляются сервером автоматически и не дублируются в этих полях. Старый «Промпт Леры» сохранён только для аварийного legacy-пути.</div>
+                <div className="routing-module-note">Игровой контекст, текущее время, память пользователя и очищенная история добавляются сервером автоматически и не дублируются в этих полях.</div>
                 <div className="context-template-editor">
                     <div className="routing-section-head">
                         <div><span className="eyebrow">Контекст собеседника и дня</span><strong>Шаблон динамического контекста</strong><small>Редактируется один раз, а значения подставляются сервером для каждого сообщения.</small></div>

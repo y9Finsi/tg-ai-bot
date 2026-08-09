@@ -12,7 +12,7 @@ test('admin v2 uses diary navigation and real shadcn-style primitives', () => {
     assert.match(source, /components\/ui\/button/);
     assert.match(source, /components\/ui\/card/);
     assert.match(source, /Дневник дня/);
-    assert.match(source, /Настройки LLM/);
+    assert.match(source, /Production: провайдеры и routing/);
     assert.match(source, /Только чтение/);
     assert.doesNotMatch(source, /DayPicker|Вернуться к сегодня|Архивный день/);
 });
@@ -134,13 +134,23 @@ test('provider management exposes the real fallback order and labelled fields', 
     const source = read('admin-v2/src/main.jsx');
     const server = read('src/server.js');
 
-    assert.match(source, /Провайдеры и цепочка fallback/);
+    assert.match(source, /Провайдеры и fallback/);
     assert.match(source, /Поднять .* в цепочке/);
     assert.match(source, /Опустить .* в цепочке/);
+    assert.match(source, /provider-managed-row/);
     assert.match(source, /name="base_url"/);
     assert.match(source, /name="api_key"/);
     assert.match(server, /\/api\/admin\/providers\/:id\/priority/);
     assert.match(server, /updateProviderPriority/);
+});
+
+test('production settings keep only two-stage routing', () => {
+    const source = read('admin-v2/src/main.jsx');
+    const router = read('src/ai/intent_router.js');
+
+    assert.match(source, /Маршрутизация ответов/);
+    assert.doesNotMatch(source, /Переключить на legacy|Legacy Monolithic Prompt|Аварийный переключатель/);
+    assert.match(router, /enabled: true/);
 });
 
 test('sandbox keeps chat actions and A/B replies in one compact Telegram-like flow', () => {
@@ -196,9 +206,9 @@ test('sandbox user context endpoint is read-only and auth reaches every sandbox 
     assert.match(server, /historySource: eventHistory\.length \? 'conversation_events' : 'chat_history'/);
 });
 
-test('new management center covers the legacy admin domains and safe actions', () => {
+test('new management center covers the admin domains and safe actions', () => {
     const source = read('admin-v2/src/main.jsx');
-    for (const marker of ['Пользователи', 'Память', 'Провайдеры', 'Промпт Леры', 'Фото', 'Канал', 'Продажи', 'Инвентарь', 'Очередь', 'Диагностика']) {
+    for (const marker of ['Пользователи', 'Память', 'Провайдеры', 'Маршрутизация ответов', 'Фото', 'Канал', 'Продажи', 'Инвентарь', 'Очередь', 'Диагностика']) {
         assert.match(source, new RegExp(marker));
     }
     for (const marker of ['FORECAST_REBUILD', 'radiant/queue/repair', 'diagnostics/prune', 'broadcast/control', 'radiant/god-mode', 'memory/facts', 'llm-settings', 'channel/draft', 'channel/publish-draft']) {
@@ -284,7 +294,7 @@ test('admin v2 uses dedicated LLM settings and split-screen CRM', () => {
     assert.match(source, /@radix-ui\/react-tabs/);
     assert.match(source, /@radix-ui\/react-alert-dialog/);
     assert.match(source, /Дневник дня/);
-    assert.match(source, /Настройки LLM/);
+    assert.match(source, /Production: провайдеры и routing/);
     assert.match(source, /CRM Пользователей/);
     assert.match(source, /Контент и Канал/);
     assert.match(source, /Движок и Операции/);

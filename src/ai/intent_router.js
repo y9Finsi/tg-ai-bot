@@ -138,7 +138,7 @@ export async function getRoutingSettings() {
     ]));
     const raw = Object.fromEntries(values);
     const settings = {
-        enabled: asBool(raw.enabled, true),
+        enabled: true,
         classifierProviderId: String(raw.classifierProviderId || ''),
         classifierModel: String(raw.classifierModel || ''),
         classifierPrompt: String(raw.classifierPrompt || DEFAULT_ROUTING_SETTINGS.classifierPrompt),
@@ -168,7 +168,7 @@ export async function updateRoutingSettings(input = {}) {
         ...input
     };
     const normalized = {
-        enabled: Boolean(next.enabled),
+        enabled: true,
         classifierProviderId: String(next.classifierProviderId || ''),
         classifierModel: String(next.classifierModel || '').trim(),
         classifierPrompt: String(next.classifierPrompt || current.classifierPrompt || DEFAULT_ROUTING_SETTINGS.classifierPrompt).trim(),

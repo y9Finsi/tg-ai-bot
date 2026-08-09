@@ -1281,7 +1281,7 @@ export function startAdminServer() {
                 routingSettings,
                 routingModules,
                 promptStudio: await getPromptStudioState(),
-                pipeline: routingSettings.enabled ? 'Two-Stage Routing' : 'Legacy Monolithic Prompt'
+                pipeline: 'Two-Stage Routing'
             });
         } catch (e) {
             res.status(500).json({ error: e.message });
@@ -1315,7 +1315,7 @@ export function startAdminServer() {
                 fullPrompt: leraPromptsData.fullPrompt,
                 routingSettings: nextRoutingSettings,
                 routingModules: await getRoutingPromptModules(),
-                pipeline: nextRoutingSettings.enabled ? 'Two-Stage Routing' : 'Legacy Monolithic Prompt'
+                pipeline: 'Two-Stage Routing'
             });
         } catch (e) {
             res.status(500).json({ error: e.message });
@@ -1980,19 +1980,16 @@ export function startAdminServer() {
             if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
             const context = await ContextBuilder.buildTelegramContext(userId, { overrides });
-            const promptData = await getLeraPrompts();
             const routingSettings = await getRoutingSettings();
             const history = await getHistory(userId, 3).catch(() => []);
-            const classifier = routingSettings.enabled && userText
+            const classifier = userText
                 ? await classifyIntent({ userId, userText, history })
                 : { mode: 'CASUAL', bypassed: true };
             const facts = await getUserMemoriesAdmin(userId, false);
             const memoryBlock = facts.length
                 ? facts.map(item => `- ${item.fact}`).join('\n')
                 : 'Пока нет сохранённых фактов о пользователе.';
-            const routedBase = routingSettings.enabled
-                ? await getRoutedSystemPrompt(classifier.mode || 'CASUAL')
-                : promptData.fullPrompt;
+            const routedBase = await getRoutedSystemPrompt(classifier.mode || 'CASUAL');
             const completeSystemPrompt = `${routedBase}\n\n${context}\n\n[ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ]\n${memoryBlock}`;
 
             let llm = null;
