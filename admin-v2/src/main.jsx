@@ -901,9 +901,9 @@ function LlmPanel({ toast }) {
                                     const finalAnswer = selected.layers?.parsed_response || selected.layers?.raw_response || '—';
                                     return <div className="generation-trace">
                                         <div><span>Первый ответ</span><p>{first?.response || 'Нет данных для старого лога'}</p></div>
-                                        {judges.filter(item => item.phase === 'first').map((item, index) => <div key={`judge-first-${index}`}><span>Judge первого ответа</span><p>{item.verdict}{item.code ? ` · ${item.code}` : ''}</p><small>{item.error || ''}</small></div>)}
+                                        {judges.filter(item => item.phase === 'first').map((item, index) => <div key={`judge-first-${index}`}><span>Judge первого ответа</span><p>{item.verdict}{item.code ? ` · ${item.code}` : ''}</p><small>{item.error || ''}</small>{item.judgeMessages && <details><summary>Что получил судья</summary><pre>{JSON.stringify(item.judgeMessages, null, 2)}</pre></details>}</div>)}
                                         {retry ? <div><span>Retry: {retry.reason || 'повтор'}</span><p>{retry.response || 'Пустой ответ'}</p><small>{retry.instruction || ''}</small></div> : <div><span>Retry</span><p>Без retry</p></div>}
-                                        {judges.filter(item => item.phase === 'retry').map((item, index) => <div key={`judge-retry-${index}`}><span>Judge retry</span><p>{item.verdict}{item.code ? ` · ${item.code}` : ''}</p><small>{item.error || ''}</small></div>)}
+                                        {judges.filter(item => item.phase === 'retry').map((item, index) => <div key={`judge-retry-${index}`}><span>Judge retry</span><p>{item.verdict}{item.code ? ` · ${item.code}` : ''}</p><small>{item.error || ''}</small>{item.judgeMessages && <details><summary>Что получил судья</summary><pre>{JSON.stringify(item.judgeMessages, null, 2)}</pre></details>}</div>)}
                                         {fallback && <div><span>Quality fallback: {(fallback.reason || []).join(', ') || 'проверка качества'}</span><p>{fallback.response || '—'}</p></div>}
                                         <div><span>Финальный ответ</span><p>{finalAnswer}</p></div>
                                     </div>;
@@ -1544,6 +1544,14 @@ function LlmSettingsPanel({ toast }) {
                     <label>Max tokens<input type="number" min="1" max="32" value={routingSettings.judgeMaxTokens ?? 8} onChange={event => setRoutingSettings({ ...routingSettings, judgeMaxTokens: Number(event.target.value) })} /></label>
                 </div>
                 <label className="classifier-prompt-editor">Prompt судьи<textarea value={routingSettings.judgePrompt || ''} placeholder="Верни строго PASS или REJECT:CODE." onChange={event => setRoutingSettings({ ...routingSettings, judgePrompt: event.target.value })} /></label>
+                <details className="judge-transfer-details">
+                    <summary>Как prompt передаётся судье</summary>
+                    <div className="judge-transfer-grid">
+                        <div><span>System message</span><pre>{routingSettings.judgePrompt || 'Верни строго PASS или REJECT:CODE.'}</pre></div>
+                        <div><span>User message</span><pre>{`Режим: {{CASUAL|EROTIC|JOKE}}\n\nПравила и личность Леры: {{первые 3000 символов основного system prompt}}\n\nДиалог: {{последние 6 сообщений, до 700 символов каждое}}\n\nПоследняя реплика пользователя: {{до 1200 символов}}\n\nКандидат-ответ Леры: {{до 1600 символов}}\n\nВерни только PASS или REJECT:<CODE>.`}</pre></div>
+                    </div>
+                    <div className="field-hint">Это отдельный короткий LLM-вызов. Основной prompt Леры не заменяется: судья только возвращает PASS или REJECT. При ошибке судьи ответ пропускается дальше.</div>
+                </details>
                 <div className="field-hint">Коды reject: REPETITION, IGNORES_USER, OUT_OF_CHARACTER, STALE_CONTEXT, INVENTED_FACT, BROKEN_LOGIC, FORMAT. Ошибка судьи не блокирует ответ и видна в trace.</div>
             </div>
 

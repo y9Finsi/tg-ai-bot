@@ -25,6 +25,26 @@ function compactPersona(messages = []) {
     return String(systemMessage?.content || '').slice(0, 3000);
 }
 
+export function buildJudgeMessages({ mode = 'CASUAL', messages = [], userText = '', reply = '', judgePrompt = '' } = {}) {
+    return [
+        {
+            role: 'system',
+            content: judgePrompt
+        },
+        {
+            role: 'user',
+            content: [
+                `Режим: ${mode}`,
+                `Правила и личность Леры:\n${compactPersona(messages) || 'не переданы'}`,
+                `Диалог:\n${compactConversation(messages) || 'нет предыдущих сообщений'}`,
+                `Последняя реплика пользователя:\n${String(userText || '').slice(0, 1200)}`,
+                `Кандидат-ответ Леры:\n${String(reply || '').slice(0, 1600)}`,
+                'Верни только PASS или REJECT:<CODE>.'
+            ].join('\n\n')
+        }
+    ];
+}
+
 export function parseJudgeVerdict(rawText) {
     const normalized = String(rawText || '').toUpperCase().replace(/[`"'*\s]/g, '');
     if (normalized === 'PASS') return { verdict: 'PASS', passed: true, code: null };
@@ -48,23 +68,13 @@ export async function judgeLeraReply({
     }
 
     const providers = await getJudgeProviders(settings);
-    const judgeMessages = [
-        {
-            role: 'system',
-            content: settings.judgePrompt
-        },
-        {
-            role: 'user',
-            content: [
-                `Режим: ${mode}`,
-                `Правила и личность Леры:\n${compactPersona(messages) || 'не переданы'}`,
-                `Диалог:\n${compactConversation(messages) || 'нет предыдущих сообщений'}`,
-                `Последняя реплика пользователя:\n${String(userText || '').slice(0, 1200)}`,
-                `Кандидат-ответ Леры:\n${String(reply || '').slice(0, 1600)}`,
-                'Верни только PASS или REJECT:<CODE>.'
-            ].join('\n\n')
-        }
-    ];
+    const judgeMessages = buildJudgeMessages({
+        mode,
+        messages,
+        userText,
+        reply,
+        judgePrompt: settings.judgePrompt
+    });
 
     try {
         const result = await requestLlmCompletion(
@@ -95,7 +105,8 @@ export async function judgeLeraReply({
             model: result.model,
             providerName: result.providerName,
             latencyMs: result.latencyMs || 0,
-            usage: result.usage || {}
+            usage: result.usage || {},
+            judgeMessages
         };
     } catch (error) {
         return {

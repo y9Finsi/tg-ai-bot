@@ -538,7 +538,8 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         providerName: judgeResult.providerName || null,
         latencyMs: judgeResult.latencyMs || 0,
         usage: judgeResult.usage || {},
-        error: judgeResult.error || null
+        error: judgeResult.error || null,
+        judgeMessages: judgeResult.judgeMessages || null
     });
 
     const normalizeReply = value => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -641,7 +642,8 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
                 providerName: retryJudge.providerName || null,
                 latencyMs: retryJudge.latencyMs || 0,
                 usage: retryJudge.usage || {},
-                error: retryJudge.error || null
+                error: retryJudge.error || null,
+                judgeMessages: retryJudge.judgeMessages || null
             });
             if (judgeSettings.judgeMode === 'ENFORCE' && retryJudge.passed === false) {
                 text = getQualityFallback(routingMode);

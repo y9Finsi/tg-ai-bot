@@ -2298,6 +2298,55 @@
   color: #a1a1aa;
 }
 
+.judge-transfer-details {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, .07);
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.judge-transfer-details summary {
+  cursor: pointer;
+  color: #bfdbfe;
+  font-weight: 600;
+}
+
+.judge-transfer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.judge-transfer-grid > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 10px;
+  background: rgba(9, 9, 11, .62);
+}
+
+.judge-transfer-grid span {
+  display: block;
+  margin-bottom: 6px;
+  color: #a1a1aa;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.judge-transfer-grid pre,
+.generation-trace details pre {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  color: #dbeafe;
+  font: 11px/1.45 ui-monospace, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .field-hint {
   margin-top: 7px;
 }
@@ -2506,6 +2555,12 @@
   .routing-mode-grid {
     grid-template-columns: 1fr 1fr;
   }
+  .judge-fields-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .judge-transfer-grid {
+    grid-template-columns: 1fr;
+  }
   .routing-section-head,
   .routing-save-row {
     align-items: stretch;
@@ -2518,7 +2573,8 @@
 @media (max-width: 520px) {
   .routing-fields-grid,
   .routing-mode-grid,
-  .routing-mode-fields {
+  .routing-mode-fields,
+  .judge-fields-grid {
     grid-template-columns: 1fr;
   }
 }
