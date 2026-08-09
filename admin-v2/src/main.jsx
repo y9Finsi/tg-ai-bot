@@ -898,10 +898,32 @@ function LlmPanel({ toast }) {
                                     const retry = trace.find(item => item.step === 'retry');
                                     const fallback = trace.find(item => item.step === 'fallback');
                                     const judges = trace.filter(item => item.step === 'judge');
+                                    const firstJudge = judges.find(item => item.phase === 'first');
+                                    const relationship = trace.find(item => item.step === 'relationship');
+                                    const relationshipEvent = firstJudge?.relationshipEvent;
+                                    const formatRelationshipNumber = value => Number(value || 0).toFixed(1);
+                                    const formatRelationshipDelta = value => {
+                                        const delta = Number(value || 0);
+                                        return `${delta >= 0 ? '+' : ''}${formatRelationshipNumber(delta)}`;
+                                    };
                                     const finalAnswer = selected.layers?.parsed_response || selected.layers?.raw_response || '—';
                                     return <div className="generation-trace">
                                         <div><span>Первый ответ</span><p>{first?.response || 'Нет данных для старого лога'}</p></div>
                                         {judges.filter(item => item.phase === 'first').map((item, index) => <div key={`judge-first-${index}`}><span>Judge первого ответа</span><p>{item.verdict}{item.code ? ` · ${item.code}` : ''}</p><small>{item.error || ''}</small>{item.judgeMessages && <details><summary>Что получил судья</summary><pre>{JSON.stringify(item.judgeMessages, null, 2)}</pre></details>}</div>)}
+                                        {firstJudge && <div className="relationship-trace">
+                                            <span>Relationship Judge</span>
+                                            {relationshipEvent
+                                                ? <p>{relationshipEvent.type} · интенсивность {formatRelationshipNumber(relationshipEvent.intensity)}</p>
+                                                : <p>Нет данных об отношениях</p>}
+                                            {relationship?.error
+                                                ? <small>Не удалось записать изменение: {relationship.error}</small>
+                                                : relationship?.deltas
+                                                ? <small>Изменения: trust {formatRelationshipDelta(relationship.deltas.trust)} · affection {formatRelationshipDelta(relationship.deltas.affection)} · irritation {formatRelationshipDelta(relationship.deltas.irritation)}</small>
+                                                : relationshipEvent?.type === 'NEUTRAL' || !relationshipEvent
+                                                ? <small>Отношения не изменились</small>
+                                                : <small>Изменение не записано в логе</small>}
+                                            {relationship && !relationship.error && <small>После события: trust {formatRelationshipNumber(relationship.state?.trust)} · affection {formatRelationshipNumber(relationship.state?.affection)} · irritation {formatRelationshipNumber(relationship.state?.irritation)}</small>}
+                                        </div>}
                                         {retry ? <div><span>Retry: {retry.reason || 'повтор'}</span><p>{retry.response || 'Пустой ответ'}</p><small>{retry.instruction || ''}</small></div> : <div><span>Retry</span><p>Без retry</p></div>}
                                         {judges.filter(item => item.phase === 'retry').map((item, index) => <div key={`judge-retry-${index}`}><span>Judge retry</span><p>{item.verdict}{item.code ? ` · ${item.code}` : ''}</p><small>{item.error || ''}</small>{item.judgeMessages && <details><summary>Что получил судья</summary><pre>{JSON.stringify(item.judgeMessages, null, 2)}</pre></details>}</div>)}
                                         {fallback && <div><span>Quality fallback: {(fallback.reason || []).join(', ') || 'проверка качества'}</span><p>{fallback.response || '—'}</p></div>}
