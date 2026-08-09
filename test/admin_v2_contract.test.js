@@ -153,6 +153,35 @@ test('production settings keep only two-stage routing', () => {
     assert.match(router, /enabled: true/);
 });
 
+test('prompt inspector shows one generation chain instead of disconnected retry rows', () => {
+    const source = read('admin-v2/src/main.jsx');
+    const server = read('src/server.js');
+    const database = read('src/db/database.js');
+    const schema = read('src/db/schema_v3.sql');
+
+    assert.match(source, /Цепочка генерации/);
+    assert.match(source, /Первый ответ/);
+    assert.match(source, /Финальный ответ/);
+    assert.match(server, /generation_trace: log\.generation_trace \|\| \[\]/);
+    assert.match(database, /generation_trace/);
+    assert.match(schema, /generation_trace JSONB/);
+});
+
+test('production settings expose the reply judge observation and enforce modes', () => {
+    const source = read('admin-v2/src/main.jsx');
+    const router = read('src/ai/intent_router.js');
+    const engine = read('src/ai.js');
+
+    assert.match(source, /AI-судья ответа/);
+    assert.match(source, /Наблюдение: только лог/);
+    assert.match(source, /Проверка и один retry/);
+    assert.match(source, /judge-fields-grid/);
+    assert.match(router, /judgeMode: 'OBSERVE'/);
+    assert.match(router, /judgeProviderId/);
+    assert.match(engine, /const shouldJudge = !isInitiative && Boolean\(userText\)/);
+    assert.match(engine, /const judgeSettings = routingSettings/);
+});
+
 test('sandbox keeps chat actions and A/B replies in one compact Telegram-like flow', () => {
     const source = read('admin-v2/src/main.jsx');
     const css = read('admin-v2/src/styles.css');

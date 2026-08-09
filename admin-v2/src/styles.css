@@ -2236,6 +2236,10 @@
   gap: 12px;
 }
 
+.judge-fields-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .routing-fields-grid > label,
 .routing-mode-fields > label,
 .classifier-prompt-editor {
@@ -2253,6 +2257,45 @@
 .classifier-prompt-editor textarea {
   min-height: 150px;
   resize: vertical;
+}
+
+.generation-trace {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.generation-trace > div {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .025);
+}
+
+.generation-trace span {
+  display: block;
+  color: #a1a1aa;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+.generation-trace p,
+.generation-trace small {
+  display: block;
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.generation-trace p {
+  color: #f4f4f5;
+}
+
+.generation-trace small {
+  color: #a1a1aa;
 }
 
 .field-hint {

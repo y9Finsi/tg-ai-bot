@@ -891,6 +891,24 @@ function LlmPanel({ toast }) {
                                     <Button size="sm" onClick={judge}><CheckCircle2 size={14} /> Проверить качество</Button>
                                 </div>
                             </div>
+                            <details open><summary>Цепочка генерации</summary>
+                                {(() => {
+                                    const trace = selected.layers?.generation_trace || [];
+                                    const first = trace.find(item => item.step === 'first');
+                                    const retry = trace.find(item => item.step === 'retry');
+                                    const fallback = trace.find(item => item.step === 'fallback');
+                                    const judges = trace.filter(item => item.step === 'judge');
+                                    const finalAnswer = selected.layers?.parsed_response || selected.layers?.raw_response || '—';
+                                    return <div className="generation-trace">
+                                        <div><span>Первый ответ</span><p>{first?.response || 'Нет данных для старого лога'}</p></div>
+                                        {judges.filter(item => item.phase === 'first').map((item, index) => <div key={`judge-first-${index}`}><span>Judge первого ответа</span><p>{item.verdict}{item.code ? ` · ${item.code}` : ''}</p><small>{item.error || ''}</small></div>)}
+                                        {retry ? <div><span>Retry: {retry.reason || 'повтор'}</span><p>{retry.response || 'Пустой ответ'}</p><small>{retry.instruction || ''}</small></div> : <div><span>Retry</span><p>Без retry</p></div>}
+                                        {judges.filter(item => item.phase === 'retry').map((item, index) => <div key={`judge-retry-${index}`}><span>Judge retry</span><p>{item.verdict}{item.code ? ` · ${item.code}` : ''}</p><small>{item.error || ''}</small></div>)}
+                                        {fallback && <div><span>Quality fallback: {(fallback.reason || []).join(', ') || 'проверка качества'}</span><p>{fallback.response || '—'}</p></div>}
+                                        <div><span>Финальный ответ</span><p>{finalAnswer}</p></div>
+                                    </div>;
+                                })()}
+                            </details>
                             <details><summary>Контекст дня</summary><pre>{selected.layers?.radiant_context || '—'}</pre></details>
                             <details><summary>Память пользователя</summary><pre>{JSON.stringify(selected.layers?.memory_used || [], null, 2)}</pre></details>
                             <details><summary>Usage и стоимость</summary><pre>{JSON.stringify({ usage: selected.log.usage, costUsd: selected.log.cost_usd, mode: selected.log.mode, provider: selected.log.provider_name, model: selected.log.model }, null, 2)}</pre></details>
@@ -1511,6 +1529,22 @@ function LlmSettingsPanel({ toast }) {
                         </div>
                     </div>)}
                 </div>
+            </div>
+
+            <div className="routing-section">
+                <div className="routing-section-head">
+                    <div><span className="eyebrow">AI-судья ответа</span><strong>Проверяет готовый ответ Леры</strong><small>Наблюдение только пишет verdict в лог. Проверка и retry один раз перегенерирует отклонённый ответ и перепроверяет его.</small></div>
+                    <Badge variant={routingSettings.judgeMode === 'ENFORCE' ? 'yellow' : routingSettings.judgeMode === 'OBSERVE' ? 'blue' : 'muted'}>{routingSettings.judgeMode === 'ENFORCE' ? 'Проверка и retry' : routingSettings.judgeMode === 'OBSERVE' ? 'Наблюдение' : 'Выключен'}</Badge>
+                </div>
+                <div className="routing-fields-grid judge-fields-grid">
+                    <label>Режим судьи<select value={routingSettings.judgeMode || 'OBSERVE'} onChange={event => setRoutingSettings({ ...routingSettings, judgeMode: event.target.value })}><option value="OFF">Выключен</option><option value="OBSERVE">Наблюдение: только лог</option><option value="ENFORCE">Проверка и один retry</option></select></label>
+                    <label>Provider судьи<select value={routingSettings.judgeProviderId || ''} onChange={event => setRoutingSettings({ ...routingSettings, judgeProviderId: event.target.value })}><option value="">Текущая цепочка + fallback</option>{providers.map(provider => <option value={provider.id} key={provider.id}>{provider.name} · {provider.model_name}</option>)}</select></label>
+                    <label>Модель судьи<input value={routingSettings.judgeModel || ''} placeholder="Модель провайдера" onChange={event => setRoutingSettings({ ...routingSettings, judgeModel: event.target.value })} /></label>
+                    <label>Timeout, мс<input type="number" min="1000" max="60000" value={routingSettings.judgeTimeoutMs ?? 5000} onChange={event => setRoutingSettings({ ...routingSettings, judgeTimeoutMs: Number(event.target.value) })} /></label>
+                    <label>Max tokens<input type="number" min="1" max="32" value={routingSettings.judgeMaxTokens ?? 8} onChange={event => setRoutingSettings({ ...routingSettings, judgeMaxTokens: Number(event.target.value) })} /></label>
+                </div>
+                <label className="classifier-prompt-editor">Prompt судьи<textarea value={routingSettings.judgePrompt || ''} placeholder="Верни строго PASS или REJECT:CODE." onChange={event => setRoutingSettings({ ...routingSettings, judgePrompt: event.target.value })} /></label>
+                <div className="field-hint">Коды reject: REPETITION, IGNORES_USER, OUT_OF_CHARACTER, STALE_CONTEXT, INVENTED_FACT, BROKEN_LOGIC, FORMAT. Ошибка судьи не блокирует ответ и видна в trace.</div>
             </div>
 
             <div className="routing-section">

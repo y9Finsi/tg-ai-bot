@@ -1708,9 +1708,9 @@ export async function savePromptLog(entry) {
             `INSERT INTO prompt_logs (
                 user_id, kind, mode, model, provider_name, user_text,
                 system_prompt, radiant_context, messages, state_snapshot, memory_used,
-                raw_response, parsed_response, usage, prompt_tokens, completion_tokens, total_tokens, cost_usd,
+                raw_response, parsed_response, usage, generation_trace, prompt_tokens, completion_tokens, total_tokens, cost_usd,
                 command_gate_status, command_gate_reason, latency_ms, is_photo_request, error_text
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12,$13,$14::jsonb,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12,$13,$14::jsonb,$15::jsonb,$16,$17,$18,$19,$20,$21,$22,$23,$24)
              RETURNING id, created_at`,
             [
                 entry.userId,
@@ -1727,6 +1727,7 @@ export async function savePromptLog(entry) {
                 entry.rawResponse || null,
                 entry.parsedResponse || null,
                 JSON.stringify(entry.usage || {}),
+                JSON.stringify(entry.generationTrace || []),
                 Number(entry.usage?.prompt_tokens || 0),
                 Number(entry.usage?.completion_tokens || 0),
                 Number(entry.usage?.total_tokens || (Number(entry.usage?.prompt_tokens || 0) + Number(entry.usage?.completion_tokens || 0))),

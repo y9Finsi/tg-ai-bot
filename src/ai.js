@@ -14,6 +14,7 @@ import { ContextBuilder } from './ai/context_builder.js';
 import { validateUserCommand } from './ai/command_gate.js';
 import { evaluateLeraReply, getQualityFallback } from './ai/response_quality.js';
 import { classifyIntent, getModeGenerationParams, getModeIntentConfig, getRoutingSettings } from './ai/intent_router.js';
+import { judgeLeraReply } from './ai/response_judge.js';
 // --- 1. КОНСТАНТЫ И ДИНАМИЧЕСКИЙ КЛИЕНТ ИИ ---
 
 const rateLimitMap = new Map();
@@ -506,6 +507,39 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
 
     // 3. Чистка текста и генерация/выборка фото
     let { text, photo, photoCaption, recommendationPost: finalRecPost, showBuyButton } = await processLlmOutput(userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto);
+    const generationTrace = [{
+        step: 'first',
+        response: text,
+        rawResponse: rawText,
+        providerName,
+        model,
+        latencyMs,
+        usage
+    }];
+    const judgeConversation = messages.slice();
+    const judgeSettings = routingSettings;
+    const shouldJudge = !isInitiative && Boolean(userText);
+    let judgeResult = shouldJudge
+        ? await judgeLeraReply({
+            userId,
+            mode: routingMode,
+            messages: judgeConversation,
+            userText,
+            reply: text,
+            settings: judgeSettings
+        })
+        : { skipped: true, verdict: 'SKIPPED', passed: true, code: null };
+    generationTrace.push({
+        step: 'judge',
+        phase: 'first',
+        verdict: judgeResult.verdict || (judgeResult.skipped ? 'SKIPPED' : 'ERROR'),
+        code: judgeResult.code || null,
+        model: judgeResult.model || null,
+        providerName: judgeResult.providerName || null,
+        latencyMs: judgeResult.latencyMs || 0,
+        usage: judgeResult.usage || {},
+        error: judgeResult.error || null
+    });
 
     const normalizeReply = value => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
     const looksLikeGreeting = /^(привет|приветик|здравствуй|доброе утро|добрый вечер|хай|хелло)/i.test(String(userText || '').trim());
@@ -520,28 +554,51 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     const needsQualityRetry = !isInitiative && qualityIssues.some(issue => [
         'noRecentRepeat'
     ].includes(issue));
+    const judgeNeedsRetry = !isInitiative && judgeSettings.judgeMode === 'ENFORCE' && judgeResult.passed === false;
     if (!isInitiative && userText && (
         (lastLeraText && (normalizeReply(text) === normalizeReply(lastLeraText) || repeatsGreeting) && !looksLikeGreeting)
         || needsQualityRetry
+        || judgeNeedsRetry
     )) {
-        // Preserve the first real call before issuing the anti-repeat retry.
-        writePromptLog({
-            model,
-            providerName,
-            latencyMs,
-            rawResponse: rawText,
-            parsedResponse: text,
-            usage
-        });
+        const retryReason = judgeNeedsRetry
+            ? `judge_${judgeResult.code || 'rejected'}`
+            : needsQualityRetry
+            ? 'recent_repeat'
+            : repeatsGreeting ? 'repeated_greeting' : 'exact_repeat';
+        const retryInstruction = judgeNeedsRetry
+            ? `Проверка качества отклонила предыдущий ответ: ${judgeResult.code || 'REJECTED'}. Перепиши его по последней реплике пользователя, сохрани характер Леры и не повторяй предыдущий вариант.`
+            : needsQualityRetry
+            ? 'СТОП: предыдущий ответ повторяет недавнюю фразу. Перепиши ответ именно на последнюю реплику и не повторяй недавний текст.'
+            : 'СТОП: предыдущий ответ совпал с прошлой репликой. Сгенерируй новый ответ именно на последнюю CURRENT_MESSAGE. Не повторяй приветствие и прошлый текст.';
         const retryMessages = [
             messages[0],
-            { role: 'system', content: needsQualityRetry
-                ? 'СТОП: предыдущий ответ повторяет недавнюю фразу. Перепиши ответ именно на последнюю реплику и не повторяй недавний текст.'
-                : 'СТОП: предыдущий ответ совпал с прошлой репликой. Сгенерируй новый ответ именно на последнюю CURRENT_MESSAGE. Не повторяй приветствие и прошлый текст.' },
+            { role: 'system', content: retryInstruction },
             ...messages.slice(1)
         ];
         const firstUsage = usage || {};
-        const retry = await requestLlmCompletion(user, retryMessages, isPhotoRequest, getOpenAIClientAndModel, generationParams);
+        let retry;
+        try {
+            retry = await requestLlmCompletion(user, retryMessages, isPhotoRequest, getOpenAIClientAndModel, generationParams);
+        } catch (retryErr) {
+            generationTrace.push({
+                step: 'retry',
+                reason: retryReason,
+                instruction: retryInstruction,
+                error: retryErr.message
+            });
+            writePromptLog({
+                kind: 'RETRY_ERROR',
+                model,
+                providerName,
+                latencyMs,
+                rawResponse: rawText,
+                parsedResponse: text,
+                usage,
+                generationTrace,
+                errorText: `Retry failed: ${retryErr.message}`
+            });
+            throw retryErr;
+        }
         rawText = retry.rawText || rawText;
         usage = {
             prompt_tokens: Number(firstUsage.prompt_tokens || 0) + Number(retry.usage?.prompt_tokens || 0),
@@ -554,6 +611,50 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         ({ text, photo, photoCaption, recommendationPost: finalRecPost, showBuyButton } = await processLlmOutput(
             userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto
         ));
+        generationTrace.push({
+            step: 'retry',
+            reason: retryReason,
+            instruction: retryInstruction,
+            response: text,
+            rawResponse: rawText,
+            providerName,
+            model,
+            latencyMs,
+            usage: retry.usage || {}
+        });
+        if (shouldJudge && judgeSettings.judgeMode !== 'OFF') {
+            const retryJudge = await judgeLeraReply({
+                userId,
+                mode: routingMode,
+                messages: judgeConversation,
+                userText,
+                reply: text,
+                settings: judgeSettings
+            });
+            judgeResult = retryJudge;
+            generationTrace.push({
+                step: 'judge',
+                phase: 'retry',
+                verdict: retryJudge.verdict || 'ERROR',
+                code: retryJudge.code || null,
+                model: retryJudge.model || null,
+                providerName: retryJudge.providerName || null,
+                latencyMs: retryJudge.latencyMs || 0,
+                usage: retryJudge.usage || {},
+                error: retryJudge.error || null
+            });
+            if (judgeSettings.judgeMode === 'ENFORCE' && retryJudge.passed === false) {
+                text = getQualityFallback(routingMode);
+                photo = null;
+                photoCaption = null;
+                finalRecPost = null;
+                generationTrace.push({
+                    step: 'fallback',
+                    reason: [`judge_${retryJudge.code || 'rejected'}`],
+                    response: text
+                });
+            }
+        }
         // The final log below must contain the exact retry messages, not the first call.
         messages.splice(0, messages.length, ...retryMessages);
     }
@@ -563,20 +664,15 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         recentReplies: recentReplyTexts
     });
     if (!isInitiative && userText && !finalQuality.passed) {
-        writePromptLog({
-            kind: 'QUALITY_FALLBACK',
-            model,
-            providerName,
-            latencyMs,
-            rawResponse: rawText,
-            parsedResponse: text,
-            usage,
-            errorText: `Quality Gate после retry: ${finalQuality.violations.join(', ')}`
-        });
         text = getQualityFallback(routingMode);
         photo = null;
         photoCaption = null;
         finalRecPost = null;
+        generationTrace.push({
+            step: 'fallback',
+            reason: finalQuality.violations,
+            response: text
+        });
     }
 
     if (!isInitiative && userText && !looksLikeGreeting && greetingPrefix.test(text || '') && greetingPrefix.test(lastLeraText || '')) {
@@ -596,6 +692,10 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     console.log(`🤖 [${isInitiative ? 'AI INITIATIVE' : 'BOT'} ${userId}]: ${text}`);
 
     // 4.1 Полный лог промпта и ответа для инспектора (в фоне, не блокирует ответ)
+    const fallbackReasons = generationTrace
+        .filter(item => item.step === 'fallback')
+        .flatMap(item => Array.isArray(item.reason) ? item.reason : [item.reason])
+        .filter(Boolean);
     writePromptLog({
         kind: (!isInitiative && messages[1]?.content?.startsWith('СТОП: предыдущий ответ')) ? 'RETRY' : (isInitiative ? 'INITIATIVE' : 'CHAT'),
         model,
@@ -603,7 +703,11 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         latencyMs,
         rawResponse: rawText,
         parsedResponse: text,
-        usage
+        usage,
+        generationTrace,
+        errorText: fallbackReasons.length
+            ? `Fallback: ${fallbackReasons.join(', ')}`
+            : null
     });
 
     // 5. Асинхронная экстракция долгосрочных фактов в память в фоне (не блокирует ответ)

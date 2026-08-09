@@ -23,7 +23,13 @@ export const DEFAULT_ROUTING_SETTINGS = {
     eroticTemperature: 0.75,
     eroticMaxTokens: 240,
     jokeTemperature: 0.85,
-    jokeMaxTokens: 180
+    jokeMaxTokens: 180,
+    judgeMode: 'OBSERVE',
+    judgeProviderId: '',
+    judgeModel: '',
+    judgePrompt: 'Ты проверяешь ответ Леры перед отправкой. Сверь его с последней репликой пользователя и короткими правилами личности. Бракуй только явные ошибки: ответ мимо последней реплики, повтор, выход из роли, выдуманный факт, сломанная логика или технический мусор. Инициативность, флирт и откровенность в режиме EROTIC сами по себе не являются ошибкой. Верни строго PASS или REJECT:<CODE> без пояснений. Коды: REPETITION, IGNORES_USER, OUT_OF_CHARACTER, STALE_CONTEXT, INVENTED_FACT, BROKEN_LOGIC, FORMAT.',
+    judgeTimeoutMs: 5000,
+    judgeMaxTokens: 8
 };
 
 const DEFAULT_PROMPT_MODULES = Object.freeze({
@@ -131,6 +137,12 @@ function asNumber(value, fallback, min = -Infinity, max = Infinity) {
     return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
 }
 
+function normalizeJudgeMode(value) {
+    return ['OFF', 'OBSERVE', 'ENFORCE'].includes(String(value || '').toUpperCase())
+        ? String(value).toUpperCase()
+        : DEFAULT_ROUTING_SETTINGS.judgeMode;
+}
+
 export async function getRoutingSettings() {
     const values = await Promise.all(Object.keys(DEFAULT_ROUTING_SETTINGS).map(async key => [
         key,
@@ -149,7 +161,13 @@ export async function getRoutingSettings() {
         eroticTemperature: asNumber(raw.eroticTemperature, 0.75, 0, 2),
         eroticMaxTokens: asNumber(raw.eroticMaxTokens, 240, 20, 1200),
         jokeTemperature: asNumber(raw.jokeTemperature, 0.85, 0, 2),
-        jokeMaxTokens: asNumber(raw.jokeMaxTokens, 180, 20, 1000)
+        jokeMaxTokens: asNumber(raw.jokeMaxTokens, 180, 20, 1000),
+        judgeMode: normalizeJudgeMode(raw.judgeMode),
+        judgeProviderId: String(raw.judgeProviderId || ''),
+        judgeModel: String(raw.judgeModel || ''),
+        judgePrompt: String(raw.judgePrompt || DEFAULT_ROUTING_SETTINGS.judgePrompt),
+        judgeTimeoutMs: asNumber(raw.judgeTimeoutMs, 5000, 1000, 60000),
+        judgeMaxTokens: asNumber(raw.judgeMaxTokens, 8, 1, 32)
     };
     const production = await readJsonSetting(INTENT_STUDIO_PRODUCTION_KEY, {});
     return {
@@ -179,7 +197,13 @@ export async function updateRoutingSettings(input = {}) {
         eroticTemperature: asNumber(next.eroticTemperature, current.eroticTemperature, 0, 2),
         eroticMaxTokens: asNumber(next.eroticMaxTokens, current.eroticMaxTokens, 20, 1200),
         jokeTemperature: asNumber(next.jokeTemperature, current.jokeTemperature, 0, 2),
-        jokeMaxTokens: asNumber(next.jokeMaxTokens, current.jokeMaxTokens, 20, 1000)
+        jokeMaxTokens: asNumber(next.jokeMaxTokens, current.jokeMaxTokens, 20, 1000),
+        judgeMode: normalizeJudgeMode(next.judgeMode),
+        judgeProviderId: String(next.judgeProviderId || ''),
+        judgeModel: String(next.judgeModel || '').trim(),
+        judgePrompt: (String(next.judgePrompt || current.judgePrompt || DEFAULT_ROUTING_SETTINGS.judgePrompt).trim() || DEFAULT_ROUTING_SETTINGS.judgePrompt).slice(0, 12000),
+        judgeTimeoutMs: asNumber(next.judgeTimeoutMs, current.judgeTimeoutMs, 1000, 60000),
+        judgeMaxTokens: asNumber(next.judgeMaxTokens, current.judgeMaxTokens, 1, 32)
     };
     await Promise.all(Object.entries(normalized).map(([key, value]) =>
         setSetting(`llm_routing_${key}`, String(value))
@@ -202,6 +226,16 @@ export async function updateRoutingSettings(input = {}) {
 async function getClassifierProviders(settings) {
     const ordered = await getOrderedAiProviders().catch(() => []);
     const selectedId = Number(settings.classifierProviderId);
+    if (!selectedId) return ordered;
+    const all = await getAiProviders().catch(() => []);
+    const selected = all.find(provider => Number(provider.id) === selectedId);
+    if (!selected) return ordered;
+    return [selected, ...ordered.filter(provider => Number(provider.id) !== selectedId)];
+}
+
+export async function getJudgeProviders(settings) {
+    const ordered = await getOrderedAiProviders().catch(() => []);
+    const selectedId = Number(settings.judgeProviderId);
     if (!selectedId) return ordered;
     const all = await getAiProviders().catch(() => []);
     const selected = all.find(provider => Number(provider.id) === selectedId);

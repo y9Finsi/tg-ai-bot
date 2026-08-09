@@ -52,17 +52,8 @@ for (const [key, filename] of Object.entries(PROMPT_SECTIONS)) {
     promptsCache[key] = loadPromptFile(filename);
 }
 
-const routingPromptDefaults = {
-    routing_core: () => promptsCache.lera_base,
-    routing_common: () => [promptsCache.lera_speech, promptsCache.lera_rules].filter(Boolean).join('\n\n'),
-    routing_casual: () => promptsCache.lera_examples,
-    routing_erotic: () => promptsCache.lera_intimacy,
-    routing_joke: () => `${promptsCache.lera_jokes || ''}\n\n[КОНТЕКСТ ИГРЫ В РЕЖИМЕ JOKE]\nИгровой контекст доступен для понимания состояния Леры, но шутка не обязана быть связана с её текущим занятием, комнатой, едой, кроватью или бытовой сценой.`.trim()
-};
-
 for (const [key, filename] of Object.entries(ROUTING_PROMPT_SECTIONS)) {
-    const loaded = loadPromptFile(filename);
-    promptsCache[key] = loaded || routingPromptDefaults[key]();
+    promptsCache[key] = loadPromptFile(filename);
 }
 
 // Кэш параметров LLM в памяти
@@ -177,11 +168,11 @@ export async function getRoutingPromptModules() {
         await initPromptsFromDb().catch(() => {});
     }
     return {
-        core: promptsCache.routing_core || routingPromptDefaults.routing_core(),
-        common: promptsCache.routing_common || routingPromptDefaults.routing_common(),
-        casual: promptsCache.routing_casual || routingPromptDefaults.routing_casual(),
-        erotic: promptsCache.routing_erotic || routingPromptDefaults.routing_erotic(),
-        joke: promptsCache.routing_joke || routingPromptDefaults.routing_joke()
+        core: promptsCache.routing_core,
+        common: promptsCache.routing_common,
+        casual: promptsCache.routing_casual,
+        erotic: promptsCache.routing_erotic,
+        joke: promptsCache.routing_joke
     };
 }
 

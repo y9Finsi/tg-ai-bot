@@ -1930,7 +1930,9 @@ export function startAdminServer() {
                     system_prompt: log.system_prompt || '',
                     messages: log.messages || [],
                     raw_response: log.raw_response || '',
-                    parsed_response: log.parsed_response || '', quality
+                    parsed_response: log.parsed_response || '',
+                    generation_trace: log.generation_trace || [],
+                    quality
                 }, quality
             });
         } catch (e) {
