@@ -75,12 +75,11 @@ test('pause guidance and historical events do not expose live micro-actions', ()
     assert.doesNotMatch(prompt, /идёт в туалет|сходила в туалет/);
 });
 
-test('ordinary multi-line replies remain one Telegram bubble', () => {
+test('newline-separated replies are split into Telegram bubbles', () => {
     const queue = fs.readFileSync(path.join(root, 'src', 'queue.js'), 'utf8');
 
-    assert.match(queue, /raw\.includes\('\|\|\|'\)/);
-    assert.doesNotMatch(queue, /const delimiter = response\.text\.includes\('\|\|\|'\) \?[\s\S]{0,160}: \/\\n\//);
-    assert.doesNotMatch(queue, /split\(\/\(\?<\=\[\.!\?\]\)\\s\+\//);
+    assert.match(queue, /splitResponseMessages/);
+    assert.match(queue, /utils\/response_text\.js/);
 });
 
 test('location-and-Nastya answer is not baked into the standard dialogue examples', () => {

@@ -15,6 +15,7 @@ import { validateUserCommand } from './ai/command_gate.js';
 import { evaluateLeraReply, getQualityFallback } from './ai/response_quality.js';
 import { classifyIntent, getModeGenerationParams, getModeIntentConfig, getRoutingSettings } from './ai/intent_router.js';
 import { judgeLeraReply } from './ai/response_judge.js';
+import { cleanResponseText } from './utils/response_text.js';
 // --- 1. КОНСТАНТЫ И ДИНАМИЧЕСКИЙ КЛИЕНТ ИИ ---
 
 const rateLimitMap = new Map();
@@ -98,47 +99,6 @@ function getFormattedTimeMSK() {
         minute: '2-digit'
     });
     return `\n\n[КОНТЕКСТ ВРЕМЕНИ И ДАТЫ]: Сейчас: ${timeString} (MSK).`;
-}
-
-function cleanAiText(rawText) {
-    if (!rawText) return '';
-    let text = rawText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-    text = text.replace(/<think>[\s\S]*/gi, '').trim();
-    text = text.replace(/\[IMAGE:[\s\S]*?\]/gi, '').trim();
-    text = text.replace(/\[IMAGE:[\s\S]*/gi, '').trim();
-    text = text.replace(/\[RECOMMEND\]/gi, '').trim();
-    text = text.replace(/\[SYSTEM\]:?/gi, '').trim();
-    text = text.replace(/SYSTEM:?/gi, '').trim();
-    text = text.replace(/\[СИСТЕМНАЯ ЗАДАЧА[\s\S]*?\]/gi, '').trim();
-    text = text.replace(/\[СИСТЕМНАЯ КОМАНДА[\s\S]*?\]/gi, '').trim();
-    text = text.replace(/\[СИСТЕМНЫЙ БЛОК[\s\S]*?\]/gi, '').trim();
-    text = text.replace(/\[Лера отправила[\s\S]*?\]/gi, '').trim();
-    text = text.replace(/\[Лера переслала[\s\S]*?\]/gi, '').trim();
-    text = text.replace(/\[D:[^\]]+\]|\[(?:M|R|PHOTO|VOICE|VIDEO|STICKER|INITIATIVE|REMEMBER|FORGET|MUTE|SYSTEM)[^\]]*\]/gi, '').trim();
-    text = text.replace(/Лера отправила личное фото:?[\s\S]*/gi, '').trim();
-    text = text.replace(/Лера переслала пост:?[\s\S]*/gi, '').trim();
-
-    // CJK / Иероглифы
-    text = text.replace(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fa5\uac00-\ud7af]+/g, '');
-
-    // Эмодзи
-    try {
-        text = text.replace(/\p{Extended_Pictographic}/gu, '');
-        text = text.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, '');
-    } catch (e) {
-        text = text.replace(/[\u1F600-\u1F64F\u1F300-\u1F5FF\u1F680-\u1F6FF\u2600-\u26FF\u2700-\u27BF]/g, '');
-    }
-
-    // Удаляем смайлики-скобки и скобки (сохраняя слова)
-    text = text.replace(/[()]+/g, '');
-
-    // Тире, дефисы и буллеты в начале фраз (- – — ― ‒ ‑ ﹣ － • ⁃ ▪ ▫ ~ 〜 〰)
-    text = text.replace(/^[\s-–—―‒‑﹣－•⁃▪▫~〜〰]+[\s]*/gm, '');
-
-    // Дублирующиеся тире в середине текста
-    text = text.replace(/[-–—―‒‑﹣－]{2,}/g, ' ');
-
-    return text.split('\n').map(line => line.trim()).filter(line => line.length > 0).join('\n');
 }
 
 async function getFreeLocalPhotoStream(user = null, userText = '') {
@@ -410,7 +370,7 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
     let photoSendPayload = null;
     let photoCaption = null;
     let showBuyButton = false;
-    let finalAiText = cleanAiText(workingText);
+    let finalAiText = cleanResponseText(workingText);
 
     if (imagePrompt) {
         const photoObj = await generatePhotoForPrompt(userId, user, imagePrompt, preselectedPhoto);

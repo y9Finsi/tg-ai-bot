@@ -1,6 +1,7 @@
 import { Queue, Worker } from 'bullmq';
 import { generateResponse } from './ai.js';
 import { decrementFreeRequest, appendConversationEvent, updateConversationEventStatus, refundReservedRequest } from './database.js';
+import { splitResponseMessages } from './utils/response_text.js';
 
 // Парсим URL из .env и жестко задаем IPv4 (family: 4)
 const redisUrl = new URL(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
@@ -9,19 +10,6 @@ const connection = {
     port: parseInt(redisUrl.port, 10) || 6379,
     family: 4 // Спасает от ошибки EAI_AGAIN в Docker
 };
-
-function splitResponseMessages(text) {
-    const raw = String(text || '').trim();
-    if (!raw) return [];
-    // Переносы строки — обычное форматирование одного сообщения, а не команда
-    // отправить Лерину реплику несколькими пузырями. Дробление возможно только
-    // по явному разделителю, который внутренний генератор ставит намеренно.
-    let parts = raw.includes('|||')
-        ? raw.split(/\s*\|\|\|\s*/).map(part => part.trim()).filter(Boolean)
-        : [raw];
-    if (parts.length > 4) parts = [parts.slice(0, 3).join(' '), parts.slice(3).join(' ')];
-    return parts;
-}
 
 export const aiQueue = new Queue('ai-requests', {
     connection,
