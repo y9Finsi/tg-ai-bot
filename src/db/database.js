@@ -1360,20 +1360,72 @@ export async function getRecentSimulationReflections(limit = 3) {
     return result.rows.reverse().map(row => ({ ...row.reflection, date: String(row.date).slice(0, 10) }));
 }
 
+export const DEFAULT_MEMORY_SETTINGS = Object.freeze({
+    is_enabled: true,
+    provider_id: '',
+    model: '',
+    temperature: 0.2,
+    max_tokens: 400,
+    retry_max_tokens: 700,
+    timeout_ms: 10000,
+    prompt: `Ты — модуль извлечения долгосрочной памяти о пользователе.
+Проанализируй реплику пользователя и выдели НОВЫЕ важные долгосрочные факты о нем (имя, город, возраст, профессия, увлечения, предпочтения, отношения, кинки, важные люди).
+
+[ТЕКУЩИЕ ФАКТЫ В БАЗЕ]:
+{{existing_facts}}
+
+[СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ]:
+"{{user_text}}"
+
+[ПРАВИЛА]:
+1. Извлекай только реальные устойчивые факты о ПОЛЬЗОВАТЕЛЕ, которые прямо следуют из его сообщения.
+2. Если пользователь просто задал вопрос, попрощался или сообщил о текущем действии без долгосрочного факта — верни пустой new_facts.
+3. Если пользователь обновил или отменил старый факт — укажи id старого факта в deactivate_ids.
+4. Ответь СТРОГО валидным JSON без markdown и без пояснений:
+{"new_facts":[{"category":"identity","fact":"Имя пользователя — Богдан"}],"deactivate_ids":[]}
+Если фактов нет, верни {"new_facts":[],"deactivate_ids":[]}.`
+});
+
+function normalizeMemorySettingValue(key, value) {
+    if (key === 'memory_enabled') return ['true', '1', 'yes', 'on'].includes(String(value).toLowerCase());
+    if (key === 'memory_provider_id') return String(value || '');
+    if (key === 'memory_model') return String(value || '').trim().slice(0, 240);
+    if (key === 'memory_prompt') return String(value || DEFAULT_MEMORY_SETTINGS.prompt).trim().slice(0, 16000);
+    if (key === 'memory_temperature') return Number.isFinite(Number(value)) ? Math.max(0, Math.min(2, Number(value))) : DEFAULT_MEMORY_SETTINGS.temperature;
+    if (key === 'memory_max_tokens') return Number.isFinite(Number(value)) ? Math.max(80, Math.min(1200, Math.round(Number(value)))) : DEFAULT_MEMORY_SETTINGS.max_tokens;
+    if (key === 'memory_retry_max_tokens') return Number.isFinite(Number(value)) ? Math.max(80, Math.min(1600, Math.round(Number(value)))) : DEFAULT_MEMORY_SETTINGS.retry_max_tokens;
+    if (key === 'memory_timeout_ms') return Number.isFinite(Number(value)) ? Math.max(1000, Math.min(60000, Math.round(Number(value)))) : DEFAULT_MEMORY_SETTINGS.timeout_ms;
+    return value;
+}
+
 export async function getMemorySettings() {
     try {
         const res = await query("SELECT * FROM settings WHERE key LIKE 'memory_%'");
-        const settings = { is_enabled: true };
+        const settings = { ...DEFAULT_MEMORY_SETTINGS };
         res.rows.forEach(r => {
-            if (r.key === 'memory_enabled') settings.is_enabled = r.value === 'true';
+            const key = r.key;
+            const value = normalizeMemorySettingValue(key, r.value);
+            if (key === 'memory_enabled') settings.is_enabled = value;
+            if (key === 'memory_provider_id') settings.provider_id = value;
+            if (key === 'memory_model') settings.model = value;
+            if (key === 'memory_prompt') settings.prompt = value;
+            if (key === 'memory_temperature') settings.temperature = value;
+            if (key === 'memory_max_tokens') settings.max_tokens = value;
+            if (key === 'memory_retry_max_tokens') settings.retry_max_tokens = value;
+            if (key === 'memory_timeout_ms') settings.timeout_ms = value;
         });
         return settings;
     } catch (e) {
-        return { is_enabled: true };
+        return { ...DEFAULT_MEMORY_SETTINGS };
     }
 }
 
-export async function getMemoryProvider() {
+export async function getMemoryProvider(settings = {}) {
+    const selectedId = Number(settings.provider_id);
+    if (selectedId) {
+        const selected = (await getAiProviders()).find(provider => Number(provider.id) === selectedId);
+        if (selected) return selected;
+    }
     return await getActiveAiProvider();
 }
 
@@ -1610,12 +1662,39 @@ export async function deletePromocodeAdmin(id) {
     return await deletePromocode(id);
 }
 
-export async function setMemorySettings(is_enabled) {
-    await query(
-        "INSERT INTO settings (key, value) VALUES ('memory_enabled', $1) ON CONFLICT (key) DO UPDATE SET value = $1",
-        [is_enabled ? 'true' : 'false']
-    );
-    return { is_enabled };
+export async function setMemorySettings(input = {}) {
+    const current = await getMemorySettings();
+    const next = {
+        ...current,
+        ...(typeof input === 'boolean' ? { is_enabled: input } : input)
+    };
+    const normalized = {
+        is_enabled: Boolean(next.is_enabled),
+        provider_id: String(next.provider_id || ''),
+        model: String(next.model || '').trim().slice(0, 240),
+        prompt: (String(next.prompt || DEFAULT_MEMORY_SETTINGS.prompt).trim() || DEFAULT_MEMORY_SETTINGS.prompt).slice(0, 16000),
+        temperature: normalizeMemorySettingValue('memory_temperature', next.temperature),
+        max_tokens: normalizeMemorySettingValue('memory_max_tokens', next.max_tokens),
+        retry_max_tokens: normalizeMemorySettingValue('memory_retry_max_tokens', next.retry_max_tokens),
+        timeout_ms: normalizeMemorySettingValue('memory_timeout_ms', next.timeout_ms)
+    };
+    const entries = [
+        ['memory_enabled', normalized.is_enabled ? 'true' : 'false'],
+        ['memory_provider_id', normalized.provider_id],
+        ['memory_model', normalized.model],
+        ['memory_prompt', normalized.prompt],
+        ['memory_temperature', String(normalized.temperature)],
+        ['memory_max_tokens', String(normalized.max_tokens)],
+        ['memory_retry_max_tokens', String(normalized.retry_max_tokens)],
+        ['memory_timeout_ms', String(normalized.timeout_ms)]
+    ];
+    for (const [key, value] of entries) {
+        await query(
+            "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
+            [key, value]
+        );
+    }
+    return normalized;
 }
 
 export async function getAllLeraPhotos() {

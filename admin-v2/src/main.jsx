@@ -908,6 +908,14 @@ function LlmPanel({ toast }) {
                                     };
                                     const finalAnswer = selected.layers?.parsed_response || selected.layers?.raw_response || '—';
                                     return <div className="generation-trace">
+                                        {selected.log.kind === 'MEMORY' && <div className="memory-trace-card">
+                                            <span>Memory extraction</span>
+                                            <p>{trace[0]?.step === 'retry' ? 'Первый ответ не распарсился — выполнен один retry.' : trace[0]?.step === 'failed' ? 'Extraction завершился ошибкой.' : 'Ответ памяти распарсился с первой попытки.'}</p>
+                                            {selected.log.error_text && <small>Ошибка: {selected.log.error_text}</small>}
+                                            {trace[0]?.firstParseError && <small>Ошибка первого парсинга: {trace[0].firstParseError}</small>}
+                                            <details><summary>Raw и параметры вызова</summary><pre>{JSON.stringify({ firstRawResponse: trace[0]?.firstRawResponse, finalRawResponse: trace[0]?.rawResponse || selected.layers?.raw_response, sampling: trace[0]?.sampling, provider: selected.log.provider_name, model: selected.log.model }, null, 2)}</pre></details>
+                                            <details><summary>Фактически переданный prompt</summary><pre>{selected.layers?.system_prompt || trace[0]?.prompt || '—'}</pre></details>
+                                        </div>}
                                         <div><span>Первый ответ</span><p>{first?.response || 'Нет данных для старого лога'}</p></div>
                                         {judges.filter(item => item.phase === 'first').map((item, index) => <div key={`judge-first-${index}`}><span>Judge первого ответа</span><p>{item.verdict}{item.code ? ` · ${item.code}` : ''}</p><small>{item.error || ''}</small>{item.judgeMessages && <details><summary>Что получил судья</summary><pre>{JSON.stringify(item.judgeMessages, null, 2)}</pre></details>}</div>)}
                                         {firstJudge && <div className="relationship-trace">
@@ -1535,6 +1543,7 @@ function LlmSettingsPanel({ toast }) {
     const [promptModules, setPromptModules] = useState({});
     const [routingSettings, setRoutingSettings] = useState({});
     const [routingModules, setRoutingModules] = useState({});
+    const [memorySettings, setMemorySettings] = useState({});
     const run = async (action, success) => { try { const result = await action(); if (success && toast) toast(success); return result; } catch (error) { if (toast) toast(error.message, 'error'); return null; } };
     async function loadProviders() { const result = await run(() => api('/api/admin/providers')); if (result) setProviders(result.providers || []); }
     async function loadPrompts() {
@@ -1543,14 +1552,16 @@ function LlmSettingsPanel({ toast }) {
             setPromptModules(result.prompts || {});
             setRoutingSettings(result.routingSettings || {});
             setRoutingModules(result.routingModules || {});
+            setMemorySettings(result.memorySettings || {});
         }
     }
     async function savePrompts() {
-        const result = await run(() => api('/api/admin/llm-settings', { method: 'POST', body: JSON.stringify({ prompts: { ...promptModules, ...Object.fromEntries(Object.entries(routingModules).map(([key, value]) => [`routing_${key}`, value])) }, routingSettings }) }), 'Настройки маршрутизации сохранены');
+        const result = await run(() => api('/api/admin/llm-settings', { method: 'POST', body: JSON.stringify({ prompts: { ...promptModules, ...Object.fromEntries(Object.entries(routingModules).map(([key, value]) => [`routing_${key}`, value])) }, routingSettings, memorySettings }) }), 'Настройки LLM сохранены');
         if (result) {
             setPromptModules(result.prompts || promptModules);
             setRoutingSettings(result.routingSettings || routingSettings);
             setRoutingModules(result.routingModules || routingModules);
+            setMemorySettings(result.memorySettings || memorySettings);
         }
     }
     useEffect(() => { loadProviders(); loadPrompts(); }, []);
@@ -1701,6 +1712,33 @@ function LlmSettingsPanel({ toast }) {
                 <div className="field-hint">Коды reject: REPETITION, IGNORES_USER, OUT_OF_CHARACTER, STALE_CONTEXT, INVENTED_FACT, BROKEN_LOGIC, FORMAT. Ошибка судьи не блокирует ответ и видна в trace.</div>
             </div>
 
+            <div className="routing-section memory-settings-section">
+                <div className="routing-section-head">
+                    <div><span className="eyebrow">Долгосрочная память</span><strong>Извлечение фактов о пользователе</strong><small>Запускается после ответа Леры и не задерживает Telegram. Без личного утверждения пользователя вызов вообще не делается.</small></div>
+                    <Badge variant={memorySettings.is_enabled === false ? 'muted' : 'green'}>{memorySettings.is_enabled === false ? 'Выключена' : 'Активна'}</Badge>
+                </div>
+                <div className="memory-toggle-row">
+                    <label className="sandbox-check">Включить extraction<input type="checkbox" checked={memorySettings.is_enabled !== false} onChange={event => setMemorySettings({ ...memorySettings, is_enabled: event.target.checked })} /></label>
+                    <span className="field-hint">Если модель вернула не JSON, факт не сохранится. Raw-ответ, причина и retry будут видны в Prompt Inspector как <code>MEMORY</code>.</span>
+                </div>
+                <div className="routing-fields-grid memory-settings-grid">
+                    <label>Provider памяти<select value={memorySettings.provider_id || ''} onChange={event => setMemorySettings({ ...memorySettings, provider_id: event.target.value })}><option value="">Текущий основной provider</option>{providers.map(provider => <option value={provider.id} key={provider.id}>{provider.name} · {provider.model_name}</option>)}</select></label>
+                    <label>Модель<input value={memorySettings.model || ''} placeholder="Модель выбранного provider" onChange={event => setMemorySettings({ ...memorySettings, model: event.target.value })} /></label>
+                    <label>Temperature<input type="number" min="0" max="2" step="0.01" value={memorySettings.temperature ?? 0.2} onChange={event => setMemorySettings({ ...memorySettings, temperature: Number(event.target.value) })} /></label>
+                    <label>Timeout, мс<input type="number" min="1000" max="60000" value={memorySettings.timeout_ms ?? 10000} onChange={event => setMemorySettings({ ...memorySettings, timeout_ms: Number(event.target.value) })} /></label>
+                    <label>Max tokens, первый<input type="number" min="80" max="1200" value={memorySettings.max_tokens ?? 400} onChange={event => setMemorySettings({ ...memorySettings, max_tokens: Number(event.target.value) })} /></label>
+                    <label>Max tokens, retry<input type="number" min="80" max="1600" value={memorySettings.retry_max_tokens ?? 700} onChange={event => setMemorySettings({ ...memorySettings, retry_max_tokens: Number(event.target.value) })} /></label>
+                </div>
+                <label className="classifier-prompt-editor">Prompt extractor<textarea value={memorySettings.prompt || ''} placeholder="Верни строго JSON с new_facts и deactivate_ids." onChange={event => setMemorySettings({ ...memorySettings, prompt: event.target.value })} /></label>
+                <details className="judge-transfer-details">
+                    <summary>Что и как передаётся extractor</summary>
+                    <div className="judge-transfer-grid">
+                        <div><span>System message</span><pre>{memorySettings.prompt || 'Загрузится дефолтный prompt памяти.'}</pre></div>
+                        <div><span>Подстановка перед запросом</span><pre>{`{{existing_facts}} → до 30 активных фактов пользователя\n{{user_text}} → одна новая реплика пользователя (до 4000 символов)\n\nОжидаемый ответ:\n{"new_facts":[],"deactivate_ids":[]}\n\nПри невалидном JSON: один retry с просьбой вернуть закрытый JSON. Потом только trace — без записи в память.`}</pre></div>
+                    </div>
+                </details>
+            </div>
+
             <div className="routing-section">
                 <div className="routing-section-head">
                     <div><span className="eyebrow">Модули prompt</span><strong>Что получает основная модель</strong><small>Core Persona и общие правила загружаются всегда. Из трёх стилевых карточек выбирается одна.</small></div>
@@ -1726,7 +1764,7 @@ function LlmSettingsPanel({ toast }) {
                 <details className="prompt-expert-details"><summary>Экспертный JSON модулей routing</summary><pre>{JSON.stringify(routingModules, null, 2)}</pre></details>
             </div>
 
-            <div className="routing-save-row"><span>Изменения применяются после сохранения.</span><Button variant="primary" onClick={savePrompts}>Сохранить настройки routing</Button></div>
+            <div className="routing-save-row"><span>Изменения применяются после сохранения.</span><Button variant="primary" onClick={savePrompts}>Сохранить настройки</Button></div>
         </Card>
     </div>;
 }

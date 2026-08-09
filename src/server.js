@@ -24,6 +24,8 @@ import {
     setSetting,
     getUser,
     getUserMemories,
+    getMemorySettings,
+    setMemorySettings,
     getAllLeraPhotos,
     addLeraPhoto,
     updateLeraPhoto,
@@ -1356,6 +1358,7 @@ export function startAdminServer() {
                 prompts: leraPromptsData.prompts,
                 fullPrompt: leraPromptsData.fullPrompt,
                 routingSettings,
+                memorySettings: await getMemorySettings(),
                 routingModules,
                 promptStudio: await getPromptStudioState(),
                 pipeline: 'Two-Stage Routing'
@@ -1367,7 +1370,7 @@ export function startAdminServer() {
 
     app.post('/api/admin/llm-settings', async (req, res) => {
         try {
-            const { temperature, presence_penalty, frequency_penalty, prompts, routingSettings } = req.body;
+            const { temperature, presence_penalty, frequency_penalty, prompts, routingSettings, memorySettings } = req.body;
             let llmParams = null;
             if (temperature !== undefined || presence_penalty !== undefined || frequency_penalty !== undefined) {
                 llmParams = await updateLlmParams({ temperature, presence_penalty, frequency_penalty });
@@ -1384,6 +1387,9 @@ export function startAdminServer() {
             const nextRoutingSettings = routingSettings && typeof routingSettings === 'object'
                 ? await updateRoutingSettings(routingSettings)
                 : await getRoutingSettings();
+            const nextMemorySettings = memorySettings && typeof memorySettings === 'object'
+                ? await setMemorySettings(memorySettings)
+                : await getMemorySettings();
 
             res.json({
                 success: true,
@@ -1391,6 +1397,7 @@ export function startAdminServer() {
                 prompts: leraPromptsData.prompts,
                 fullPrompt: leraPromptsData.fullPrompt,
                 routingSettings: nextRoutingSettings,
+                memorySettings: nextMemorySettings,
                 routingModules: await getRoutingPromptModules(),
                 pipeline: 'Two-Stage Routing'
             });

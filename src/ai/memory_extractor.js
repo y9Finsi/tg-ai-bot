@@ -3,20 +3,43 @@ import { getCachedOpenAIClient } from './llm_client.js';
 import { logLlmTrace } from './llm_client.js';
 import { parseLlmJson } from '../utils/robust_json.js';
 
+function isMemoryCandidate(text) {
+    const value = String(text || '').trim();
+    if (value.length < 8) return false;
+    if (/(?:^|\s)(?:я|мне)\b[\s\S]{0,40}\b(?:спать|спть|поспать|ложиться|отбой|устал(?:а|ый)?|сон)\b/iu.test(value)) return false;
+    if (/^(?:кароче\s+)?(?:ладно\s+)?(?:я\s+)?(?:спать|спть|пойду\s+спать|ложусь)\b[\s!.…]*$/iu.test(value)) return false;
+    return /(?:^|\s)(?:я|мне|меня|мой|моя|моё|мои|у меня|люблю|ненавижу|обожаю|работаю|учусь|живу|зовут|родом|занимаюсь|хочу|могу|не люблю)\b/iu.test(value);
+}
+
+function renderMemoryPrompt(template, existingListText, userText) {
+    const fallback = String(template || '');
+    return fallback
+        .replace(/\{\{existing_facts\}\}/g, existingListText)
+        .replace(/\{\{user_text\}\}/g, String(userText || '').slice(0, 4000));
+}
+
+function parseMemoryPayload(raw) {
+    const parsed = parseLlmJson(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('LLM не вернул JSON-объект');
+    }
+    return parsed;
+}
+
 export async function extractFactsInBackground(userId, userText) {
     if (!userText || userText.trim().length < 3) return { success: false, reason: "Text too short" };
-
-    
+    if (!isMemoryCandidate(userText)) return { success: false, reason: "No personal assertion candidate" };
     // Игнорируем простые приветствия и общие фан-реакции
     if (/^(привет|приветик|хай|ку|ага|угу|да|нет|неа|ок|окей|спасибо|спасиб|хаха+|ахах+|ясно|понял(?:а)?|пон|как дела|че делаешь)$/i.test(userText.trim())) {
         return { success: false, reason: "Generic greeting or reaction" };
     }
 
+    let lastRaw = null;
     try {
         const memSettings = await getMemorySettings();
         if (!memSettings.is_enabled) return { success: false, reason: "Memory disabled" };
 
-        const provider = await getMemoryProvider();
+        const provider = await getMemoryProvider(memSettings);
         if (!provider) return { success: false, reason: "No memory provider" };
 
         const existingMemories = await getUserMemories(userId, 30);
@@ -24,52 +47,50 @@ export async function extractFactsInBackground(userId, userText) {
             ? existingMemories.map(m => `(id:${m.id}) ${m.fact}`).join('\n')
             : 'Пока нет сохраненных фактов.';
 
-        const prompt = `Ты — модуль извлечения долгосрочной памяти о пользователе.
-Проанализируй реплику пользователя и выдели НОВЫЕ важные долгосрочные факты о нем (имя, город, возраст, профессия, увлечения, предпочтения, отношения, кинки, важные люди).
+        const prompt = renderMemoryPrompt(memSettings.prompt, existingListText, userText);
 
-[ТЕКУЩИЕ ФАКТЫ В БАЗЕ]:
-${existingListText}
-
-[СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ]:
-"${userText}"
-
-[ПРАВИЛА]:
-1. Извлекай только реальные устойчивые факты о ПОЛЬЗОВАТЕЛЕ, которые прямо следуют из его сообщения.
-2. Если пользователь просто задал вопрос без личных фактов о себе — верни пустой new_facts.
-3. Если пользователь обновил или отменил старый факт (например: переехал, сменил имя/работу) — укажи id старого факта в deactivate_ids.
-4. Ответь СТРОГО в виде валидного JSON без разметки markdown:
-{
-  "new_facts": [
-    {"category": "identity", "fact": "Сформулированный факт от 3-го лица (например: Имя пользователя — Богдан)"}
-  ],
-  "deactivate_ids": []
-}`;
-
-        const client = getCachedOpenAIClient(provider.base_url, provider.api_key, 10000);
+        const client = getCachedOpenAIClient(provider.base_url, provider.api_key, memSettings.timeout_ms);
         const requestCompletion = (maxTokens, retry = false) => client.chat.completions.create({
-            model: provider.model_name,
+            model: memSettings.model || provider.model_name,
             messages: [{
                 role: 'system',
                 content: retry
                     ? `${prompt}\n\nПРЕДЫДУЩИЙ ОТВЕТ БЫЛ ОБОРВАН. Верни только полностью закрытый JSON. Если фактов нет, верни {"new_facts":[],"deactivate_ids":[]}.`
                     : prompt
             }],
-            temperature: 0.2,
+            temperature: memSettings.temperature,
             max_tokens: maxTokens
         });
 
-        let completion = await requestCompletion(400);
+        const startedAt = Date.now();
+        let attempt = 'first';
+        let completion = await requestCompletion(memSettings.max_tokens);
         let raw = completion.choices[0]?.message?.content || '';
+        lastRaw = raw;
         let parsed;
+        let firstRaw = raw;
+        let firstError = null;
         try {
-            parsed = parseLlmJson(raw);
+            parsed = parseMemoryPayload(raw);
         } catch (parseError) {
-            completion = await requestCompletion(700, true);
+            firstError = parseError.message;
+            attempt = 'retry';
+            completion = await requestCompletion(memSettings.retry_max_tokens, true);
             raw = completion.choices[0]?.message?.content || '';
-            parsed = parseLlmJson(raw);
+            lastRaw = raw;
+            parsed = parseMemoryPayload(raw);
         }
 
-        logLlmTrace({ userId, kind: 'MEMORY', mode: 'fact-extractor', providerName: provider.name, model: provider.model_name, userText, systemPrompt: prompt, messages: [{ role: 'system', content: prompt }], rawResponse: completion.choices[0]?.message?.content || '', usage: completion.usage || {} });
+        const trace = {
+            step: attempt,
+            firstRawResponse: firstRaw,
+            firstParseError: firstError,
+            rawResponse: raw,
+            sampling: { temperature: memSettings.temperature, maxTokens: attempt === 'retry' ? memSettings.retry_max_tokens : memSettings.max_tokens },
+            promptTemplate: memSettings.prompt,
+            prompt: attempt === 'retry' ? `${prompt}\n\nПРЕДЫДУЩИЙ ОТВЕТ БЫЛ ОБОРВАН. Верни только полностью закрытый JSON. Если фактов нет, верни {"new_facts":[],"deactivate_ids":[]}.` : prompt
+        };
+        logLlmTrace({ userId, kind: 'MEMORY', mode: 'fact-extractor', providerName: provider.name, model: memSettings.model || provider.model_name, userText, systemPrompt: trace.prompt, messages: [{ role: 'system', content: trace.prompt }], rawResponse: raw, parsedResponse: parsed, usage: completion.usage || {}, latencyMs: Date.now() - startedAt, generationTrace: [trace] });
 
         let savedCount = 0;
         if (parsed.deactivate_ids && Array.isArray(parsed.deactivate_ids)) {
@@ -104,8 +125,17 @@ ${existingListText}
             }
         }
 
-        return { success: true, savedCount, parsed, providerName: provider.name };
+        return { success: true, savedCount, parsed, providerName: provider.name, model: memSettings.model || provider.model_name, attempt };
     } catch (err) {
+        logLlmTrace({
+            userId,
+            kind: 'MEMORY',
+            mode: 'fact-extractor',
+            userText,
+            rawResponse: lastRaw,
+            errorText: err.message,
+            generationTrace: [{ step: 'failed', error: err.message }]
+        });
         console.error(`⚠️ [MEMORY EXTRACTION ERROR] user ${userId}:`, err.message);
         return { success: false, error: err.message };
     }

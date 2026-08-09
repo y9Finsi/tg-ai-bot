@@ -2241,6 +2241,22 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.memory-settings-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.memory-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 12px 0 2px;
+}
+
+.memory-toggle-row .field-hint {
+  margin: 0;
+}
+
 .routing-fields-grid > label,
 .routing-mode-fields > label,
 .classifier-prompt-editor {
@@ -2563,6 +2579,9 @@
   .judge-fields-grid {
     grid-template-columns: 1fr 1fr;
   }
+  .memory-settings-grid {
+    grid-template-columns: 1fr 1fr;
+  }
   .judge-transfer-grid {
     grid-template-columns: 1fr;
   }
@@ -2579,7 +2598,8 @@
   .routing-fields-grid,
   .routing-mode-grid,
   .routing-mode-fields,
-  .judge-fields-grid {
+  .judge-fields-grid,
+  .memory-settings-grid {
     grid-template-columns: 1fr;
   }
 }

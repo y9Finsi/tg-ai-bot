@@ -24,7 +24,8 @@ export function logLlmTrace(entry = {}) {
         commandGateStatus: entry.commandGateStatus || null,
         commandGateReason: entry.commandGateReason || null,
         costUsd: entry.costUsd || 0,
-        errorText: entry.errorText || null
+        errorText: entry.errorText || null,
+        generationTrace: entry.generationTrace || []
     }).catch(error => {
         console.error('[LLM TRACE ERROR]:', error.message);
         return null;
