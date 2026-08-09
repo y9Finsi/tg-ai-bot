@@ -52,7 +52,7 @@ export function splitResponseMessages(text) {
         .filter(Boolean);
 
     if (parts.length > 4) {
-        return [parts.slice(0, 3).join(' '), parts.slice(3).join(' ')].filter(Boolean);
+        return [...parts.slice(0, 3), parts.slice(3).join(' ')].filter(Boolean);
     }
     return parts;
 }

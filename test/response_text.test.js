@@ -40,3 +40,10 @@ test('response splitter breaks an oversized ladder part into sentence bubbles', 
         ]
     );
 });
+
+test('response splitter keeps the first three ladder bubbles when limiting a long reply', () => {
+    assert.deepEqual(
+        splitResponseMessages('раз ||| два ||| три ||| четыре ||| пять'),
+        ['раз', 'два', 'три', 'четыре пять']
+    );
+});
