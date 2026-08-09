@@ -33,10 +33,21 @@ export const aiQueue = new Queue('ai-requests', {
     }
 });
 let aiWorker = null;
+const userJobLanes = new Map();
 
-export function startWorker(bot) {
-    if (aiWorker) return aiWorker;
-    aiWorker = new Worker('ai-requests', async job => {
+function runUserJob(userId, task) {
+    const key = String(userId);
+    const previous = userJobLanes.get(key) || Promise.resolve();
+    const current = previous.catch(() => null).then(task);
+    userJobLanes.set(key, current);
+    return current.finally(() => {
+        if (userJobLanes.get(key) === current) {
+            userJobLanes.delete(key);
+        }
+    });
+}
+
+async function processAiJob(bot, job) {
         const { userId, text, chatId, shouldDecrement, reservedResource = null, tempMsgId, eventIds = [], batchId = null, firstMessageAt = null, preMessageGapSeconds = null } = job.data;
         let reservationRefunded = false;
         const refundReservation = async () => {
@@ -222,7 +233,14 @@ export function startWorker(bot) {
             }
             await markInputEvents('FAILED', errMsg);
         }
-    }, { 
+}
+
+export function startWorker(bot) {
+    if (aiWorker) return aiWorker;
+    aiWorker = new Worker('ai-requests', job => runUserJob(
+        job.data.userId,
+        () => processAiJob(bot, job)
+    ), {
         connection,
         concurrency: 5,
         lockDuration: 120000,

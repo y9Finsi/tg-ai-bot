@@ -23,7 +23,6 @@ import {
     getSetting,
     setSetting,
     getUser,
-    getHistory,
     getUserMemories,
     getAllLeraPhotos,
     addLeraPhoto,
@@ -1341,23 +1340,17 @@ export function startAdminServer() {
     app.get('/api/sandbox/users/:id/context', async (req, res) => {
         try {
             const userId = Number(req.params.id);
-            const [user, events, fallbackHistory, memories] = await Promise.all([
+            const [user, events, memories] = await Promise.all([
                 getUser(userId),
                 getRecentConversationEvents(userId, 10),
-                getHistory(userId, 10),
                 getUserMemories(userId, 30)
             ]);
             if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-            // Keep the same priority as the production LLM pipeline: completed
-            // conversation events first, then legacy chat_history as fallback.
             const eventHistory = events
-                .filter(event => event.content && (
+                .filter(event => event.status === 'COMPLETED' && event.content && (
                     event.event_type === 'MESSAGE'
                     || event.event_type === 'INITIATIVE'
-                    || event.role === 'user'
-                    || event.role === 'lera'
-                    || event.role === 'assistant'
                 ))
                 .slice(-10)
                 .map(event => ({
@@ -1365,19 +1358,12 @@ export function startAdminServer() {
                     role: event.role === 'lera' || event.role === 'assistant' ? 'assistant' : 'user',
                     content: event.content
                 }));
-            const history = eventHistory.length
-                ? eventHistory
-                : fallbackHistory.map((message, index) => ({
-                    id: `history-${index}`,
-                    role: message.role === 'lera' || message.role === 'assistant' ? 'assistant' : 'user',
-                    content: message.content
-                }));
             res.json({
                 success: true,
                 writes: 0,
                 user,
-                history,
-                historySource: eventHistory.length ? 'conversation_events' : 'chat_history',
+                history: eventHistory,
+                historySource: 'conversation_events',
                 activeMemoryCount: memories.length
             });
         } catch (e) {
@@ -1981,7 +1967,14 @@ export function startAdminServer() {
 
             const context = await ContextBuilder.buildTelegramContext(userId, { overrides });
             const routingSettings = await getRoutingSettings();
-            const history = await getHistory(userId, 3).catch(() => []);
+            const history = (await getRecentConversationEvents(userId, 3).catch(() => []))
+                .filter(event => event.status === 'COMPLETED'
+                    && event.content
+                    && (event.event_type === 'MESSAGE' || event.event_type === 'INITIATIVE'))
+                .map(event => ({
+                    role: event.role === 'lera' || event.role === 'assistant' ? 'assistant' : 'user',
+                    content: event.content
+                }));
             const classifier = userText
                 ? await classifyIntent({ userId, userText, history })
                 : { mode: 'CASUAL', bypassed: true };

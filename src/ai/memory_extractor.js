@@ -4,6 +4,7 @@ import { logLlmTrace } from './llm_client.js';
 
 export async function extractFactsInBackground(userId, userText) {
     if (!userText || userText.trim().length < 3) return { success: false, reason: "Text too short" };
+
     
     // Игнорируем простые приветствия и общие фан-реакции
     if (/^(привет|приветик|хай|ку|ага|угу|да|нет|неа|ок|окей|спасибо|спасиб|хаха+|ахах+|ясно|понял(?:а)?|пон|как дела|че делаешь)$/i.test(userText.trim())) {
@@ -92,34 +93,6 @@ ${existingListText}
         return { success: true, savedCount, parsed, providerName: provider.name };
     } catch (err) {
         console.error(`⚠️ [MEMORY EXTRACTION ERROR] user ${userId}:`, err.message);
-        return { success: false, error: err.message };
-    }
-}
-
-export async function extractConversationEffects(userId, userText) {
-    if (!userText) return { success: false, reason: 'empty dialogue' };
-    try {
-        const provider = await getMemoryProvider();
-        if (!provider) return { success: false, reason: 'No memory provider' };
-        const prompt = `Проанализируй диалог и верни только JSON служебных эффектов.
-Пользователь: ${userText || ''}
-Фиксируй MUTE только если явно понятно, что Лера замолчала/занята/спит или пользователь попросил не писать.
-Фиксируй REACTION только если есть явная реакция, которую нужно сохранить.
-Формат: {"mute":null или {"reason":"...","until":null},"reaction":null или {"emoji":"...","text":"..."}}`;
-
-        const client = getCachedOpenAIClient(provider.base_url, provider.api_key, 8000);
-        const completion = await client.chat.completions.create({
-            model: provider.model_name,
-            messages: [{ role: 'system', content: prompt }],
-            temperature: 0.2,
-            max_tokens: 300
-        });
-        logLlmTrace({ userId, kind: 'MEMORY_EFFECTS', mode: 'conversation-effects', providerName: provider.name, model: provider.model_name, userText, systemPrompt: prompt, messages: [{ role: 'system', content: prompt }], rawResponse: completion.choices[0]?.message?.content || '', usage: completion.usage || {} });
-        const raw = completion.choices[0]?.message?.content || '';
-        const cleanJson = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(cleanJson);
-        return { success: true, parsed };
-    } catch (err) {
         return { success: false, error: err.message };
     }
 }

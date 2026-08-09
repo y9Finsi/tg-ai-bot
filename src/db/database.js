@@ -440,15 +440,6 @@ export async function createUser(telegramId, username, firstName, lastName, refe
     return res.rows[0];
 }
 
-export async function saveMessage(userId, role, content, cost = 0) {
-    const res = await query(
-        'INSERT INTO chat_history (user_id, role, content, cost) VALUES ($1, $2, $3, $4) RETURNING *',
-        [userId, role, content, cost]
-    );
-    await query('UPDATE users SET last_active_at = CURRENT_TIMESTAMP, promo_24h_sent = FALSE WHERE telegram_id = $1', [userId]);
-    return res.rows[0];
-}
-
 function asEventDate(value) {
     const date = value instanceof Date ? value : new Date(value || Date.now());
     return Number.isNaN(date.getTime()) ? new Date() : date;
@@ -591,23 +582,8 @@ export async function getActiveMute(userId) {
     return result.rows[0] || null;
 }
 
-export async function getHistory(userId, limit = 20) {
-    const res = await query(
-        `SELECT role, content FROM (
-            SELECT id, role, content FROM chat_history 
-            WHERE user_id = $1 
-            ORDER BY created_at DESC 
-            LIMIT $2
-        ) sub ORDER BY id ASC`,
-        [userId, limit]
-    );
-    return res.rows;
-}
-
 export async function clearHistory(userId) {
-    const res = await query('DELETE FROM chat_history WHERE user_id = $1', [userId]);
-    await clearConversationEvents(userId);
-    return res.rowCount;
+    return await clearConversationEvents(userId);
 }
 
 export async function decrementFreeRequest(userId) {
@@ -663,7 +639,7 @@ export async function getAdminStats() {
         query('SELECT COALESCE(SUM(total_spent), 0) AS sum FROM users'),
         query("SELECT COALESCE(SUM(amount), 0) AS sum FROM payments WHERE status = 'completed' AND currency <> 'XTR'"),
         query("SELECT COALESCE(SUM(amount), 0) AS sum FROM payments WHERE status = 'completed' AND currency = 'XTR'"),
-        query('SELECT COUNT(*) FROM chat_history'),
+        query("SELECT COUNT(*) FROM conversation_events WHERE event_type IN ('MESSAGE', 'INITIATIVE') AND role IN ('user', 'lera', 'assistant') AND status = 'COMPLETED'"),
         query("SELECT COUNT(*) FROM users WHERE last_active_at >= CURRENT_TIMESTAMP - INTERVAL '24 hours'"),
         query('SELECT COUNT(*) FROM users WHERE is_premium = TRUE'),
         query("SELECT COUNT(*) FROM users WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day'"),
@@ -1284,8 +1260,12 @@ export async function deleteChannelPostLog(id) {
 }
 
 export async function getTodayUserChatSummary() {
-    const result = await query(`SELECT role, content FROM chat_history
-        WHERE created_at >= CURRENT_DATE ORDER BY created_at DESC LIMIT 20`);
+    const result = await query(`SELECT role, content FROM conversation_events
+        WHERE occurred_at >= CURRENT_DATE
+          AND status = 'COMPLETED'
+          AND event_type IN ('MESSAGE', 'INITIATIVE', 'PROMO')
+          AND role IN ('user', 'lera', 'assistant')
+        ORDER BY occurred_at DESC, id DESC LIMIT 20`);
     return result.rows.reverse().map(row => `${row.role}: ${String(row.content).slice(0, 160)}`).join('\n') || 'Сегодня личных разговоров еще не было.';
 }
 
@@ -1648,9 +1628,8 @@ export async function getAllRecentConversationEvents(limit = 50) {
 }
 
 export async function clearAllChatHistory() {
-    const resChat = await query('DELETE FROM chat_history');
-    await query('DELETE FROM conversation_events').catch(() => {});
-    return resChat.rowCount || 0;
+    const resEvents = await query('DELETE FROM conversation_events');
+    return resEvents.rowCount || 0;
 }
 
 export async function clearAllUserMemories() {

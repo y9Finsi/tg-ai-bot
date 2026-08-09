@@ -203,7 +203,7 @@ test('sandbox user context endpoint is read-only and auth reaches every sandbox 
     assert.match(server, /app\.get\('\/api\/sandbox\/users'/);
     assert.match(server, /app\.get\('\/api\/sandbox\/users\/:id\/context'/);
     assert.match(server, /writes: 0/);
-    assert.match(server, /historySource: eventHistory\.length \? 'conversation_events' : 'chat_history'/);
+    assert.match(server, /historySource: 'conversation_events'/);
 });
 
 test('new management center covers the admin domains and safe actions', () => {

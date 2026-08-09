@@ -1,15 +1,15 @@
 import OpenAI from 'openai';
 import {
-    getHistory, saveMessage, getUser, addApiCost, setUserPrompt,
+    getUser, addApiCost,
     getActiveAiProvider, getUserMemories, getMemorySettings,
     getLeraPhotoCandidates, getSentPhotos, recordPhotoSent,
     getRecentConversationEvents, formatConversationEvent, getRecentSimulationReflections,
     savePromptLog
 } from './database.js';
-import { promptTemplates, getRoutedSystemPrompt } from './prompts.js';
+import { getRoutedSystemPrompt } from './prompts.js';
 import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX, IMAGE_STYLES } from './constants/intents.js';
 import { requestLlmCompletion } from './ai/llm_client.js';
-import { extractFactsInBackground, extractConversationEffects } from './ai/memory_extractor.js';
+import { extractFactsInBackground } from './ai/memory_extractor.js';
 import { ContextBuilder } from './ai/context_builder.js';
 import { validateUserCommand } from './ai/command_gate.js';
 import { evaluateLeraReply, getQualityFallback } from './ai/response_quality.js';
@@ -75,15 +75,6 @@ export async function getOpenAIClientAndModel() {
 export { PHOTO_INTENT_REGEX, extractFactsInBackground };
 
 // --- 2. ВСПОМОГАТЕЛЬНЫЕ ХЕЛПЕРЫ ---
-
-async function resolveSystemPrompt(user, userId) {
-    if (user?.roleplay_mode === 'custom' && user?.current_prompt) {
-        return user.current_prompt;
-    }
-    // Стандартный промпт всегда берём из файлов, чтобы изменения не застревали
-    // в старой копии users.current_prompt.
-    return promptTemplates['prompt_flirthot'];
-}
 
 async function loadRecentReflections(limit = 3) {
     try {
@@ -264,12 +255,11 @@ async function generatePhotoForPrompt(userId, user, imagePrompt, preselectedPhot
 
 // --- 3. ПАЙПЛАЙН AI ДВИЖКА ---
 
-async function buildMessagePayload(user, userId, { userText, isInitiative, routingMode = 'CASUAL', routingEnabled = false, initiativeReason = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null }) {
-    const productionRoutingSettings = routingEnabled ? await getRoutingSettings() : null;
-    const productionIntentConfig = routingEnabled ? getModeIntentConfig(routingMode, productionRoutingSettings) : null;
-    const [history, baseSystemPromptText, conversationEvents, memories] = await Promise.all([
-        getHistory(userId, 10),
-        routingEnabled ? getRoutedSystemPrompt(routingMode, productionIntentConfig) : resolveSystemPrompt(user, userId),
+async function buildMessagePayload(user, userId, { userText, isInitiative, routingMode = 'CASUAL', initiativeReason = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null }) {
+    const productionRoutingSettings = await getRoutingSettings();
+    const productionIntentConfig = getModeIntentConfig(routingMode, productionRoutingSettings);
+    const [baseSystemPromptText, conversationEvents, memories] = await Promise.all([
+        getRoutedSystemPrompt(routingMode, productionIntentConfig),
         getRecentConversationEvents(userId, 10).catch(() => []),
         getUserMemories(userId, 30).catch(() => [])
     ]);
@@ -365,21 +355,14 @@ async function buildMessagePayload(user, userId, { userText, isInitiative, routi
 
     // Добавляем историю прошлых сообщений в массив сообщений для LLM
     const chatHistoryEvents = priorEvents.filter(ev =>
-        ev.content && (ev.event_type === 'MESSAGE' || ev.event_type === 'INITIATIVE' || ev.role === 'user' || ev.role === 'lera' || ev.role === 'assistant')
+        ev.content && (ev.event_type === 'MESSAGE' || ev.event_type === 'INITIATIVE')
     ).slice(-10);
 
     if (productionIntentConfig?.promptModules?.history !== false) {
-        if (chatHistoryEvents.length > 0) {
-            chatHistoryEvents.forEach(ev => {
-                const role = (ev.role === 'lera' || ev.role === 'assistant') ? 'assistant' : 'user';
-                messages.push({ role, content: ev.content });
-            });
-        } else if (history && history.length > 0) {
-            history.forEach(msg => {
-                const role = (msg.role === 'lera' || msg.role === 'assistant') ? 'assistant' : 'user';
-                messages.push({ role, content: msg.content });
-            });
-        }
+        chatHistoryEvents.forEach(ev => {
+            const role = (ev.role === 'lera' || ev.role === 'assistant') ? 'assistant' : 'user';
+            messages.push({ role, content: ev.content });
+        });
     }
 
     // Передаем последнее текущее сообщение пользователя, если оно ещё не было занесено
@@ -452,34 +435,18 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
     };
 }
 
-async function recordAiTransaction(userId, userText, text, usage, isInitiative, recPost = null, photoCaption = null) {
+async function recordAiTransaction(userId, usage) {
     let cost = 0;
     if (usage) {
         cost = (usage.prompt_tokens * 0.13 / 1000000) + (usage.completion_tokens * 0.28 / 1000000);
         await addApiCost(userId, cost);
     }
-
-    if (!isInitiative && userText) {
-        await saveMessage(userId, 'user', userText, 0);
-    }
-
-    if (text || recPost || photoCaption) {
-        let historyContent = text || "";
-        if (photoCaption) {
-            historyContent = (historyContent ? historyContent + "\n" : "") + `[Лера отправила личное фото: "${photoCaption}"]`;
-        }
-        if (recPost && recPost.text) {
-            historyContent = (historyContent ? historyContent + "\n" : "") + `[Лера переслала пост из канала: "${recPost.text}"]`;
-        }
-        await saveMessage(userId, 'assistant', historyContent, cost);
-    }
-
-    console.log(`🤖 [${isInitiative ? 'AI INITIATIVE' : 'BOT'} ${userId}]: ${text}`);
+    return cost;
 }
 
 // --- 4. ДЕКЛАРАТИВНЫЙ ЕДИНЫЙ ДВИЖОК ---
 
-async function runAiEngine(userId, { userText = null, isInitiative = false, routingMode = 'CASUAL', routingEnabled = false, classifierResult = null, initiativeReason = null, commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null } = {}) {
+async function runAiEngine(userId, { userText = null, isInitiative = false, routingMode = 'CASUAL', classifierResult = null, initiativeReason = null, commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null } = {}) {
     const user = await getUser(userId);
     if (!user) return null;
 
@@ -487,9 +454,9 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     const {
         messages, isPhotoRequest, recommendationPost, preselectedPhoto, lastLeraText,
         recentReplyTexts, memories, leraState, systemPrompt, radiantContext
-    } = await buildMessagePayload(user, userId, { userText, isInitiative, routingMode, routingEnabled, initiativeReason, batchId, eventIds, preMessageGapSeconds, firstMessageAt });
-    const routingSettings = routingEnabled ? await getRoutingSettings() : null;
-    const generationParams = routingEnabled ? getModeGenerationParams(routingMode, routingSettings) : {};
+    } = await buildMessagePayload(user, userId, { userText, isInitiative, routingMode, initiativeReason, batchId, eventIds, preMessageGapSeconds, firstMessageAt });
+    const routingSettings = await getRoutingSettings();
+    const generationParams = getModeGenerationParams(routingMode, routingSettings);
 
     // Логирование вызова LLM в prompt_logs. Никогда не блокирует генерацию ответа.
     const writePromptLog = (extra = {}) => {
@@ -498,7 +465,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         savePromptLog({
             userId,
             kind: isInitiative ? 'INITIATIVE' : 'CHAT',
-            mode: routingEnabled ? routingMode : (user.roleplay_mode || 'flirthot'),
+            mode: routingMode,
             userText,
             systemPrompt,
             radiantContext,
@@ -509,7 +476,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
             commandGateStatus: commandGate?.code || null,
             commandGateReason: commandGate?.accepted ? null : commandGate?.willingness ? `Willingness ${commandGate.willingness.value}%` : null,
             costUsd: extra.costUsd ?? ((promptTokens * 0.13 / 1000000) + (completionTokens * 0.28 / 1000000)),
-            routingMode: routingEnabled ? routingMode : 'LEGACY',
+            routingMode,
             classifier: classifierResult ? {
                 mode: classifierResult.mode,
                 providerName: classifierResult.providerName,
@@ -547,7 +514,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         && greetingPrefix.test(text || '')
         && greetingPrefix.test(lastLeraText || '');
     const qualityIssues = evaluateLeraReply(text, userText, null, {
-        mode: routingEnabled ? routingMode : null,
+        mode: routingMode,
         recentReplies: recentReplyTexts
     }).violations;
     const needsQualityRetry = !isInitiative && qualityIssues.some(issue => [
@@ -592,7 +559,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     }
 
     const finalQuality = evaluateLeraReply(text, userText, null, {
-        mode: routingEnabled ? routingMode : null,
+        mode: routingMode,
         recentReplies: recentReplyTexts
     });
     if (!isInitiative && userText && !finalQuality.passed) {
@@ -606,7 +573,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
             usage,
             errorText: `Quality Gate после retry: ${finalQuality.violations.join(', ')}`
         });
-        text = getQualityFallback(routingEnabled ? routingMode : 'CASUAL');
+        text = getQualityFallback(routingMode);
         photo = null;
         photoCaption = null;
         finalRecPost = null;
@@ -625,7 +592,8 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     }
 
     // 4. Логирование и БД (с учётом отправленной фотографии в истории)
-    await recordAiTransaction(userId, userText, text, usage, isInitiative, finalRecPost, photoCaption);
+    await recordAiTransaction(userId, usage);
+    console.log(`🤖 [${isInitiative ? 'AI INITIATIVE' : 'BOT'} ${userId}]: ${text}`);
 
     // 4.1 Полный лог промпта и ответа для инспектора (в фоне, не блокирует ответ)
     writePromptLog({
@@ -644,10 +612,6 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
             console.error(`⚠️ Ошибка фонового извлечения памяти (${userId}):`, mErr.message)
         );
     }
-    extractConversationEffects(userId, userText).catch(effectError =>
-        console.error(`⚠️ Ошибка фоновых эффектов диалога (${userId}):`, effectError.message)
-    );
-
     return {
         text: text || "",
         photo,
@@ -706,23 +670,26 @@ export async function generateResponse(userId, text, envelope = {}) {
         };
     }
 
-    let routingEnabled = false;
     let routingMode = 'CASUAL';
     let classifierResult = null;
     try {
-        const routingSettings = await getRoutingSettings();
-        routingEnabled = routingSettings.enabled;
-        if (routingEnabled) {
-            const history = await getHistory(userId, 3).catch(() => []);
-            classifierResult = await classifyIntent({ userId, userText: text, history });
-            routingMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(classifierResult.mode)
-                ? classifierResult.mode
-                : 'CASUAL';
-            const usage = classifierResult.usage || {};
-            const classifierCost = (Number(usage.prompt_tokens || 0) * 0.13 / 1000000)
-                + (Number(usage.completion_tokens || 0) * 0.28 / 1000000);
-            if (classifierCost > 0) await addApiCost(userId, classifierCost);
-        }
+        const events = await getRecentConversationEvents(userId, 3).catch(() => []);
+        const history = events
+            .filter(event => event.status === 'COMPLETED'
+                && event.content
+                && (event.event_type === 'MESSAGE' || event.event_type === 'INITIATIVE'))
+            .map(event => ({
+                role: event.role === 'lera' || event.role === 'assistant' ? 'assistant' : 'user',
+                content: event.content
+            }));
+        classifierResult = await classifyIntent({ userId, userText: text, history });
+        routingMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(classifierResult.mode)
+            ? classifierResult.mode
+            : 'CASUAL';
+        const usage = classifierResult.usage || {};
+        const classifierCost = (Number(usage.prompt_tokens || 0) * 0.13 / 1000000)
+            + (Number(usage.completion_tokens || 0) * 0.28 / 1000000);
+        if (classifierCost > 0) await addApiCost(userId, classifierCost);
     } catch (routingError) {
         console.error('[INTENT ROUTER] fallback to CASUAL:', routingError.message);
         classifierResult = { mode: 'CASUAL', error: routingError.message };
@@ -731,7 +698,6 @@ export async function generateResponse(userId, text, envelope = {}) {
     return await runAiEngine(userId, {
         userText: text,
         isInitiative: false,
-        routingEnabled,
         routingMode,
         classifierResult,
         commandGate: command.isCommand ? command : null,
@@ -743,5 +709,9 @@ export async function generateResponse(userId, text, envelope = {}) {
 }
 
 export async function generateAiInitiativeResponse(userId, reason = null) {
-    return await runAiEngine(userId, { isInitiative: true, initiativeReason: reason });
+    return await runAiEngine(userId, {
+        isInitiative: true,
+        routingMode: 'CASUAL',
+        initiativeReason: reason
+    });
 }

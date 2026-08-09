@@ -4,7 +4,7 @@ import { startAdminServer, setBotInstanceForServer } from './server.js';
 import {
     getUser, createUser, isFreeModeEnabled, toggleFreeMode,
     resetAllFreeRequests, getAdminStats, setUserPrompt, getAllUserIds, clearHistory,
-    getSetting, setSetting, logPayment, addFreeRequests, saveMessage,
+    getSetting, setSetting, logPayment, addFreeRequests,
     setBlockStatus, adminSetTextBalance, adminSetImageBalance,
     getUsersTotal, getUsersPage, grantPackage, updateUserMeta,
     processPlategaPayment, updateLastActive, setStoreOpened, getUsersForRetargeting24h, mark24hPromoSent, getUsersForRetargetingStore, markStorePromoSent,
@@ -127,6 +127,7 @@ async function flushUserBuffer(userId) {
         });
     } catch (e) {
         if (reservedResource) await refundReservedRequest(userId, reservedResource).catch(() => null);
+        await failPendingEvents(`queue enqueue failed: ${e.message}`).catch(() => null);
         console.error(`[Debounce Flush Error] User: ${userId}`, e);
     }
 }
@@ -1617,7 +1618,6 @@ function startAutoFunnels() {
                     } else {
                         const fallbackMsg = "🤫 Я приготовила для тебя кое-что особенное, но ты почему-то молчишь... Возвращайся в диалог!";
                         await bot.telegram.sendMessage(uid, fallbackMsg);
-                        await saveMessage(uid, 'assistant', fallbackMsg);
                     }
                     await appendConversationEvent({
                         userId: uid,
@@ -1642,7 +1642,15 @@ function startAutoFunnels() {
 
                     const msg = `Вижу, ты заглядывал в магазин 👀\n\n🔥 Я тут договорилась... держи персональный промокод на скидку 20% и +5 бесплатных текстов: <code>${promoCode}</code>\n\nДействует только для тебя, успей использовать!`;
                     await bot.telegram.sendMessage(uid, msg, { parse_mode: 'HTML' });
-                    await saveMessage(uid, 'assistant', msg);
+                    await appendConversationEvent({
+                        userId: uid,
+                        eventType: 'PROMO',
+                        role: 'lera',
+                        content: msg,
+                        occurredAt: new Date(),
+                        metadata: { campaign: 'store_abandonment' },
+                        status: 'COMPLETED'
+                    });
                     await markStorePromoSent(uid);
                     await new Promise(r => setTimeout(r, 50));
                 } catch (e) { /* Игнор отписки */ }
