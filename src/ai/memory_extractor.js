@@ -1,6 +1,7 @@
 import { getMemorySettings, getMemoryProvider, getUserMemories, saveUserMemory, deactivateUserMemory, appendConversationEvent } from '../database.js';
 import { getCachedOpenAIClient } from './llm_client.js';
 import { logLlmTrace } from './llm_client.js';
+import { parseLlmJson } from '../utils/robust_json.js';
 
 export async function extractFactsInBackground(userId, userText) {
     if (!userText || userText.trim().length < 3) return { success: false, reason: "Text too short" };
@@ -45,17 +46,30 @@ ${existingListText}
 }`;
 
         const client = getCachedOpenAIClient(provider.base_url, provider.api_key, 10000);
-        const completion = await client.chat.completions.create({
+        const requestCompletion = (maxTokens, retry = false) => client.chat.completions.create({
             model: provider.model_name,
-            messages: [{ role: 'system', content: prompt }],
+            messages: [{
+                role: 'system',
+                content: retry
+                    ? `${prompt}\n\nПРЕДЫДУЩИЙ ОТВЕТ БЫЛ ОБОРВАН. Верни только полностью закрытый JSON. Если фактов нет, верни {"new_facts":[],"deactivate_ids":[]}.`
+                    : prompt
+            }],
             temperature: 0.2,
-            max_tokens: 400
+            max_tokens: maxTokens
         });
-        logLlmTrace({ userId, kind: 'MEMORY', mode: 'fact-extractor', providerName: provider.name, model: provider.model_name, userText, systemPrompt: prompt, messages: [{ role: 'system', content: prompt }], rawResponse: completion.choices[0]?.message?.content || '', usage: completion.usage || {} });
 
-        const raw = completion.choices[0]?.message?.content || '';
-        const cleanJson = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(cleanJson);
+        let completion = await requestCompletion(400);
+        let raw = completion.choices[0]?.message?.content || '';
+        let parsed;
+        try {
+            parsed = parseLlmJson(raw);
+        } catch (parseError) {
+            completion = await requestCompletion(700, true);
+            raw = completion.choices[0]?.message?.content || '';
+            parsed = parseLlmJson(raw);
+        }
+
+        logLlmTrace({ userId, kind: 'MEMORY', mode: 'fact-extractor', providerName: provider.name, model: provider.model_name, userText, systemPrompt: prompt, messages: [{ role: 'system', content: prompt }], rawResponse: completion.choices[0]?.message?.content || '', usage: completion.usage || {} });
 
         let savedCount = 0;
         if (parsed.deactivate_ids && Array.isArray(parsed.deactivate_ids)) {
