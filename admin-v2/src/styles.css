@@ -71,105 +71,62 @@ button, input, select, textarea { font: inherit; }
 .kanban-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; width: 100%; }
 .kanban-column { display: flex; flex-direction: column; padding: 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); min-width: 0; }
 @media (max-width: 1100px) { .kanban-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 640px) { .kanban-board { grid-template-columns: 1fr; } }/* Card & Header Design System (better-colors & better-typography) */
-.ui-card {
-    padding: 20px 24px;
+@media (max-width: 640px) { .kanban-board { grid-template-columns: 1fr; } }.ui-card {
+    padding: 20px;
     border: 1px solid var(--line);
     border-radius: 12px;
     background: var(--panel);
     margin-bottom: 24px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-    transition: border-color 0.15s cubic-bezier(0.2, 0, 0, 1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
-.ui-card:hover {
-    border-color: rgba(255, 255, 255, 0.12);
+.ui-card-frameless {
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    margin-bottom: 24px;
 }
 
+/* Typography & Header Hierarchy (better-typography & better-layout) */
 .card-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
     gap: 16px;
-    margin-bottom: 20px;
-}
-.card-header .eyebrow {
-    color: var(--blue);
-    font: 600 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin-bottom: 4px;
+    margin-bottom: 18px;
 }
 .card-header h2 {
-    margin: 0;
+    margin: 4px 0 2px;
     font-size: 17px;
-    font-weight: 600;
+    font-weight: 650;
+    line-height: 1.3;
     letter-spacing: -0.015em;
     color: #ffffff !important;
 }
 .card-header p {
     max-width: 680px;
-    margin: 4px 0 0;
-    color: var(--subtle);
+    margin: 0;
+    color: var(--muted);
     font-size: 13px;
-    line-height: 1.45;
+    line-height: 1.48;
 }
 
-/* Navigation Tabs & Tabbar (better-ui & better-layout) */
-.diary-tabbar, .management-tabs {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px;
-    border-radius: 10px;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    margin-bottom: 20px;
-    overflow-x: auto;
-}
-.diary-tabbar button, .diary-tabbar [role="tab"], .management-tabs .ui-button, .v2-nav button {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--subtle);
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: color 0.15s, background-color 0.15s, border-color 0.15s, transform 0.1s;
-}
-.diary-tabbar button:hover, .diary-tabbar [role="tab"]:hover, .management-tabs .ui-button:hover, .v2-nav button:hover {
-    color: #ffffff;
-    background: var(--panel2);
-}
-.diary-tabbar button[data-state=active], .diary-tabbar [role="tab"][data-state=active], .management-tabs .ui-button[data-state=active], .v2-nav button[data-state=active] {
-    color: #ffffff;
-    background: var(--panel2);
-    border-color: var(--line);
-    font-weight: 600;
-}
-.diary-tabbar button:active, .diary-tabbar [role="tab"]:active, .management-tabs .ui-button:active, .v2-nav button:active {
-    transform: scale(0.97);
-}
-
-/* Kanban Board Layout (better-layout & better-ui) */
+/* Kanban System Design (better-colors, better-layout, better-ui) */
+.kanban-card { margin-bottom: 24px; }
 .kanban-board {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
+    gap: 14px;
     width: 100%;
 }
 .kanban-column {
-    display: flex;
-    flex-direction: column;
+    min-width: 0;
     padding: 14px;
+    border: 1px solid var(--line);
     border-radius: 10px;
     background: var(--panel2);
-    border: 1px solid var(--line);
-    min-width: 0;
+    display: flex;
+    flex-direction: column;
 }
 .kanban-column-head {
     display: flex;
@@ -178,33 +135,31 @@ button, input, select, textarea { font: inherit; }
     gap: 8px;
     margin-bottom: 12px;
     padding-bottom: 8px;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--line-subtle);
 }
-.kanban-column-head strong { font-size: 13px; font-weight: 600; color: #ffffff; }
-.kanban-column-head span { color: var(--subtle); font-size: 11px; }
-.kanban-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--subtle);
-    font: 600 11px ui-monospace, monospace;
-}
-.kanban-list { display: grid; gap: 8px; max-height: 420px; overflow-y: auto; padding-right: 2px; }
+.kanban-column-head strong { color: #ffffff; font-size: 14px; font-weight: 600; }
+.kanban-column-head span { color: var(--subtle); font-size: 11px; font-weight: 500; }
+.kanban-list { display: grid; gap: 8px; max-height: 480px; overflow-y: auto; padding-right: 2px; }
+
 .kanban-item {
     display: grid;
     gap: 6px;
     padding: 12px;
+    border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--panel);
-    border: 1px solid var(--line);
-    transition: border-color 0.15s;
+    transition: transform 0.12s ease, border-color 0.12s ease;
 }
-.kanban-item:hover { border-color: rgba(255, 255, 255, 0.15); }
-.kanban-item strong { font-size: 13px; color: #ffffff; }
-.kanban-item span, .kanban-item small { color: var(--subtle); font-size: 12px; }
+.kanban-item:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+    transform: translateY(-1px);
+}
+.kanban-item:active { transform: scale(0.98); }
+
+.kanban-planned .kanban-item { border-left: 3px solid var(--yellow); }
+.kanban-active .kanban-item { border-left: 3px solid var(--blue); }
+.kanban-done .kanban-item { border-left: 3px solid var(--green); }
+.kanban-cancelled .kanban-item { border-left: 3px solid #52525b; opacity: 0.82; }
 :root{--lab-line:#27272a}.day-summary{margin-bottom:32px}.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.summary-grid>div{display:grid;gap:4px;padding:10px;border:none;border-radius:8px;background:#18181b}.summary-grid span{color:var(--subtle);font-size:12px}.summary-grid strong{font-size:15px}.summary-footer{display:flex;flex-wrap:wrap;gap:16px;margin-top:11px;color:var(--muted);font:10px ui-monospace,monospace}.filter-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:15px}.filter-export{margin-left:auto}.traits-lab{gap:7px}.trait-row{display:grid;gap:6px;padding:8px;border:none;border-radius:7px;color:var(--muted);background:#18181b;cursor:pointer;text-align:left}.trait-row:hover,.trait-row.selected{border-color:#a855f780;background:#2e106530}.trait-row>div{display:flex;justify-content:space-between}.personality-preview{display:grid;gap:6px;margin-top:16px;padding-top:13px;border-top:1px solid var(--line)}.personality-preview h3{margin:0 0 3px;font-size:12px}.personality-preview div{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}.positive{color:var(--green)}.negative{color:var(--red)}.npc-list{display:grid;gap:8px}.npc-card{display:flex;align-items:center;gap:9px;padding:9px;border:none;border-radius:8px;background:#18181b}.npc-card>div:last-child{display:grid;gap:2px}.npc-card span,.npc-card small{color:var(--subtle);font-size:11px}.npc-avatar{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;font-weight:700}.npc-pink{color:#fbcfe8;background:#500724}.npc-blue{color:#bfdbfe;background:#172554}.random-list{display:grid;gap:8px}.random-card{display:flex;justify-content:space-between;gap:14px;padding:11px;border:none;border-radius:8px;background:#18181b}.random-card>div:first-child{display:grid;gap:4px}.random-title{display:flex;align-items:center;gap:8px}.random-card span,.random-card small{color:var(--subtle);font-size:12px}.checks{display:flex;flex-wrap:wrap;align-content:flex-start;justify-content:flex-end;gap:5px}.simulation-lab{margin-top:14px}.lab-controls{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.lab-controls label{display:grid;gap:4px;color:var(--subtle);font-size:12px}.lab-controls input{min-height:32px;padding:6px 9px;border:1px solid var(--line);border-radius:7px;color:#f4f4f5;background:#09090b}.lab-summary{margin-top:14px}.lab-details{margin-top:12px}.lab-details summary{color:var(--muted);cursor:pointer}.lab-details pre{max-height:300px;overflow:auto;padding:10px;color:#bfdbfe;background:#09090b;font:10px/1.5 ui-monospace,monospace;white-space:pre-wrap}@media(max-width:900px){.random-card{display:grid}.checks{justify-content:flex-start}.summary-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:540px){.summary-grid{grid-template-columns:1fr 1fr}.filter-export{margin-left:0}}
 :root{--schedule-bg:#141416}.schedule-card{margin-bottom:32px}.schedule-legend,.schedule-filters{display:flex;flex-wrap:wrap;gap:6px}.schedule-filters{margin-top:11px}.schedule-axis{display:flex;justify-content:space-between;margin-top:15px;padding:0 1%;color:var(--subtle);font:10px ui-monospace,monospace}.schedule-board{position:relative;height:172px;margin-top:6px;border:none;border-radius:8px;background:repeating-linear-gradient(90deg,transparent 0 calc(25% - 1px),#27272a calc(25% - 1px) 25%),var(--schedule-bg)}.schedule-bar{position:absolute;top:18px;height:30px;overflow:hidden;padding:6px 8px;border:1px solid #52525b;border-radius:6px;color:#d4d4d8;background:#27272a;font-size:11px;white-space:nowrap;text-overflow:ellipsis}.schedule-bar:nth-of-type(n+2){top:56px}.schedule-bar:nth-of-type(n+4){top:94px}.schedule-sleep{color:#c4b5fd;border-color:#6d28d9;background:#2e1065}.schedule-meal{color:#fde68a;border-color:#927026;background:#3d2d0b}.schedule-work{color:#bfdbfe;border-color:#1d4ed8;background:#172554}.schedule-rest{color:#d4d4d8;background:#27272a}.schedule-forecast,.schedule-commitment{top:132px!important;color:#fde68a;border-style:dashed;border-color:#927026;background:#3d2d0b}.schedule-change{position:absolute;top:3px;width:3px;height:156px;border-radius:3px;background:var(--red);box-shadow:0 0 0 3px #f8717120}.schedule-note{display:flex;align-items:center;gap:6px;margin-top:10px;color:var(--muted);font-size:12px}.compare-table{display:grid;gap:1px;margin-top:14px;border:none;border-radius:8px;overflow:hidden}.compare-table>div{display:grid;grid-template-columns:1.4fr repeat(3,1fr);gap:8px;padding:8px;background:#18181b;font-size:12px}.compare-table>div:first-child{color:var(--subtle);background:#0c0c0f}.compare-table span{color:var(--muted)}input[type=range]{width:100%;accent-color:var(--purple)}
 :root{--admin-polish:1}.schedule-bar{cursor:pointer;text-align:left}.schedule-bar.selected{outline:2px solid #f4f4f5;outline-offset:2px;z-index:3}.schedule-detail{display:flex;align-items:center;gap:10px;margin-top:10px;padding:10px;border:none;border-radius:8px;background:rgba(96,165,250,0.25)}.schedule-detail>div{display:grid;gap:2px;min-width:0}.schedule-detail span,.schedule-detail p{color:var(--muted);font-size:12px}.schedule-detail p{margin:0 0 0 auto}.plan-fact-links{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.plan-fact-links span{padding:6px 8px;border:none;border-radius:7px;color:var(--muted);background:#18181b;font-size:12px}.plan-fact-links b{color:var(--yellow);padding:0 3px}.management-layout{display:grid;gap:14px}.management-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}.management-body{display:grid;gap:8px}.inline-controls{display:flex;gap:7px}.inline-controls input{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:7px;color:#f4f4f5;background:#09090b}.management-count,.management-note{color:var(--subtle);font-size:12px}.managed-row{display:grid;grid-template-columns:20px 1fr auto;align-items:center;gap:9px;padding:10px;border:none;border-radius:8px;background:#18181b}.managed-row>div{display:grid;gap:2px;min-width:0}.managed-row span{color:var(--subtle);font-size:12px;overflow:hidden;text-overflow:ellipsis}.channel-status{display:flex;align-items:center;gap:9px;padding:13px;border:none;border-radius:8px;background:#18181b}.channel-status span{margin-left:auto;color:var(--subtle);font-size:12px}@media(max-width:540px){.schedule-detail{align-items:flex-start;flex-wrap:wrap}.schedule-detail p{width:100%;margin:0}.channel-status{display:grid}.channel-status span{margin-left:0}}
