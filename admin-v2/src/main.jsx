@@ -2554,7 +2554,75 @@ function App() {
     const state = data?.state || {}; const profile = data?.profile; const items = data?.timeline || [];
     function exportDay(selectedItems = items) { const body = selectedItems.map(item => `${formatTime(item.at)} — ${item.title}`).join('\n'); const blob = new Blob([`Дневник Леры · ${formatDay(`${day}T12:00:00+03:00`)}\n\n${body}`], { type: 'text/plain;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `lera-${day}.txt`; link.click(); URL.revokeObjectURL(link.href); }
     const viewTitle = view === 'diary' ? 'Дневник жизни' : view === 'dialogs' ? 'Диалоги' : view === 'llm-settings' ? 'AI Sandbox & Prompts' : view === 'crm' ? 'CRM Пользователей и Клиенты' : view === 'content' ? 'Контент и Telegram-канал' : view === 'inventory' ? 'Рюкзак Леры' : 'Движок и Оперативный Контроль';
-    return <div className="v2-shell diary-shell"><main className="v2-main"><DiaryTabbar view={view} setView={setView} />{view !== 'diary' && <header className="v2-header"><div><div className="eyebrow">{view.toUpperCase()}</div><h1>{viewTitle}</h1></div><div className="header-actions"><Button variant="outline" className="cmd-trigger-btn" onClick={() => setCmdOpen(true)}><Search size={14} /> <span>Поиск</span> <kbd>⌘K</kbd></Button><Badge variant={data?.health?.status === 'ONLINE' ? 'green' : 'yellow'}><span className="status-dot" /> {data?.health?.status || 'Проверка'}</Badge><Badge>{state.location_name || '—'}</Badge></div></header>}<div className={cn('v2-content', view === 'diary' && 'diary-home')}>{view === 'diary' && <><NeedsPanel state={state} profile={profile} /><InventoryWidget state={state} weather={data?.weather} toast={toast} onOpenInventory={() => setView('inventory')} />{/* CurrentDecision stays in the kanban home composition. */}<KanbanBoard schedule={data?.schedule} activeTask={data?.activeTask} clockAt={data?.at} health={data?.health} state={state} rationale={data?.rationale} /><DaySummary summary={data?.summary} /></>}{view === 'dialogs' && <LlmPanel toast={toast} />}{view === 'llm-settings' && <AiSandboxPromptStudio toast={toast} />}{view === 'crm' && <CrmPanel toast={toast} />}{view === 'content' && <ContentPanel toast={toast} />}{view === 'inventory' && <InventoryPanel state={state} weather={data?.weather} toast={toast} />}{view === 'system' && <SystemPanel readOnly={readOnly} setReadOnly={setReadOnly} toast={toast} />}</div></main><CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onViewChange={setView} onRefresh={() => refreshData.current && refreshData.current()} />{notice && <Toast notice={notice} onDismiss={dismissToast} />}</div>;
+    return (
+        <div className="v2-shell diary-shell">
+            <aside className="v2-sidebar">
+                <div className="v2-brand">
+                    <div className="brand-mark">Л</div>
+                    <div>
+                        <strong>Лера 2.0</strong>
+                        <span>Control Center</span>
+                    </div>
+                </div>
+                <div className="sidebar-date">
+                    <Calendar size={14} />
+                    <span>{formatDay(`${day}T12:00:00+03:00`)}</span>
+                </div>
+                <nav className="v2-nav">
+                    <button data-state={view === 'diary' ? 'active' : 'inactive'} onClick={() => setView('diary')}><FileText size={15} /> <span>Обзор и Дневник</span></button>
+                    <button data-state={view === 'dialogs' ? 'active' : 'inactive'} onClick={() => setView('dialogs')}><MessageSquare size={15} /> <span>Диалоги и Логи</span></button>
+                    <button data-state={view === 'llm-settings' ? 'active' : 'inactive'} onClick={() => setView('llm-settings')}><Settings2 size={15} /> <span>AI Sandbox & Prompts</span></button>
+                    <button data-state={view === 'crm' ? 'active' : 'inactive'} onClick={() => setView('crm')}><Users size={15} /> <span>CRM Пользователей</span></button>
+                    <button data-state={view === 'content' ? 'active' : 'inactive'} onClick={() => setView('content')}><Image size={15} /> <span>Контент и Канал</span></button>
+                    <button data-state={view === 'inventory' ? 'active' : 'inactive'} onClick={() => setView('inventory')}><Backpack size={15} /> <span>Рюкзак Леры</span></button>
+                    <button data-state={view === 'system' ? 'active' : 'inactive'} onClick={() => setView('system')}><Zap size={15} /> <span>Движок и Система</span></button>
+                </nav>
+                <div className="sidebar-footer">
+                    <span className="status-dot" />
+                    <strong>{data?.health?.status || 'ONLINE'}</strong>
+                    <small>{state.location_name || 'Санкт-Петербург'}</small>
+                </div>
+            </aside>
+            <main className="v2-main"><DiaryTabbar view={view} setView={setView} />
+                {view !== 'diary' && (
+                    <header className="v2-header">
+                        <div>
+                            <div className="eyebrow">{view.toUpperCase()}</div>
+                            <h1>{viewTitle}</h1>
+                        </div>
+                        <div className="header-actions">
+                            <Button variant="outline" className="cmd-trigger-btn" onClick={() => setCmdOpen(true)}>
+                                <Search size={14} /> <span>Поиск</span> <kbd>⌘K</kbd>
+                            </Button>
+                            <Badge variant={data?.health?.status === 'ONLINE' ? 'green' : 'yellow'}>
+                                <span className="status-dot" /> {data?.health?.status || 'Проверка'}
+                            </Badge>
+                            <Badge>{state.location_name || '—'}</Badge>
+                        </div>
+                    </header>
+                )}
+                <div className={cn('v2-content', view === 'diary' && 'diary-home')}>
+                    {view === 'diary' && (
+                        <>
+                            <NeedsPanel state={state} profile={profile} />
+                            <InventoryWidget state={state} weather={data?.weather} toast={toast} onOpenInventory={() => setView('inventory')} />
+                            {/* CurrentDecision stays in the kanban home composition. */}
+                            <KanbanBoard schedule={data?.schedule} activeTask={data?.activeTask} clockAt={data?.at} health={data?.health} state={state} rationale={data?.rationale} />
+                            <DaySummary summary={data?.summary} />
+                        </>
+                    )}
+                    {view === 'dialogs' && <LlmPanel toast={toast} />}
+                    {view === 'llm-settings' && <AiSandboxPromptStudio toast={toast} />}
+                    {view === 'crm' && <CrmPanel toast={toast} />}
+                    {view === 'content' && <ContentPanel toast={toast} />}
+                    {view === 'inventory' && <InventoryPanel state={state} weather={data?.weather} toast={toast} />}
+                    {view === 'system' && <SystemPanel readOnly={readOnly} setReadOnly={setReadOnly} toast={toast} />}
+                </div>
+            </main>
+            <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onViewChange={setView} onRefresh={() => refreshData.current && refreshData.current()} />
+            {notice && <Toast notice={notice} onDismiss={dismissToast} />}
+        </div>
+    );
 }
 
 class ErrorBoundary extends React.Component {
