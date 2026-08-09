@@ -1,7 +1,9 @@
 const DASH_CHARACTERS = /[-\u058A\u05BE\u1400\u1806\u2010-\u2015\u2E17\u2E1A\u2E3A-\u2E3B\u2E40\u301C\u3030\u30A0\uFE31-\uFE32\uFE58\uFE63\uFF0D]/gu;
 const DECORATIVE_QUOTES = /[«»“”„‟]/gu;
-const SENTENCE_BOUNDARY = /(?<!\.)\.(?=\s+)|[!?](?=\s+)/gu;
+const RESPONSE_BOUNDARY = /(?<!\.)\.(?=\s+)|[!?](?=\s+)|(?<=\s|[а-яё])(?=(?:кстати|короче|зато|только|ещё)(?![а-яё]))/giu;
 const LADDER_PART_LIMIT = 100;
+const LADDER_MESSAGE_LIMIT = 48;
+const MAX_RESPONSE_MESSAGES = 6;
 
 export function cleanResponseText(rawText) {
     if (!rawText) return '';
@@ -51,30 +53,60 @@ export function splitResponseMessages(text) {
         .map(part => part.trim().replace(/(?<!\.)\.$/u, ''))
         .filter(Boolean);
 
-    if (parts.length > 4) {
-        return [...parts.slice(0, 3), parts.slice(3).join(' ')].filter(Boolean);
+    if (parts.length > MAX_RESPONSE_MESSAGES) {
+        return [...parts.slice(0, MAX_RESPONSE_MESSAGES - 1), parts.slice(MAX_RESPONSE_MESSAGES - 1).join(' ')].filter(Boolean);
     }
     return parts;
 }
 
 function splitLongResponsePart(part) {
-    if (part.length <= LADDER_PART_LIMIT || !SENTENCE_BOUNDARY.test(part)) {
-        SENTENCE_BOUNDARY.lastIndex = 0;
-        return [part];
+    const opening = part.match(/^(да|ну|ага|нет|хм|блин),\s+/iu);
+    if (opening && part.length > LADDER_PART_LIMIT) {
+        return [opening[1], ...splitLongResponsePart(part.slice(opening[0].length).trim())];
     }
 
-    SENTENCE_BOUNDARY.lastIndex = 0;
+    if (part.length <= LADDER_PART_LIMIT || !RESPONSE_BOUNDARY.test(part)) {
+        RESPONSE_BOUNDARY.lastIndex = 0;
+        return splitByMessageLength(part);
+    }
+
+    RESPONSE_BOUNDARY.lastIndex = 0;
     const chunks = [];
     let start = 0;
     let match;
 
-    while ((match = SENTENCE_BOUNDARY.exec(part)) !== null) {
+    while ((match = RESPONSE_BOUNDARY.exec(part)) !== null) {
+        if (match[0].length === 0) {
+            chunks.push(part.slice(start, match.index).trim());
+            start = match.index;
+            RESPONSE_BOUNDARY.lastIndex = match.index + 1;
+            continue;
+        }
         const end = match.index + match[0].length - match[0].trimStart().length;
         chunks.push(part.slice(start, end).trim());
         start = match.index + match[0].length;
     }
     chunks.push(part.slice(start).trim());
-    SENTENCE_BOUNDARY.lastIndex = 0;
+    RESPONSE_BOUNDARY.lastIndex = 0;
 
-    return chunks.filter(Boolean).length > 1 ? chunks.filter(Boolean) : [part];
+    const normalizedChunks = chunks.filter(Boolean);
+    return normalizedChunks.length > 1
+        ? normalizedChunks.flatMap(splitByMessageLength)
+        : splitByMessageLength(part);
+}
+
+function splitByMessageLength(part) {
+    if (part.length <= LADDER_MESSAGE_LIMIT) return [part];
+
+    const chunks = [];
+    let rest = part.trim();
+    while (rest.length > LADDER_MESSAGE_LIMIT) {
+        const window = rest.slice(0, LADDER_MESSAGE_LIMIT + 1);
+        const splitAt = window.lastIndexOf(' ');
+        if (splitAt <= 0) break;
+        chunks.push(rest.slice(0, splitAt).trim());
+        rest = rest.slice(splitAt + 1).trim();
+    }
+    if (rest) chunks.push(rest);
+    return chunks.length > 1 ? chunks : [part];
 }
