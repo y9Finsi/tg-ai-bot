@@ -101,6 +101,13 @@ test('Draft and publish routes expose explicit intent-scoped version workflow', 
     assert.match(ui, /JSON\.stringify\(\{ intent: activeIntent, config: activeConfig \}\)/);
 });
 
+test('Fresh local Sandbox edits enable publishing instead of relying on stale server dirty state', () => {
+    const ui = read('admin-v2/src/main.jsx');
+
+    assert.match(ui, /const isDirty = JSON\.stringify\(activeConfig\) !== JSON\.stringify\(productionConfig\);/);
+    assert.doesNotMatch(ui, /const isDirty = activeState\?\.dirty \?\? JSON\.stringify\(activeConfig\)/);
+});
+
 test('Production history module toggle is an actual gate, not just a visual flag', () => {
     const source = read('src/ai.js');
     assert.match(source, /if \(productionIntentConfig\?\.promptModules\?\.history !== false\)/);

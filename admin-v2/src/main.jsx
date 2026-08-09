@@ -1039,7 +1039,9 @@ function SandboxPanel({ toast }) {
     const productionConfig = activeState?.production?.config || activeConfig;
     const draftVersion = activeState?.draft?.version || '—';
     const productionVersion = activeState?.production?.version || '—';
-    const isDirty = activeState?.dirty ?? JSON.stringify(activeConfig) !== JSON.stringify(productionConfig);
+    // draftConfigs changes immediately while studioState is only refreshed after a save.
+    // Compare against Production directly so newly moved sliders are not treated as synced.
+    const isDirty = JSON.stringify(activeConfig) !== JSON.stringify(productionConfig);
     const load = async () => {
         const [studioData, providerData, presetData] = await Promise.all([
             run(() => api('/api/sandbox/prompt-studio')),
