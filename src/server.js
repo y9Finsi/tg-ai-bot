@@ -1396,7 +1396,7 @@ export function startAdminServer() {
     app.post('/api/sandbox/prompt-studio/publish', async (req, res) => {
         try {
             const intent = String(req.body?.intent || 'CASUAL').toUpperCase();
-            res.json({ success: true, ...(await publishPromptStudioIntent(intent)) });
+            res.json({ success: true, ...(await publishPromptStudioIntent(intent, req.body?.config)) });
         } catch (e) {
             res.status(400).json({ error: e.message });
         }

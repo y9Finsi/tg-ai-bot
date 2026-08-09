@@ -926,12 +926,18 @@ export async function getSetting(key, defaultValue = null, applyEscape = false) 
 export async function setSetting(key, value) {
     const normalizedValue = String(value ?? '');
     let res = { rows: [] };
+    let primarySaved = false;
+    let legacySaved = false;
+    let primaryError = null;
+    let legacyError = null;
     try {
         res = await query(
             'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2 RETURNING *',
             [key, normalizedValue]
         );
-    } catch {
+        primarySaved = true;
+    } catch (error) {
+        primaryError = error;
         // Continue with the legacy settings table.
     }
     try {
@@ -939,8 +945,17 @@ export async function setSetting(key, value) {
             'INSERT INTO global_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
             [key, normalizedValue]
         );
-    } catch {
+        legacySaved = true;
+    } catch (error) {
+        legacyError = error;
         // Legacy table is optional on a fresh installation.
+    }
+    if (!primarySaved && !legacySaved) {
+        const databaseError = primaryError || legacyError;
+        const unavailable = ['ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT'].includes(databaseError?.code);
+        throw new Error(unavailable
+            ? 'PostgreSQL недоступен: проверь DATABASE_URL и что база запущена.'
+            : 'Не удалось сохранить настройку в PostgreSQL.');
     }
     return res.rows[0] || { key, value: normalizedValue };
 }

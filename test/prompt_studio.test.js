@@ -87,14 +87,18 @@ test('Draft and publish routes expose explicit intent-scoped version workflow', 
     assert.match(server, /app\.get\('\/api\/sandbox\/prompt-studio'/);
     assert.match(server, /app\.post\('\/api\/sandbox\/prompt-studio\/draft'/);
     assert.match(server, /app\.post\('\/api\/sandbox\/prompt-studio\/publish'/);
+    assert.match(server, /publishPromptStudioIntent\(intent, req\.body\?\.config\)/);
     assert.match(router, /draftStored\[mode\]/);
     assert.match(router, /productionStored\[mode\]/);
     assert.match(router, /version: Math\.max\(current\.draft\.version, current\.production\.version\) \+ 1/);
     assert.match(router, /production\[intent\] = \{/);
+    assert.match(router, /const nextConfig = config === undefined/);
+    assert.match(router, /config: nextConfig/);
     assert.match(ui, /Draft/);
     assert.match(ui, /Production/);
     assert.match(ui, /Сохранить как пресет/);
     assert.match(ui, /Опубликовать/);
+    assert.match(ui, /JSON\.stringify\(\{ intent: activeIntent, config: activeConfig \}\)/);
 });
 
 test('Production history module toggle is an actual gate, not just a visual flag', () => {

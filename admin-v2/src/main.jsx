@@ -1172,7 +1172,7 @@ function SandboxPanel({ toast }) {
         }
     }
     async function publishIntent() {
-        const response = await run(() => api('/api/sandbox/prompt-studio/publish', { method: 'POST', body: JSON.stringify({ intent: activeIntent }) }), `${activeIntent} опубликован в Production`);
+        const response = await run(() => api('/api/sandbox/prompt-studio/publish', { method: 'POST', body: JSON.stringify({ intent: activeIntent, config: activeConfig }) }), `${activeIntent} опубликован в Production`);
         if (response?.intents) {
             setStudioState(response);
             setDraftConfigs(studioConfigsFromState(response));

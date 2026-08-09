@@ -346,21 +346,28 @@ export async function savePromptStudioDraft(mode, config) {
     return getPromptStudioState();
 }
 
-export async function publishPromptStudioIntent(mode) {
+export async function publishPromptStudioIntent(mode, config) {
     const intent = STUDIO_INTENTS.includes(mode) ? mode : 'CASUAL';
     const state = await getPromptStudioState();
     const current = state.intents[intent];
     const publishedAt = new Date().toISOString();
+    const nextConfig = config === undefined
+        ? current.draft.config
+        : normalizeIntentConfig(intent, config, state.routingSettings);
+    const publishingStoredDraft = JSON.stringify(nextConfig) === JSON.stringify(current.draft.config);
+    const nextVersion = publishingStoredDraft
+        ? Math.max(current.production.version + 1, current.draft.version)
+        : Math.max(current.draft.version, current.production.version) + 1;
     const production = Object.fromEntries(STUDIO_INTENTS.map(item => [item, state.intents[item].production]));
     production[intent] = {
-        version: Math.max(current.production.version + 1, current.draft.version),
-        config: current.draft.config,
+        version: nextVersion,
+        config: nextConfig,
         publishedAt
     };
     const draft = Object.fromEntries(STUDIO_INTENTS.map(item => [item, state.intents[item].draft]));
     draft[intent] = {
         version: production[intent].version,
-        config: current.draft.config,
+        config: nextConfig,
         updatedAt: publishedAt
     };
     await Promise.all([
