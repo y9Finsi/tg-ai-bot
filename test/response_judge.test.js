@@ -22,9 +22,26 @@ test('reply judge payload keeps editable prompt in system and bounded context in
         reply: 'Кандидат'
     });
 
-    assert.equal(messages[0].content, 'CUSTOM JUDGE RULES');
+    assert.match(messages[0].content, /^CUSTOM JUDGE RULES/);
+    assert.match(messages[0].content, /relationship_event/);
     assert.match(messages[1].content, /Режим: EROTIC/);
     assert.match(messages[1].content, /LERA PERSONA/);
     assert.match(messages[1].content, /Новая реплика/);
     assert.match(messages[1].content, /Кандидат/);
+});
+
+test('reply judge parses relationship event without changing PASS/REJECT semantics', () => {
+    assert.deepEqual(
+        parseJudgeVerdict('{"verdict":"PASS","relationship_event":{"type":"INSULT","intensity":0.8}}'),
+        {
+            verdict: 'PASS',
+            passed: true,
+            code: null,
+            relationshipEvent: { type: 'INSULT', intensity: 0.8 }
+        }
+    );
+    assert.deepEqual(
+        parseJudgeVerdict('{"verdict":"REJECT:FORMAT","relationship_event":{"type":"APOLOGY","intensity":0.4}}').relationshipEvent,
+        { type: 'APOLOGY', intensity: 0.4 }
+    );
 });

@@ -27,9 +27,9 @@ export const DEFAULT_ROUTING_SETTINGS = {
     judgeMode: 'OBSERVE',
     judgeProviderId: '',
     judgeModel: '',
-    judgePrompt: 'Ты проверяешь ответ Леры перед отправкой. Сверь его с последней репликой пользователя и короткими правилами личности. Бракуй только явные ошибки: ответ мимо последней реплики, повтор, выход из роли, выдуманный факт, сломанная логика или технический мусор. Инициативность, флирт и откровенность в режиме EROTIC сами по себе не являются ошибкой. Верни строго PASS или REJECT:<CODE> без пояснений. Коды: REPETITION, IGNORES_USER, OUT_OF_CHARACTER, STALE_CONTEXT, INVENTED_FACT, BROKEN_LOGIC, FORMAT.',
+    judgePrompt: 'Ты проверяешь ответ Леры и отдельно анализируешь последнее сообщение пользователя. Бракуй только явные ошибки: ответ мимо последней реплики, повтор, выход из роли, выдуманный факт, сломанная логика или технический мусор. Инициативность, флирт и откровенность в режиме EROTIC сами по себе не являются ошибкой. Определи relationship_event только по сообщению пользователя и контексту, не по ответу Леры. Для обычного сообщения используй NEUTRAL с intensity 0. Верни строго JSON без пояснений: {"verdict":"PASS","relationship_event":{"type":"NEUTRAL","intensity":0}}. Коды verdict: REPETITION, IGNORES_USER, OUT_OF_CHARACTER, STALE_CONTEXT, INVENTED_FACT, BROKEN_LOGIC, FORMAT. Типы relationship_event: NEUTRAL, SUPPORT, COMPLIMENT, AFFECTION, INSULT, DISRESPECT, APOLOGY.',
     judgeTimeoutMs: 5000,
-    judgeMaxTokens: 8
+    judgeMaxTokens: 80
 };
 
 const DEFAULT_PROMPT_MODULES = Object.freeze({
@@ -167,7 +167,7 @@ export async function getRoutingSettings() {
         judgeModel: String(raw.judgeModel || ''),
         judgePrompt: String(raw.judgePrompt || DEFAULT_ROUTING_SETTINGS.judgePrompt),
         judgeTimeoutMs: asNumber(raw.judgeTimeoutMs, 5000, 1000, 60000),
-        judgeMaxTokens: asNumber(raw.judgeMaxTokens, 8, 1, 32)
+        judgeMaxTokens: asNumber(raw.judgeMaxTokens, 80, 40, 120)
     };
     const production = await readJsonSetting(INTENT_STUDIO_PRODUCTION_KEY, {});
     return {
@@ -203,7 +203,7 @@ export async function updateRoutingSettings(input = {}) {
         judgeModel: String(next.judgeModel || '').trim(),
         judgePrompt: (String(next.judgePrompt || current.judgePrompt || DEFAULT_ROUTING_SETTINGS.judgePrompt).trim() || DEFAULT_ROUTING_SETTINGS.judgePrompt).slice(0, 12000),
         judgeTimeoutMs: asNumber(next.judgeTimeoutMs, current.judgeTimeoutMs, 1000, 60000),
-        judgeMaxTokens: asNumber(next.judgeMaxTokens, current.judgeMaxTokens, 1, 32)
+        judgeMaxTokens: asNumber(next.judgeMaxTokens, current.judgeMaxTokens, 40, 120)
     };
     await Promise.all(Object.entries(normalized).map(([key, value]) =>
         setSetting(`llm_routing_${key}`, String(value))

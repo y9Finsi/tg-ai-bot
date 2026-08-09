@@ -51,6 +51,8 @@ import {
     adminSetImageBalance,
     grantPackage,
     getPaymentHistory,
+    getUserRelationshipAdmin,
+    setUserRelationshipAdmin,
     query,
     listSandboxPresets,
     getSandboxPreset,
@@ -1227,6 +1229,82 @@ export function startAdminServer() {
         }
     });
 
+    app.post('/api/admin/image-generation/test', async (req, res) => {
+        try {
+            const { providerId, model, prompt, size = '1024x1024', imageDataUrl } = req.body || {};
+            const normalizedPrompt = String(prompt || '').trim();
+            if (!normalizedPrompt) return res.status(400).json({ error: 'Напиши prompt для изображения' });
+
+            const providers = await getAiProviders();
+            const provider = providerId
+                ? providers.find(item => Number(item.id) === Number(providerId))
+                : providers.find(item => String(item.model_name || '').toLowerCase().includes('image'));
+            if (!provider) return res.status(404).json({ error: 'Провайдер для изображений не найден' });
+
+            const selectedModel = String(model || provider.model_name || '').trim();
+            if (!selectedModel) return res.status(400).json({ error: 'Не выбрана модель изображения' });
+            if (imageDataUrl && (!String(imageDataUrl).startsWith('data:image/') || String(imageDataUrl).length > 15_000_000)) {
+                return res.status(400).json({ error: 'Референс должен быть изображением до 10 МБ' });
+            }
+
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+            try {
+                const endpoint = imageDataUrl
+                    ? `${String(provider.base_url).replace(/\/+$/, '')}/chat/completions`
+                    : `${String(provider.base_url).replace(/\/+$/, '')}/images/generations`;
+                const payload = imageDataUrl
+                    ? {
+                        model: selectedModel,
+                        messages: [{
+                            role: 'user',
+                            content: [
+                                { type: 'text', text: `${normalizedPrompt}\n\nВерни именно сгенерированное изображение, а не только описание.` },
+                                { type: 'image_url', image_url: { url: imageDataUrl } }
+                            ]
+                        }],
+                        max_tokens: 1200
+                    }
+                    : {
+                        model: selectedModel,
+                        prompt: normalizedPrompt,
+                        size,
+                        n: 1,
+                        response_format: 'b64_json'
+                    };
+                const upstream = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${provider.api_key}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    signal: controller.signal
+                });
+                const raw = await upstream.text();
+                let data = {};
+                try { data = JSON.parse(raw); } catch { /* upstream returned non-JSON */ }
+                if (!upstream.ok) {
+                    const detail = data?.error?.message || data?.message || raw.slice(0, 500) || `HTTP ${upstream.status}`;
+                    return res.status(502).json({ error: `Bridge: ${detail}` });
+                }
+
+                if (imageDataUrl) {
+                    const content = data?.choices?.[0]?.message?.content;
+                    const text = typeof content === 'string' ? content : '';
+                    const embeddedImage = text.match(/!\[image\]\((data:image\/[^;]+;base64,[^)]+)\)/i)?.[1] || null;
+                    return res.json({ success: true, mode: 'reference', model: selectedModel, content: text, imageDataUrl: embeddedImage });
+                }
+
+                const image = data?.data?.[0];
+                if (!image?.b64_json) return res.status(502).json({ error: 'Bridge не вернул байты изображения' });
+                res.json({ success: true, mode: 'generation', model: selectedModel, mimeType: 'image/png', b64Json: image.b64_json, revisedPrompt: image.revised_prompt || normalizedPrompt });
+            } finally {
+                clearTimeout(timeout);
+            }
+        } catch (e) {
+            if (e?.name === 'AbortError') return res.status(504).json({ error: 'Генерация не ответила за 10 минут' });
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.post('/api/admin/providers/:id/activate', async (req, res) => {
         try {
             const activated = await setActiveAiProvider(req.params.id);
@@ -1735,14 +1813,28 @@ export function startAdminServer() {
 
     app.get('/api/admin/users/:id/full', async (req, res) => {
         try {
-            const [user, payments, facts, conversations] = await Promise.all([
+            const [user, payments, facts, conversations, relationship] = await Promise.all([
                 getUser(req.params.id),
                 getPaymentHistory(req.params.id, 50),
                 getUserMemoriesAdmin(req.params.id, true),
-                getRecentConversationEvents(req.params.id, 80)
+                getRecentConversationEvents(req.params.id, 80),
+                getUserRelationshipAdmin(req.params.id, 30)
             ]);
             if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-            res.json({ success: true, user, payments, facts, conversations });
+            res.json({ success: true, user, payments, facts, conversations, relationship });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.patch('/api/admin/relationships/:userId', async (req, res) => {
+        try {
+            const relationship = await setUserRelationshipAdmin(req.params.userId, {
+                trust: req.body.trust,
+                affection: req.body.affection,
+                irritation: req.body.irritation
+            });
+            res.json({ success: true, relationship });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }

@@ -4,7 +4,7 @@ import {
     getActiveAiProvider, getUserMemories, getMemorySettings,
     getLeraPhotoCandidates, getSentPhotos, recordPhotoSent,
     getRecentConversationEvents, formatConversationEvent, getRecentSimulationReflections,
-    savePromptLog
+    savePromptLog, applyUserRelationshipEvent
 } from './database.js';
 import { getRoutedSystemPrompt } from './prompts.js';
 import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX, IMAGE_STYLES } from './constants/intents.js';
@@ -489,6 +489,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
             settings: judgeSettings
         })
         : { skipped: true, verdict: 'SKIPPED', passed: true, code: null };
+    const relationshipEvent = judgeResult.relationshipEvent || null;
     generationTrace.push({
         step: 'judge',
         phase: 'first',
@@ -499,7 +500,8 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         latencyMs: judgeResult.latencyMs || 0,
         usage: judgeResult.usage || {},
         error: judgeResult.error || null,
-        judgeMessages: judgeResult.judgeMessages || null
+        judgeMessages: judgeResult.judgeMessages || null,
+        relationshipEvent
     });
 
     const normalizeReply = value => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -592,7 +594,6 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
                 reply: text,
                 settings: judgeSettings
             });
-            judgeResult = retryJudge;
             generationTrace.push({
                 step: 'judge',
                 phase: 'retry',
@@ -603,7 +604,8 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
                 latencyMs: retryJudge.latencyMs || 0,
                 usage: retryJudge.usage || {},
                 error: retryJudge.error || null,
-                judgeMessages: retryJudge.judgeMessages || null
+                judgeMessages: retryJudge.judgeMessages || null,
+                relationshipEvent: retryJudge.relationshipEvent || null
             });
             if (judgeSettings.judgeMode === 'ENFORCE' && retryJudge.passed === false) {
                 text = getQualityFallback(routingMode);
@@ -635,6 +637,25 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
             reason: finalQuality.violations,
             response: text
         });
+    }
+
+    if (shouldJudge && relationshipEvent && relationshipEvent.type !== 'NEUTRAL' && relationshipEvent.intensity > 0) {
+        try {
+            const relationship = await applyUserRelationshipEvent(userId, relationshipEvent, userText);
+            generationTrace.push({
+                step: 'relationship',
+                event: relationship.event,
+                deltas: relationship.deltas,
+                state: relationship
+            });
+        } catch (relationshipError) {
+            generationTrace.push({
+                step: 'relationship',
+                event: relationshipEvent,
+                error: relationshipError.message
+            });
+            console.error(`[RELATIONSHIP ERROR] user ${userId}:`, relationshipError.message);
+        }
     }
 
     if (!isInitiative && userText && !looksLikeGreeting && greetingPrefix.test(text || '') && greetingPrefix.test(lastLeraText || '')) {

@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { publishDevtoolEvent } from '../devtools/event_bus.js';
 import { normalizeTopicDistribution } from '../channel_topics.js';
+import { applyRelationshipDelta, DEFAULT_RELATIONSHIP, relationshipDecay, normalizeRelationship } from '../ai/relationship.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -423,6 +424,81 @@ export async function closeDB() {
 export async function getUser(telegramId) {
     const res = await query('SELECT * FROM users WHERE telegram_id = $1', [telegramId]);
     return res.rows[0] || null;
+}
+
+export async function getUserRelationship(userId, { applyDecay = true } = {}) {
+    const result = await query(
+        `SELECT user_id, trust, affection, irritation, updated_at
+         FROM user_relationships WHERE user_id = $1`,
+        [userId]
+    );
+    const row = result.rows[0];
+    if (!row) return { user_id: userId, ...DEFAULT_RELATIONSHIP, updated_at: new Date() };
+    const state = normalizeRelationship(row);
+    const decayed = applyDecay ? relationshipDecay(state, (Date.now() - new Date(row.updated_at).getTime()) / 1000) : state;
+    return { user_id: userId, ...decayed, updated_at: row.updated_at };
+}
+
+export async function applyUserRelationshipEvent(userId, event, sourceText = '') {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const current = await client.query(
+            `INSERT INTO user_relationships (user_id)
+             VALUES ($1)
+             ON CONFLICT (user_id) DO UPDATE SET updated_at = user_relationships.updated_at
+             RETURNING trust, affection, irritation, updated_at`,
+            [userId]
+        );
+        const row = current.rows[0];
+        const decayed = relationshipDecay(row, (Date.now() - new Date(row.updated_at).getTime()) / 1000);
+        const applied = applyRelationshipDelta(decayed, event);
+        await client.query(
+            `UPDATE user_relationships
+             SET trust = $2, affection = $3, irritation = $4, updated_at = NOW()
+             WHERE user_id = $1`,
+            [userId, applied.state.trust, applied.state.affection, applied.state.irritation]
+        );
+        await client.query(
+            `INSERT INTO relationship_events
+                (user_id, event_type, intensity, trust_delta, affection_delta, irritation_delta, source_text)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [userId, applied.event.type, applied.event.intensity, applied.deltas.trust, applied.deltas.affection, applied.deltas.irritation, sourceText || null]
+        );
+        await client.query('COMMIT');
+        return { ...applied.state, event: applied.event, deltas: applied.deltas };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+export async function getUserRelationshipAdmin(userId, limit = 20) {
+    const [relationship, events] = await Promise.all([
+        getUserRelationship(userId),
+        query(
+            `SELECT id, event_type, intensity, trust_delta, affection_delta, irritation_delta, source_text, created_at
+             FROM relationship_events WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2`,
+            [userId, limit]
+        )
+    ]);
+    return { relationship, events: events.rows };
+}
+
+export async function setUserRelationshipAdmin(userId, values = {}) {
+    const current = await getUserRelationship(userId, { applyDecay: false });
+    const next = normalizeRelationship({ ...current, ...values });
+    const result = await query(
+        `INSERT INTO user_relationships (user_id, trust, affection, irritation)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id) DO UPDATE SET trust = EXCLUDED.trust, affection = EXCLUDED.affection,
+             irritation = EXCLUDED.irritation, updated_at = NOW()
+         RETURNING user_id, trust, affection, irritation, updated_at`,
+        [userId, next.trust, next.affection, next.irritation]
+    );
+    return result.rows[0];
 }
 
 export async function createUser(telegramId, username, firstName, lastName, referrerId = null) {

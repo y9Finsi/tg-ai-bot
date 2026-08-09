@@ -1,6 +1,8 @@
 import { getActiveAiProvider } from '../database.js';
 import { getCachedOpenAIClient, requestLlmCompletion } from './llm_client.js';
 import { getJudgeProviders } from './intent_router.js';
+import { normalizeRelationshipEvent } from './relationship.js';
+import { parseLlmJson } from '../utils/robust_json.js';
 
 export const JUDGE_CODES = [
     'REPETITION',
@@ -26,10 +28,11 @@ function compactPersona(messages = []) {
 }
 
 export function buildJudgeMessages({ mode = 'CASUAL', messages = [], userText = '', reply = '', judgePrompt = '' } = {}) {
+    const relationshipContract = ' Дополнительно верни relationship_event по последней реплике пользователя: тип NEUTRAL, SUPPORT, COMPLIMENT, AFFECTION, INSULT, DISRESPECT или APOLOGY и intensity 0.0–1.0. Для обычного сообщения NEUTRAL с intensity 0. Не меняй verdict из-за relationship_event. Формат результата: JSON {"verdict":"PASS","relationship_event":{"type":"NEUTRAL","intensity":0}}.';
     return [
         {
             role: 'system',
-            content: judgePrompt
+            content: `${judgePrompt || ''}${relationshipContract}`
         },
         {
             role: 'user',
@@ -39,14 +42,28 @@ export function buildJudgeMessages({ mode = 'CASUAL', messages = [], userText = 
                 `Диалог:\n${compactConversation(messages) || 'нет предыдущих сообщений'}`,
                 `Последняя реплика пользователя:\n${String(userText || '').slice(0, 1200)}`,
                 `Кандидат-ответ Леры:\n${String(reply || '').slice(0, 1600)}`,
-                'Верни только PASS или REJECT:<CODE>.'
+                'Верни только JSON вида {"verdict":"PASS"} или {"verdict":"REJECT:CODE","relationship_event":{"type":"NEUTRAL|SUPPORT|COMPLIMENT|AFFECTION|INSULT|DISRESPECT|APOLOGY","intensity":0.0}}. Relationship event определяй по последней реплике пользователя, а не по ответу Леры. Для обычного сообщения используй NEUTRAL с intensity 0.'
             ].join('\n\n')
         }
     ];
 }
 
 export function parseJudgeVerdict(rawText) {
-    const normalized = String(rawText || '').toUpperCase().replace(/[`"'*\s]/g, '');
+    const raw = String(rawText || '').trim();
+    try {
+        const parsed = parseLlmJson(raw);
+        const verdictText = String(parsed?.verdict || '').toUpperCase().replace(/\s/g, '');
+        if (verdictText === 'PASS') {
+            return { verdict: 'PASS', passed: true, code: null, relationshipEvent: normalizeRelationshipEvent(parsed.relationship_event || parsed.relationshipEvent || {}) };
+        }
+        const jsonMatch = verdictText.match(/^REJECT:([A-Z_]+)$/);
+        if (jsonMatch && JUDGE_CODES.includes(jsonMatch[1])) {
+            return { verdict: `REJECT:${jsonMatch[1]}`, passed: false, code: jsonMatch[1], relationshipEvent: normalizeRelationshipEvent(parsed.relationship_event || parsed.relationshipEvent || {}) };
+        }
+    } catch {
+        // Backward-compatible compact verdicts are still accepted below.
+    }
+    const normalized = raw.toUpperCase().replace(/[`"'*\s]/g, '');
     if (normalized === 'PASS') return { verdict: 'PASS', passed: true, code: null };
     const match = normalized.match(/^REJECT:([A-Z_]+)$/);
     if (match && JUDGE_CODES.includes(match[1])) {

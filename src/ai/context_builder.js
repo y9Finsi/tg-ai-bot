@@ -6,19 +6,22 @@ import { calculateMood } from '../radiant/needs.js';
 import { WeatherService } from '../radiant/weather_service.js';
 import { getUser } from '../db/database.js';
 import { getContextPromptTemplate } from '../prompts.js';
+import { getUserRelationship } from '../db/database.js';
+import { relationshipToPrompt } from './relationship.js';
 
 export class ContextBuilder {
     static async buildSnapshot(overrides = {}) {
         const stateRow = await StateRepository.getState();
         WeatherService.syncOverride(stateRow?.weather_override);
-        const [inventory, queue, executable, loadedFacts, observerDigests, loadedWeather, user] = await Promise.all([
+        const [inventory, queue, executable, loadedFacts, observerDigests, loadedWeather, user, relationship] = await Promise.all([
             StateRepository.getInventory(),
             StateRepository.getQueue(),
             StateRepository.getExecutableTask(),
             StateRepository.getRecentFactualEvents(12).catch(() => []),
             StateRepository.getRecentObserverBatches(3).catch(() => []),
             WeatherService.getSnapshot(),
-            overrides.userId ? getUser(overrides.userId).catch(() => null) : Promise.resolve(null)
+            overrides.userId ? getUser(overrides.userId).catch(() => null) : Promise.resolve(null),
+            overrides.userId ? getUserRelationship(overrides.userId).catch(() => null) : Promise.resolve(null)
         ]);
         const commitments = await StateRepository.getCommitments(null, null).catch(() => []);
         const facts = Array.isArray(overrides.dailyFacts)
@@ -40,6 +43,7 @@ export class ContextBuilder {
         const missedCommitments = commitments.filter(item => item.status === 'MISSED');
         return {
             state, inventory, queue, facts, observerDigests, weather, activeTask, location, transit, commitments: activeCommitments, missedCommitments,
+            relationship,
             mood: Number.isFinite(Number(overrides.mood))
                 ? Math.max(0, Math.min(100, Math.round(Number(overrides.mood))))
                 : calculateMood(state),
@@ -53,7 +57,7 @@ export class ContextBuilder {
 
     static async buildTelegramContextDetailed(userId, options = {}) {
         const snapshot = await this.buildSnapshot({ ...(options.overrides || {}), userId });
-        return { text: this.toPrompt(snapshot), analysis: this.toAnalysis(snapshot), layers: { physics: { needs: snapshot.state.needs, physiology: snapshot.state.physiology, active_modifiers: snapshot.state.active_modifiers || [], mood: snapshot.mood }, location: snapshot.location, active_task: snapshot.activeTask, transit: snapshot.transit, weather: snapshot.weather, willingness: snapshot.willingness, outfit: this.describeOutfit(snapshot.inventory, snapshot.activeTask), factual_events: snapshot.facts, observer_digests: snapshot.observerDigests, commitments: snapshot.commitments, missed_commitments: snapshot.missedCommitments, user: snapshot.user } };
+        return { text: this.toPrompt(snapshot), analysis: this.toAnalysis(snapshot), layers: { physics: { needs: snapshot.state.needs, physiology: snapshot.state.physiology, active_modifiers: snapshot.state.active_modifiers || [], mood: snapshot.mood }, location: snapshot.location, active_task: snapshot.activeTask, transit: snapshot.transit, weather: snapshot.weather, willingness: snapshot.willingness, outfit: this.describeOutfit(snapshot.inventory, snapshot.activeTask), factual_events: snapshot.facts, observer_digests: snapshot.observerDigests, commitments: snapshot.commitments, missed_commitments: snapshot.missedCommitments, user: snapshot.user, relationship: snapshot.relationship } };
     }
 
     static async buildTelegramContext(userId, options = {}) { return (await this.buildTelegramContextDetailed(userId, options)).text; }
@@ -77,7 +81,9 @@ export class ContextBuilder {
         const sleepGuidance = isSleepingTask(task)
             ? '\n• Состояние сна: можно коротко сказать, что Лера спала или только проснулась. Не имитируй голос, слух, шёпот, дыхание или звуки; не используй многоточия в начале фразы.'
             : '';
-        return `[СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ]
+        return `${relationshipToPrompt(snapshot.relationship || {})}
+
+[СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ]
 • Время: ${formatContextDate(snapshot.currentTime)}
 • Локация: ${humanizeLocation(snapshot.location.name)}
 • Текущий статус: ${humanizeCurrentStatus(task, snapshot.transit)}

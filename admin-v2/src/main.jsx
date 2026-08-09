@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { CircleHelp, CloudRain, Database, ExternalLink, EyeOff, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Search, Command } from 'lucide-react';
+import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Search, Command } from 'lucide-react';
 import './styles.css';
 import { Button } from './components/ui/button.jsx';
 import { Badge } from './components/ui/badge.jsx';
@@ -1381,6 +1381,129 @@ function AiSandboxPromptStudio({ toast }) {
     </Tabs.Root>;
 }
 
+function ImageGenerationTestPanel({ providers, toast }) {
+    const bridgeImageModels = ['gemini-3-pro-image-preview-11-2025', 'gemini-3.1-flash-image', 'gemini-3-pro-image', 'gemini-2.5-flash-image', 'gemini-2.5-flash-image-preview', 'gemini-3.1-flash-image-preview'];
+    const imageProviders = providers.filter(provider => String(provider.model_name || '').toLowerCase().includes('image') || String(provider.base_url || '').includes('gemini-web-to-api'));
+    const [providerId, setProviderId] = useState('');
+    const [model, setModel] = useState('');
+    const [prompt, setPrompt] = useState('');
+    const [size, setSize] = useState('1024x1024');
+    const [reference, setReference] = useState(null);
+    const [previewUrl, setPreviewUrl] = useState('');
+    const [result, setResult] = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (!providerId && imageProviders[0]) setProviderId(String(imageProviders[0].id));
+    }, [imageProviders, providerId]);
+    const selectedProvider = imageProviders.find(provider => String(provider.id) === String(providerId));
+    const modelOptions = selectedProvider && String(selectedProvider.base_url || '').includes('gemini-web-to-api')
+        ? bridgeImageModels
+        : selectedProvider?.model_name ? [selectedProvider.model_name] : [];
+    useEffect(() => {
+        if (!modelOptions.includes(model)) setModel(modelOptions[0] || '');
+    }, [modelOptions, model]);
+
+    function selectReference(event) {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        if (file.size > 10 * 1024 * 1024) {
+            toast?.('Референс должен быть меньше 10 МБ', 'error');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            setReference({ name: file.name, dataUrl: String(reader.result), mimeType: file.type });
+            setPreviewUrl(String(reader.result));
+            setResult(null);
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function clearReference() {
+        setReference(null);
+        setPreviewUrl('');
+        setResult(null);
+    }
+
+    async function generate() {
+        if (!prompt.trim()) return toast?.('Напиши, что сгенерировать', 'error');
+        if (!providerId) return toast?.('Нет image-провайдера в цепочке', 'error');
+        setLoading(true);
+        setResult(null);
+        try {
+            const response = await api('/api/admin/image-generation/test', {
+                method: 'POST',
+                body: JSON.stringify({ providerId, model, prompt, size, imageDataUrl: reference?.dataUrl || null })
+            });
+            if (response.mode === 'generation' && response.b64Json) {
+                const url = `data:${response.mimeType || 'image/png'};base64,${response.b64Json}`;
+                setPreviewUrl(url);
+                setResult({ kind: 'image', url, revisedPrompt: response.revisedPrompt });
+                toast?.('Изображение готово');
+            } else {
+                if (response.imageDataUrl) {
+                    setPreviewUrl(response.imageDataUrl);
+                    setResult({ kind: 'image', url: response.imageDataUrl, revisedPrompt: prompt });
+                } else {
+                    setResult({ kind: 'text', content: response.content || 'Bridge вернул пустой ответ' });
+                }
+                toast?.('Ответ bridge получен');
+            }
+        } catch (error) {
+            toast?.(error.message, 'error');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    return <Card className="image-generation-card">
+        <CardHeader
+            eyebrow="Gemini Web Bridge"
+            title="Тест генерации изображений"
+            description="Без референса используется images/generations. С референсом bridge получает multimodal chat-запрос."
+            action={<Badge variant={imageProviders.length ? 'green' : 'yellow'}>{imageProviders.length ? `${imageProviders.length} image-провайдер${imageProviders.length === 1 ? '' : 'а'}` : 'Нет image-провайдера'}</Badge>}
+        />
+        <div className="image-generation-layout">
+            <div className="image-generation-controls">
+                <label>Image-провайдер
+                    <select value={providerId} onChange={event => setProviderId(event.target.value)}>
+                        {!imageProviders.length && <option value="">Добавь провайдер с image-моделью</option>}
+                        {imageProviders.map(provider => <option value={provider.id} key={provider.id}>{provider.name}</option>)}
+                    </select>
+                </label>
+                <label>Модель
+                    <select value={model} onChange={event => setModel(event.target.value)}>
+                        {!modelOptions.length && <option value="">Нет доступных моделей</option>}
+                        {modelOptions.map(item => <option value={item} key={item}>{item}</option>)}
+                    </select>
+                </label>
+                <label>Размер
+                    <select value={size} onChange={event => setSize(event.target.value)}>
+                        <option value="1024x1024">Квадрат · 1024×1024</option>
+                        <option value="1536x1024">Альбом · 1536×1024</option>
+                        <option value="1024x1536">Портрет · 1024×1536</option>
+                    </select>
+                </label>
+                <label>Prompt<textarea value={prompt} placeholder="Например: Лера в Петербурге вечером, кинематографичный реализм…" onChange={event => setPrompt(event.target.value)} /></label>
+                <div className="image-reference-picker">
+                    <span className="field-label">Референс-картинка <small>необязательно</small></span>
+                    <label className="image-upload-button"><Upload size={14} />{reference ? reference.name : 'Загрузить картинку'}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={selectReference} /></label>
+                    {reference && <Button type="button" size="sm" variant="outline" onClick={clearReference}>Убрать референс</Button>}
+                </div>
+                <Button type="button" onClick={generate} loading={loading} disabled={!imageProviders.length}><Sparkles size={14} />{loading ? 'Генерирую, это может занять несколько минут…' : 'Сгенерировать'}</Button>
+            </div>
+            <div className="image-generation-result" aria-live="polite">
+                {result?.kind === 'image' && <><img src={result.url} alt="Сгенерированный результат" /><a className="image-download-link" href={result.url} download="gemini-generated.png"><Download size={14} />Скачать PNG</a>{result.revisedPrompt && <small>{result.revisedPrompt}</small>}</>}
+                {result?.kind === 'text' && <div className="image-generation-text-result">{result.content}</div>}
+                {!result && previewUrl
+                    ? <div className="image-generation-reference-preview"><img src={previewUrl} alt="Загруженный референс" /><small>Референс загружен. После генерации здесь появится результат.</small></div>
+                    : !result && <div className="image-generation-empty"><FileImage size={28} /><span>Здесь появится результат</span><small>Референс можно использовать для изменения или продолжения изображения.</small></div>}
+            </div>
+        </div>
+    </Card>;
+}
+
 function LlmSettingsPanel({ toast }) {
     const [providers, setProviders] = useState([]);
     const [providerForm, setProviderForm] = useState({ name: '', base_url: '', api_key: '', model_name: '' });
@@ -1456,6 +1579,7 @@ function LlmSettingsPanel({ toast }) {
         return true;
     }
     return <div className="llm-super-panel">
+        <ImageGenerationTestPanel providers={providers} toast={toast} />
         <Card className="llm-config-card">
             <CardHeader eyebrow="Production" title="Провайдеры и fallback" description="Основной провайдер стоит первым. Ниже — резервные в порядке вызова. API-ключи после добавления не показываются." />
             <div className="provider-section">
@@ -1541,9 +1665,9 @@ function LlmSettingsPanel({ toast }) {
                     <label>Provider судьи<select value={routingSettings.judgeProviderId || ''} onChange={event => setRoutingSettings({ ...routingSettings, judgeProviderId: event.target.value })}><option value="">Текущая цепочка + fallback</option>{providers.map(provider => <option value={provider.id} key={provider.id}>{provider.name} · {provider.model_name}</option>)}</select></label>
                     <label>Модель судьи<input value={routingSettings.judgeModel || ''} placeholder="Модель провайдера" onChange={event => setRoutingSettings({ ...routingSettings, judgeModel: event.target.value })} /></label>
                     <label>Timeout, мс<input type="number" min="1000" max="60000" value={routingSettings.judgeTimeoutMs ?? 5000} onChange={event => setRoutingSettings({ ...routingSettings, judgeTimeoutMs: Number(event.target.value) })} /></label>
-                    <label>Max tokens<input type="number" min="1" max="32" value={routingSettings.judgeMaxTokens ?? 8} onChange={event => setRoutingSettings({ ...routingSettings, judgeMaxTokens: Number(event.target.value) })} /></label>
+                    <label>Max tokens<input type="number" min="40" max="120" value={routingSettings.judgeMaxTokens ?? 80} onChange={event => setRoutingSettings({ ...routingSettings, judgeMaxTokens: Number(event.target.value) })} /></label>
                 </div>
-                <label className="classifier-prompt-editor">Prompt судьи<textarea value={routingSettings.judgePrompt || ''} placeholder="Верни строго PASS или REJECT:CODE." onChange={event => setRoutingSettings({ ...routingSettings, judgePrompt: event.target.value })} /></label>
+                <label className="classifier-prompt-editor">Prompt судьи<textarea value={routingSettings.judgePrompt || ''} placeholder="Верни JSON с verdict и relationship_event." onChange={event => setRoutingSettings({ ...routingSettings, judgePrompt: event.target.value })} /></label>
                 <details className="judge-transfer-details">
                     <summary>Как prompt передаётся судье</summary>
                     <div className="judge-transfer-grid">
@@ -1598,6 +1722,7 @@ function CrmPanel({ toast }) {
     const [facts, setFacts] = useState([]);
     const [factText, setFactText] = useState('');
     const [factUserId, setFactUserId] = useState('');
+    const [relationshipForm, setRelationshipForm] = useState({ trust: 50, affection: 50, irritation: 0 });
 
     const [packages, setPackages] = useState({});
     const [promocodes, setPromocodes] = useState([]);
@@ -1632,6 +1757,22 @@ function CrmPanel({ toast }) {
             });
             setFactUserId(String(id));
             setFacts(result.facts || []);
+            setRelationshipForm({
+                trust: Math.round(Number(result.relationship?.relationship?.trust ?? 50)),
+                affection: Math.round(Number(result.relationship?.relationship?.affection ?? 50)),
+                irritation: Math.round(Number(result.relationship?.relationship?.irritation ?? 0))
+            });
+        }
+    }
+
+    async function saveRelationship() {
+        if (!selectedUser?.user?.telegram_id) return;
+        const result = await run(() => api(`/api/admin/relationships/${selectedUser.user.telegram_id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(relationshipForm)
+        }), 'Отношения сохранены');
+        if (result) {
+            setSelectedUser({ ...selectedUser, relationship: { ...selectedUser.relationship, relationship: result.relationship } });
         }
     }
 
@@ -1795,6 +1936,7 @@ function CrmPanel({ toast }) {
                                 <div className="dossier-subnav">
                                     <button className={cn('dossier-tab-btn', dossierTab === 'balance' && 'active')} onClick={() => setDossierTab('balance')}>⚙️ Балансы и Доступ</button>
                                     <button className={cn('dossier-tab-btn', dossierTab === 'memory' && 'active')} onClick={() => setDossierTab('memory')}>🧠 Память ({facts.length})</button>
+                                    <button className={cn('dossier-tab-btn', dossierTab === 'relationship' && 'active')} onClick={() => setDossierTab('relationship')}>🫀 Отношения</button>
                                     <button className={cn('dossier-tab-btn', dossierTab === 'chat' && 'active')} onClick={() => setDossierTab('chat')}>💬 Диалоги ({selectedUser.conversations?.length || 0})</button>
                                     <button className={cn('dossier-tab-btn', dossierTab === 'payments' && 'active')} onClick={() => setDossierTab('payments')}>💳 Платежи ({selectedUser.payments?.length || 0})</button>
                                 </div>
@@ -1839,6 +1981,27 @@ function CrmPanel({ toast }) {
                                                         <ConfirmAction title="Удалить факт?" description="Факт перестанет использоваться в памяти пользователя." confirmText="Удалить" variant="danger" onConfirm={() => run(() => api(`/api/admin/memory/facts/${fact.id}`, { method: 'DELETE' }), 'Факт удалён').then(loadFacts)}>Удалить</ConfirmAction>
                                                     </div>
                                                 )) : <div className="empty-state">Фактов в памяти не найдено.</div>}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {dossierTab === 'relationship' && (
+                                        <div className="crm-section relationship-section">
+                                            <h3>Динамические отношения</h3>
+                                            <div className="inline-controls">
+                                                <label>Trust<input type="number" min="0" max="100" value={relationshipForm.trust} onChange={event => setRelationshipForm({ ...relationshipForm, trust: Number(event.target.value) })} /></label>
+                                                <label>Affection<input type="number" min="0" max="100" value={relationshipForm.affection} onChange={event => setRelationshipForm({ ...relationshipForm, affection: Number(event.target.value) })} /></label>
+                                                <label>Irritation<input type="number" min="0" max="100" value={relationshipForm.irritation} onChange={event => setRelationshipForm({ ...relationshipForm, irritation: Number(event.target.value) })} /></label>
+                                                <Button onClick={saveRelationship}>Сохранить</Button>
+                                            </div>
+                                            <div className="facts-list">
+                                                {(selectedUser.relationship?.events || []).map(event => (
+                                                    <div className="managed-row" key={event.id}>
+                                                        <Database size={15} />
+                                                        <div><strong>{event.event_type} · intensity {Number(event.intensity).toFixed(2)}</strong><span>trust {Number(event.trust_delta).toFixed(1)} · affection {Number(event.affection_delta).toFixed(1)} · irritation {Number(event.irritation_delta).toFixed(1)}</span></div>
+                                                    </div>
+                                                ))}
+                                                {!selectedUser.relationship?.events?.length && <div className="empty-state">Relationship events ещё не накопились.</div>}
                                             </div>
                                         </div>
                                     )}
