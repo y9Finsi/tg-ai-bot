@@ -3795,3 +3795,154 @@ summary:focus-visible,
     animation-duration: .01ms !important;
   }
 }
+
+/* Command Palette Overlay & Linear Style UI Additions */
+.cmd-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 120px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  animation: cmdFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes cmdFadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.cmd-palette-modal {
+  width: min(640px, calc(100vw - 32px));
+  max-height: 480px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: #121318;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.cmd-palette-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cmd-search-icon {
+  color: #71717a;
+  flex-shrink: 0;
+}
+
+.cmd-palette-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: #fafafa;
+  font-size: 14px;
+  outline: none;
+  font-family: inherit;
+}
+
+.cmd-palette-search kbd {
+  padding: 2px 6px;
+  border: 1px solid #3f3f46;
+  border-radius: 4px;
+  color: #a1a1aa;
+  background: #18181b;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.cmd-palette-list {
+  padding: 8px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cmd-palette-empty {
+  padding: 24px;
+  text-align: center;
+  color: #71717a;
+  font-size: 13px;
+}
+
+.cmd-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #a1a1aa;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  font-size: 13px;
+}
+
+.cmd-palette-item:hover,
+.cmd-palette-item.selected {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cmd-item-title {
+  flex: 1;
+  font-weight: 500;
+}
+
+.cmd-item-section {
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: #71717a;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+}
+
+.cmd-palette-item kbd {
+  padding: 2px 6px;
+  border: 1px solid #3f3f46;
+  border-radius: 4px;
+  color: #a1a1aa;
+  background: #18181b;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.cmd-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 6px;
+  color: #a1a1aa !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+.cmd-trigger-btn:hover {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+
+.cmd-trigger-btn kbd {
+  padding: 1px 5px;
+  border: 1px solid #3f3f46;
+  border-radius: 4px;
+  color: #71717a;
+  background: #18181b;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

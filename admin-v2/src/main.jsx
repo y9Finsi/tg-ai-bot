@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { CircleHelp, CloudRain, Database, ExternalLink, EyeOff, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, CircleCheck, CircleOff, Info, Pencil } from 'lucide-react';
+import { CircleHelp, CloudRain, Database, ExternalLink, EyeOff, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, CircleCheck, CircleOff, Info, Pencil, Search, Command } from 'lucide-react';
 import './styles.css';
 import { Button } from './components/ui/button.jsx';
 import { Badge } from './components/ui/badge.jsx';
@@ -2417,11 +2417,106 @@ function DiaryTabbar({ view, setView }) {
     );
 }
 
+function CommandPalette({ open, onClose, onViewChange, onRefresh }) {
+    const [query, setQuery] = useState('');
+    const [selectedIndex, setSelectedIndex] = useState(0);
+
+    const items = useMemo(() => {
+        const allItems = [
+            { id: 'nav-diary', type: 'page', title: 'Дневник и Обзор', section: 'Раздел', action: () => onViewChange('diary'), icon: FileText, shortcut: '⌘1' },
+            { id: 'nav-dialogs', type: 'page', title: 'Диалоги и Логи', section: 'Раздел', action: () => onViewChange('dialogs'), icon: MessageSquare, shortcut: '⌘2' },
+            { id: 'nav-llm-settings', type: 'page', title: 'AI Sandbox & Prompts', section: 'Раздел', action: () => onViewChange('llm-settings'), icon: Settings2, shortcut: '⌘3' },
+            { id: 'nav-crm', type: 'page', title: 'CRM Пользователей', section: 'Раздел', action: () => onViewChange('crm'), icon: Users, shortcut: '⌘4' },
+            { id: 'nav-content', type: 'page', title: 'Контент и Канал', section: 'Раздел', action: () => onViewChange('content'), icon: Image, shortcut: '⌘5' },
+            { id: 'nav-inventory', type: 'page', title: 'Рюкзак Леры', section: 'Раздел', action: () => onViewChange('inventory'), icon: Backpack, shortcut: '⌘6' },
+            { id: 'nav-system', type: 'page', title: 'Движок и Операции', section: 'Раздел', action: () => onViewChange('system'), icon: Zap, shortcut: '⌘7' },
+            { id: 'act-refresh', type: 'action', title: 'Обновить состояние системы', section: 'Команда', action: () => onRefresh(), icon: RefreshCw, shortcut: '⌘R' },
+            { id: 'act-sandbox', type: 'action', title: 'Запустить AI Sandbox', section: 'Команда', action: () => onViewChange('llm-settings'), icon: WandSparkles },
+            { id: 'act-god', type: 'action', title: 'God Mode и управление', section: 'Команда', action: () => onViewChange('system'), icon: ShieldAlert }
+        ];
+        if (!query.trim()) return allItems;
+        const q = query.toLowerCase();
+        return allItems.filter(item => item.title.toLowerCase().includes(q) || item.section.toLowerCase().includes(q));
+    }, [query, onViewChange, onRefresh]);
+
+    useEffect(() => { setSelectedIndex(0); }, [query]);
+
+    useEffect(() => {
+        if (!open) return;
+        function handleKeyDown(e) {
+            if (e.key === 'Escape') {
+                onClose();
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSelectedIndex(prev => (prev + 1) % (items.length || 1));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSelectedIndex(prev => (prev - 1 + items.length) % (items.length || 1));
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (items[selectedIndex]) {
+                    items[selectedIndex].action();
+                    onClose();
+                }
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [open, items, selectedIndex, onClose]);
+
+    if (!open) return null;
+
+    return (
+        <div className="cmd-palette-overlay" onClick={onClose}>
+            <div className="cmd-palette-modal" onClick={e => e.stopPropagation()}>
+                <div className="cmd-palette-search">
+                    <Search size={16} className="cmd-search-icon" />
+                    <input
+                        autoFocus
+                        placeholder="Поиск по разделам и командам... (Escape закрыть)"
+                        value={query}
+                        onChange={e => setQuery(e.target.value)}
+                    />
+                    <kbd>ESC</kbd>
+                </div>
+                <div className="cmd-palette-list">
+                    {items.length === 0 ? (
+                        <div className="cmd-palette-empty">Ничего не найдено</div>
+                    ) : (
+                        items.map((item, idx) => {
+                            const IconComp = item.icon;
+                            return (
+                                <div
+                                    key={item.id}
+                                    className={cn('cmd-palette-item', idx === selectedIndex && 'selected')}
+                                    onClick={() => { item.action(); onClose(); }}
+                                    onMouseEnter={() => setSelectedIndex(idx)}
+                                >
+                                    <IconComp size={16} />
+                                    <span className="cmd-item-title">{item.title}</span>
+                                    <span className="cmd-item-section">{item.section}</span>
+                                    {item.shortcut && <kbd>{item.shortcut}</kbd>}
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function App() {
-    const [authenticated, setAuthenticated] = useState(null); const [day] = useState(() => isoDate(new Date())); const [view, setView] = useState('diary'); const [data, setData] = useState(null); const [readOnly, setReadOnly] = useState(true); const [notice, setNotice] = useState(null); const toastTimerRef = useRef(null);
+    const [authenticated, setAuthenticated] = useState(null); const [day] = useState(() => isoDate(new Date())); const [view, setView] = useState('diary'); const [data, setData] = useState(null); const [readOnly, setReadOnly] = useState(true); const [notice, setNotice] = useState(null); const [cmdOpen, setCmdOpen] = useState(false); const toastTimerRef = useRef(null);
     const counts = useMemo(() => ({ meals: data?.meals?.length || 0, sleep: data?.sleep?.length || 0, random: data?.randomEvents?.length || 0 }), [data]);
     useEffect(() => { api('/api/admin/session').then(result => setAuthenticated(result.authenticated)).catch(() => setAuthenticated(false)); }, []);
-    useEffect(() => { if (!authenticated) return; const today = isoDate(new Date()); const at = day === today ? new Date().toISOString() : `${day}T12:00:00+03:00`; api(`/api/admin/radiant/day?at=${encodeURIComponent(at)}`).then(setData).catch(error => toast(error.message, 'error')); }, [authenticated, day]);
+    const refreshData = useRef(null);
+    refreshData.current = () => {
+        const today = isoDate(new Date());
+        const at = day === today ? new Date().toISOString() : `${day}T12:00:00+03:00`;
+        api(`/api/admin/radiant/day?at=${encodeURIComponent(at)}`).then(setData).catch(error => toast(error.message, 'error'));
+    };
+    useEffect(() => { if (authenticated) refreshData.current(); }, [authenticated, day]);
     useEffect(() => {
         if (!authenticated) return;
         let cancelled = false;
@@ -2436,6 +2531,16 @@ function App() {
         const timer = setInterval(refreshHealth, 15000);
         return () => { cancelled = true; clearInterval(timer); };
     }, [authenticated]);
+    useEffect(() => {
+        function handleKeyDown(e) {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                setCmdOpen(prev => !prev);
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
     useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
     function dismissToast() { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); toastTimerRef.current = null; setNotice(null); }
     function toast(message, kind = 'success') {
@@ -2449,7 +2554,7 @@ function App() {
     const state = data?.state || {}; const profile = data?.profile; const items = data?.timeline || [];
     function exportDay(selectedItems = items) { const body = selectedItems.map(item => `${formatTime(item.at)} — ${item.title}`).join('\n'); const blob = new Blob([`Дневник Леры · ${formatDay(`${day}T12:00:00+03:00`)}\n\n${body}`], { type: 'text/plain;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `lera-${day}.txt`; link.click(); URL.revokeObjectURL(link.href); }
     const viewTitle = view === 'diary' ? 'Дневник жизни' : view === 'dialogs' ? 'Диалоги' : view === 'llm-settings' ? 'AI Sandbox & Prompts' : view === 'crm' ? 'CRM Пользователей и Клиенты' : view === 'content' ? 'Контент и Telegram-канал' : view === 'inventory' ? 'Рюкзак Леры' : 'Движок и Оперативный Контроль';
-    return <div className="v2-shell diary-shell"><main className="v2-main"><DiaryTabbar view={view} setView={setView} />{view !== 'diary' && <header className="v2-header"><div><div className="eyebrow">{view.toUpperCase()}</div><h1>{viewTitle}</h1></div><div className="header-actions"><Badge variant={data?.health?.status === 'ONLINE' ? 'green' : 'yellow'}><span className="status-dot" /> {data?.health?.status || 'Проверка'}</Badge><Badge>{state.location_name || '—'}</Badge></div></header>}<div className={cn('v2-content', view === 'diary' && 'diary-home')}>{view === 'diary' && <><NeedsPanel state={state} profile={profile} /><InventoryWidget state={state} weather={data?.weather} toast={toast} onOpenInventory={() => setView('inventory')} />{/* CurrentDecision stays in the kanban home composition. */}<KanbanBoard schedule={data?.schedule} activeTask={data?.activeTask} clockAt={data?.at} health={data?.health} state={state} rationale={data?.rationale} /><DaySummary summary={data?.summary} /></>}{view === 'dialogs' && <LlmPanel toast={toast} />}{view === 'llm-settings' && <AiSandboxPromptStudio toast={toast} />}{view === 'crm' && <CrmPanel toast={toast} />}{view === 'content' && <ContentPanel toast={toast} />}{view === 'inventory' && <InventoryPanel state={state} weather={data?.weather} toast={toast} />}{view === 'system' && <SystemPanel readOnly={readOnly} setReadOnly={setReadOnly} toast={toast} />}</div></main>{notice && <Toast notice={notice} onDismiss={dismissToast} />}</div>;
+    return <div className="v2-shell diary-shell"><main className="v2-main"><DiaryTabbar view={view} setView={setView} />{view !== 'diary' && <header className="v2-header"><div><div className="eyebrow">{view.toUpperCase()}</div><h1>{viewTitle}</h1></div><div className="header-actions"><Button variant="outline" className="cmd-trigger-btn" onClick={() => setCmdOpen(true)}><Search size={14} /> <span>Поиск</span> <kbd>⌘K</kbd></Button><Badge variant={data?.health?.status === 'ONLINE' ? 'green' : 'yellow'}><span className="status-dot" /> {data?.health?.status || 'Проверка'}</Badge><Badge>{state.location_name || '—'}</Badge></div></header>}<div className={cn('v2-content', view === 'diary' && 'diary-home')}>{view === 'diary' && <><NeedsPanel state={state} profile={profile} /><InventoryWidget state={state} weather={data?.weather} toast={toast} onOpenInventory={() => setView('inventory')} />{/* CurrentDecision stays in the kanban home composition. */}<KanbanBoard schedule={data?.schedule} activeTask={data?.activeTask} clockAt={data?.at} health={data?.health} state={state} rationale={data?.rationale} /><DaySummary summary={data?.summary} /></>}{view === 'dialogs' && <LlmPanel toast={toast} />}{view === 'llm-settings' && <AiSandboxPromptStudio toast={toast} />}{view === 'crm' && <CrmPanel toast={toast} />}{view === 'content' && <ContentPanel toast={toast} />}{view === 'inventory' && <InventoryPanel state={state} weather={data?.weather} toast={toast} />}{view === 'system' && <SystemPanel readOnly={readOnly} setReadOnly={setReadOnly} toast={toast} />}</div></main><CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onViewChange={setView} onRefresh={() => refreshData.current && refreshData.current()} />{notice && <Toast notice={notice} onDismiss={dismissToast} />}</div>;
 }
 
 class ErrorBoundary extends React.Component {
