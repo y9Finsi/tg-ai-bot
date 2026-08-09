@@ -54,6 +54,36 @@ button, input, select, textarea { font: inherit; }
 .eyebrow { color: var(--subtle); font: 600 10px/1.2 ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase; }
 .studio-header h1 { margin: 4px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: #ffffff; }
 
+/* Responsive Studio Grids */
+.diary-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(340px, 1fr); gap: 24px; align-items: start; }
+.diary-main { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.diary-side { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+@media (max-width: 1080px) {
+    .diary-grid { grid-template-columns: 1fr; }
+}
+
+.needs-compact-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; width: 100%; }
+.need-compact-item { display: flex; flex-direction: column; justify-content: space-between; padding: 12px 14px; min-height: 96px; border-radius: 10px; background: #141416; border: 1px solid var(--line); }
+@media (max-width: 640px) {
+    .needs-compact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.bento-needs-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; }
+.bento-left { display: flex; flex-direction: column; gap: 10px; order: 1; }
+.bento-right { display: flex; flex-direction: column; gap: 10px; order: 2; }
+@media (max-width: 768px) {
+    .bento-needs-layout { grid-template-columns: 1fr; }
+}
+
+.kanban-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; width: 100%; }
+.kanban-column { display: flex; flex-direction: column; padding: 14px; border-radius: 10px; background: #121215; border: 1px solid var(--line); min-width: 0; }
+@media (max-width: 1200px) {
+    .kanban-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+    .kanban-board { grid-template-columns: 1fr; }
+}
+
 /* Clean Studio Buttons & Controls */
 .ui-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 8px; color: #e4e4e7; background: #141416; cursor: pointer; font-weight: 500; font-size: 13px; transition-property: color, background-color, border-color, transform; transition-duration: 0.15s; transition-timing-function: cubic-bezier(0.2, 0, 0, 1); }
 .ui-button:hover { background: #18181b; border-color: #3f3f46; color: #ffffff; }

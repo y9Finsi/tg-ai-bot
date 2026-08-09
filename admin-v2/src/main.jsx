@@ -2617,13 +2617,17 @@ function App() {
                 )}
                 <div className="v2-content">
                     {view === 'diary' && (
-                        <>
-                            <NeedsPanel state={state} profile={profile} />
-                            <InventoryWidget state={state} weather={data?.weather} toast={toast} onOpenInventory={() => setView('inventory')} />
-                            {/* CurrentDecision stays in the kanban home composition. */}
-                            <KanbanBoard schedule={data?.schedule} activeTask={data?.activeTask} clockAt={data?.at} health={data?.health} state={state} rationale={data?.rationale} />
-                            <DaySummary summary={data?.summary} />
-                        </>
+                        <div className="diary-grid">
+                            <div className="diary-main">
+                                <NeedsPanel state={state} profile={profile} />
+                                <KanbanBoard schedule={data?.schedule} activeTask={data?.activeTask} clockAt={data?.at} health={data?.health} state={state} rationale={data?.rationale} />
+                            </div>
+                            <div className="diary-side">
+                                <InventoryWidget state={state} weather={data?.weather} toast={toast} onOpenInventory={() => setView('inventory')} />
+                                <CurrentDecision activeTask={data?.activeTask} health={data?.health} state={state} rationale={data?.rationale} />
+                                <DaySummary summary={data?.summary} />
+                            </div>
+                        </div>
                     )}
                     {view === 'dialogs' && <LlmPanel toast={toast} />}
                     {view === 'llm-settings' && <AiSandboxPromptStudio toast={toast} />}
