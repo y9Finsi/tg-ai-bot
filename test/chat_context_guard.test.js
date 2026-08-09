@@ -75,6 +75,26 @@ test('pause guidance and historical events do not expose live micro-actions', ()
     assert.doesNotMatch(prompt, /идёт в туалет|сходила в туалет/);
 });
 
+test('a short pause makes the recent conversation stronger than a greeting or schedule', () => {
+    const prompt = ContextBuilder.toPrompt({
+        state: { needs: {}, physiology: {}, active_modifiers: [] },
+        location: { name: 'Квартира на Петроградке' },
+        activeTask: { task_type: 'SLEEP_NIGHT' },
+        transit: null,
+        inventory: [],
+        weather: { is_raining: false },
+        mood: 70,
+        facts: [],
+        commitments: [],
+        user: { first_name: 'Богдан' },
+        preMessageGapSeconds: 5 * 60
+    });
+
+    assert.match(prompt, /Непрерывность диалога/);
+    assert.match(prompt, /важнее расписания и приветствия пользователя/);
+    assert.match(prompt, /Не объявляй, что наступило утро, Лера уснула или только проснулась/);
+});
+
 test('newline-separated replies are split into Telegram bubbles', () => {
     const queue = fs.readFileSync(path.join(root, 'src', 'queue.js'), 'utf8');
 

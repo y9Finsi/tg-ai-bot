@@ -65,12 +65,16 @@ export class ContextBuilder {
     static toPrompt(snapshot) {
         const userName = snapshot.user?.first_name || 'пользователь';
         const pause = formatConversationGap(snapshot.preMessageGapSeconds);
-        return getContextPromptTemplate()
+        const continuityGuidance = formatConversationContinuityGuidance(snapshot.preMessageGapSeconds);
+        const prompt = getContextPromptTemplate()
             .replaceAll('{{CONTEXT_PARTNER}}', userName)
             .replaceAll('{{CONTEXT_PAUSE}}', pause || '')
             .replaceAll('{{CONTEXT_PAUSE_LINE}}', pause ? `• Пауза в диалоге: ${pause}` : '')
-            .replaceAll('{{CONTEXT_PAUSE_GUIDANCE}}', '')
+            .replaceAll('{{CONTEXT_PAUSE_GUIDANCE}}', continuityGuidance)
             .replaceAll('{{CONTEXT_ANALYSIS}}', this.toAnalysis(snapshot));
+        return continuityGuidance && !prompt.includes(continuityGuidance)
+            ? `${prompt}\n${continuityGuidance}`
+            : prompt;
     }
 
     static toAnalysis(snapshot) {
@@ -220,6 +224,18 @@ function formatConversationGap(value) {
     const seconds = Number(value);
     if (!Number.isFinite(seconds)) return '';
     return formatGapLabel(seconds);
+}
+
+function formatConversationContinuityGuidance(value) {
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds) || seconds > 10 * 60) return '';
+    return `• Непрерывность диалога: после предыдущей реплики прошло всего ${formatElapsedPause(seconds)}. Продолжай свежую сцену из истории; она важнее расписания и приветствия пользователя. Не объявляй, что наступило утро, Лера уснула или только проснулась, только потому что пользователь написал «доброе утро» или «споки». Если слова пользователя шутливо противоречат только что сказанному, подхвати шутку или мягко отметь несостыковку.`;
+}
+
+function formatElapsedPause(seconds) {
+    if (seconds < 60) return `${Math.max(1, Math.round(seconds))} секунд назад`;
+    if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))} минут назад`;
+    return `${Math.max(1, Math.round(seconds / 3600))} часов назад`;
 }
 
 function formatGapLabel(seconds) {
