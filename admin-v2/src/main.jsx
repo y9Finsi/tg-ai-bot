@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
@@ -167,10 +167,29 @@ function ConfirmAction({ title, description, confirmText, onConfirm, children, v
     return <AlertDialog.Root><AlertDialog.Trigger asChild><Button size={size} variant={variant}>{children}</Button></AlertDialog.Trigger><AlertDialog.Portal><AlertDialog.Overlay className="dialog-overlay" /><AlertDialog.Content className="dialog-content"><AlertDialog.Title>{title}</AlertDialog.Title><AlertDialog.Description>{description}</AlertDialog.Description><div className="dialog-actions"><AlertDialog.Cancel asChild><Button>Отмена</Button></AlertDialog.Cancel><AlertDialog.Action asChild><Button variant="danger" onClick={onConfirm}>{confirmText || 'Подтвердить'}</Button></AlertDialog.Action></div></AlertDialog.Content></AlertDialog.Portal></AlertDialog.Root>;
 }
 
+function Toast({ notice, onDismiss }) {
+    const isError = notice.kind === 'error';
+    const Icon = isError ? CircleAlert : notice.kind === 'info' ? Info : CircleCheck;
+    return <div className={cn('toast-v2', `toast-v2-${notice.kind}`)} role={isError ? 'alert' : 'status'} aria-live={isError ? 'assertive' : 'polite'}><Icon size={17} aria-hidden="true" /><span>{notice.message}</span><button type="button" className="toast-v2-dismiss" aria-label="Закрыть уведомление" onClick={onDismiss}><X size={16} /></button></div>;
+}
+
 function Login({ onLogin }) {
-    const [key, setKey] = useState(''); const [error, setError] = useState('');
-    async function submit(event) { event.preventDefault(); try { await api('/api/admin/login', { method: 'POST', body: JSON.stringify({ key }) }); onLogin(); } catch { setError('Не удалось войти. Проверь ключ админки.'); } }
-    return <div className="login-screen"><form className="login-box" onSubmit={submit}><div className="brand-mark">Л</div><div className="eyebrow">RADIANT LERA</div><h1>Дневник Леры</h1><p>Панель наблюдения за жизнью, решениями и диалогами.</p><input autoFocus autoComplete="current-password" type="password" value={key} onChange={event => setKey(event.target.value)} placeholder="Ключ админки" /><Button variant="primary">Войти</Button>{error && <div className="error-text">{error}</div>}</form></div>;
+    const [key, setKey] = useState(''); const [error, setError] = useState(''); const [loading, setLoading] = useState(false); const keyRef = useRef(null);
+    useEffect(() => { if (error) keyRef.current?.focus(); }, [error]);
+    async function submit(event) {
+        event.preventDefault();
+        setError('');
+        setLoading(true);
+        try {
+            await api('/api/admin/login', { method: 'POST', body: JSON.stringify({ key }) });
+            onLogin();
+        } catch {
+            setError('Не удалось войти. Проверь ключ админки.');
+        } finally {
+            setLoading(false);
+        }
+    }
+    return <div className="login-screen"><form className="login-box" onSubmit={submit} noValidate><div className="brand-mark">Л</div><div className="eyebrow">RADIANT LERA</div><h1>Дневник Леры</h1><p>Панель наблюдения за жизнью, решениями и диалогами.</p><label className="form-field" htmlFor="admin-key">Ключ админки<input ref={keyRef} id="admin-key" name="admin-key" autoFocus autoComplete="current-password" type="password" value={key} onChange={event => setKey(event.target.value)} placeholder="Введите ключ" aria-invalid={error ? 'true' : undefined} aria-describedby={error ? 'admin-key-error' : undefined} /></label><Button variant="primary" loading={loading}>{loading ? 'Вхожу…' : 'Войти'}</Button>{error && <div id="admin-key-error" className="error-text" role="alert">{error}</div>}</form></div>;
 }
 
 function ProfileCard({ profile }) {
@@ -364,7 +383,7 @@ function useInventorySnapshot(toast) {
             return result;
         } catch (error) {
             setSnapshot(current => ({ ...current, loading: false }));
-            if (toast) toast(error.message);
+            if (toast) toast(error.message, 'error');
             return null;
         }
     };
@@ -431,7 +450,7 @@ function InventoryPanel({ state, weather, toast }) {
             await refresh();
             toast?.(equipped ? 'Вещь снята' : 'Наряд обновлён');
         } catch (error) {
-            toast?.(error.message);
+            toast?.(error.message, 'error');
         }
     }
 
@@ -827,7 +846,7 @@ function LlmPanel({ toast }) {
             setSelected(null);
             if (toast) toast(`История очищена: удалено ${result.deleted || 0} сообщений`);
         } catch (error) {
-            if (toast) toast(error.message);
+            if (toast) toast(error.message, 'error');
         }
     }
 
@@ -936,47 +955,52 @@ function SandboxRawPrompt({ title, result }) {
 }
 function SandboxResultCard({ label, result, sharedIntent, onChoose, isEditing = false, draftResponse = '', onDraftChange, onEdit, onCancelEdit, onSaveEdit }) {
     if (!result) return null;
-    if (result.error) return <article className="sandbox-result-bubble sandbox-result-error"><div className="sandbox-result-heading"><span>Variant {label}</span><Badge variant="red">{sharedIntent}</Badge></div><strong>Ошибка генерации</strong><p>{result.error}</p></article>;
+    if (result.error) return <article className="sandbox-result-bubble sandbox-result-error"><div className="sandbox-result-heading"><span>Вариант {label}</span><Badge variant="red">{sharedIntent}</Badge></div><strong>Ошибка генерации</strong><p>{result.error}</p></article>;
     const usage = result.usage || {};
-    return <article className="sandbox-result-bubble"><div className="sandbox-result-heading"><span>Variant {label}</span><Badge variant="blue">{sharedIntent}</Badge></div>
+    return <article className="sandbox-result-bubble"><div className="sandbox-result-heading"><span>Вариант {label}</span><Badge variant="blue">{sharedIntent}</Badge></div>
         {isEditing
             ? <textarea className="sandbox-answer-editor" aria-label={`Отредактировать ответ варианта ${label}`} value={draftResponse} onChange={event => onDraftChange?.(event.target.value)} />
             : <div className="sandbox-answer">{result.response || 'Пустой ответ'}</div>}
-        <div className="studio-result-meta"><span>{result.provider?.name || 'Provider'} · {result.provider?.model || 'Model'}</span><span>{result.latencyMs || 0} ms</span><span>{usage.completion_tokens || 0} output tokens</span></div>
+        <div className="studio-result-meta"><span>{result.provider?.name || 'Провайдер'} · {result.provider?.model || 'Модель'}</span><span>{result.latencyMs || 0} мс</span><span>{usage.completion_tokens || 0} токенов ответа</span></div>
         {result.skippedParams?.length > 0 && <div className="sandbox-warning">Пропущено провайдером: {result.skippedParams.join(', ')}</div>}
-        <details className="sandbox-why"><summary>Why this response?</summary><div><span><strong>Intent</strong>{result.why?.intent || sharedIntent}</span><span><strong>Sampling</strong>{Object.entries(result.why?.sampling || {}).filter(([, item]) => item?.request === 'sent').map(([key, item]) => `${key}: ${item.value}`).join(' · ') || '—'}</span><span><strong>Prompt</strong>{(result.why?.prompt || []).join(' + ') || '—'}</span><span><strong>Context</strong>{result.why?.context ? 'used' : 'off'} · history {result.why?.historyMessages || 0} · memory {result.why?.memoryFacts || 0}</span></div></details>
+        <details className="sandbox-why"><summary>Почему такой ответ?</summary><div><span><strong>Intent</strong>{result.why?.intent || sharedIntent}</span><span><strong>Параметры генерации</strong>{Object.entries(result.why?.sampling || {}).filter(([, item]) => item?.request === 'sent').map(([key, item]) => `${key}: ${item.value}`).join(' · ') || '—'}</span><span><strong>Промпт</strong>{(result.why?.prompt || []).join(' + ') || '—'}</span><span><strong>Контекст</strong>{result.why?.context ? 'подключён' : 'выкл.'} · история {result.why?.historyMessages || 0} · память {result.why?.memoryFacts || 0}</span></div></details>
         <div className="sandbox-result-actions">
             {isEditing
                 ? <><Button size="sm" className="sandbox-save-answer-button" onClick={onSaveEdit}><CheckCircle2 size={14} />Сохранить ответ</Button><Button size="sm" variant="outline" onClick={onCancelEdit}>Отмена</Button></>
                 : <><Button size="sm" variant="outline" className="sandbox-edit-answer-button" onClick={onEdit}><Pencil size={14} />Редактировать</Button>{onChoose && <Button size="sm" className="sandbox-choose-button" onClick={onChoose}><CircleCheck size={14} />Продолжить с вариантом {label}</Button>}</>}
-            <SandboxRawPrompt title={`Debug · Variant ${label}`} result={result} />
+            <SandboxRawPrompt title={`Отладка · Вариант ${label}`} result={result} />
         </div>
     </article>;
 }
-function SandboxCompareChanges({ variantA, variantB }) {
-    const changes = [
-        ['Model', variantA.model?.model || 'provider default', variantB.model?.model || 'provider default'],
-        ['Provider', variantA.model?.provider_id || 'active', variantB.model?.provider_id || 'active'],
-        ...STUDIO_CAPABILITY_KEYS.map(key => [STUDIO_SAMPLER_LABELS[key], variantA.sampling[key] ?? '—', variantB.sampling[key] ?? '—']),
-        ['Prompt modules', Object.entries(variantA.promptModules || {}).filter(([, enabled]) => enabled).map(([key]) => key).join(', ') || 'none', Object.entries(variantB.promptModules || {}).filter(([, enabled]) => enabled).map(([key]) => key).join(', ') || 'none'],
-        ['System overlay', variantA.systemOverlay || '—', variantB.systemOverlay || '—']
+function getSandboxConfigChanges(baseConfig, nextConfig) {
+    const base = normalizeStudioConfig(baseConfig);
+    const next = normalizeStudioConfig(nextConfig);
+    return [
+        ['Модель', base.model?.model || 'по умолчанию', next.model?.model || 'по умолчанию'],
+        ['Провайдер', base.model?.provider_id || 'активный', next.model?.provider_id || 'активный'],
+        ...STUDIO_CAPABILITY_KEYS.map(key => [STUDIO_SAMPLER_LABELS[key], base.sampling[key] ?? '—', next.sampling[key] ?? '—']),
+        ['Модули промпта', Object.entries(base.promptModules || {}).filter(([, enabled]) => enabled).map(([key]) => key).join(', ') || 'нет', Object.entries(next.promptModules || {}).filter(([, enabled]) => enabled).map(([key]) => key).join(', ') || 'нет'],
+        ['Системная добавка', base.systemOverlay || '—', next.systemOverlay || '—']
     ].filter(([, left, right]) => JSON.stringify(left) !== JSON.stringify(right));
-    return <details className="sandbox-compare"><summary>Compare changes</summary>{changes.length ? <div>{changes.map(([label, left, right]) => <span key={label}><strong>{label}</strong>{String(left)} → {String(right)}</span>)}</div> : <p>Конфигурации одинаковые.</p>}</details>;
+}
+function SandboxCompareChanges({ variantA, variantB }) {
+    const changes = getSandboxConfigChanges(variantA, variantB);
+    return <details className="sandbox-compare"><summary>Сравнить изменения <span>{changes.length ? `${changes.length} различий` : 'нет различий'}</span></summary>{changes.length ? <div>{changes.map(([label, left, right]) => <span key={label}><strong>{label}</strong>{String(left)} → {String(right)}</span>)}</div> : <p>Конфигурации одинаковые.</p>}</details>;
 }
 function SandboxPromptModules({ config, onChange }) {
-    return <details className="studio-section"><summary>Prompt modules <span>{STUDIO_MODULES.filter(([key]) => config.promptModules[key] !== false).length} / {STUDIO_MODULES.length} enabled</span></summary><div className="studio-module-list">{STUDIO_MODULES.map(([key, label, description]) => <label className="studio-module-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><input type="checkbox" checked={config.promptModules[key] !== false} onChange={event => onChange(updateStudioModule(config, key, event.target.checked))} /></label>)}</div></details>;
+    return <details className="studio-section"><summary>Модули промпта <span>{STUDIO_MODULES.filter(([key]) => config.promptModules[key] !== false).length} / {STUDIO_MODULES.length} включено</span></summary><div className="studio-module-list">{STUDIO_MODULES.map(([key, label, description]) => <label className="studio-module-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><input type="checkbox" checked={config.promptModules[key] !== false} onChange={event => onChange(updateStudioModule(config, key, event.target.checked))} /></label>)}</div></details>;
 }
 function SandboxSamplingControls({ intent, config, providers, onChange }) {
     const sampling = config.sampling;
     const selectedProvider = providers.find(provider => Number(provider.id) === Number(config.model?.provider_id)) || providers.find(provider => provider.is_active) || providers[0];
     const capabilities = selectedProvider?.sampling_capabilities || {};
-    const field = (key, min, max, step = 0.01) => <label className="studio-sampling-field" key={key}><span><b>{STUDIO_SAMPLER_LABELS[key]}</b><input type="number" min={min} max={max} step={step} value={sampling[key] ?? ''} onChange={event => onChange(updateStudioSampling(config, key, event.target.value === '' ? null : Number(event.target.value)))} /></span><input aria-label={STUDIO_SAMPLER_LABELS[key]} type="range" min={min} max={max} step={step} value={sampling[key] ?? 0} onChange={event => onChange(updateStudioSampling(config, key, Number(event.target.value)))} /></label>;
+    const field = (key, min, max, step = 0.01, withRange = true) => <label className="studio-sampling-field" key={key}><span><b>{STUDIO_SAMPLER_LABELS[key]}</b><input type="number" min={min} max={max} step={step} value={sampling[key] ?? ''} onChange={event => onChange(updateStudioSampling(config, key, event.target.value === '' ? null : Number(event.target.value)))} /></span>{withRange && <input aria-label={STUDIO_SAMPLER_LABELS[key]} type="range" min={min} max={max} step={step} value={sampling[key] ?? 0} onChange={event => onChange(updateStudioSampling(config, key, Number(event.target.value)))} />}</label>;
     return <section className="studio-sampling-card">
-        <div className="studio-section-heading"><div><span className="eyebrow">Sampling</span><h3>{STUDIO_INTENT_LABELS[intent]} config</h3></div><Badge variant="muted">Draft</Badge></div>
+        <div className="studio-section-heading"><div><span className="eyebrow">Параметры генерации</span><h3>Конфигурация {STUDIO_INTENT_LABELS[intent]}</h3></div><Badge variant="muted">Черновик</Badge></div>
         {intent === 'AUTO' && <div className="studio-info-note">AUTO запускает classifier один раз; A/B используют один resolved intent.</div>}
-        <div className="studio-sampling-grid">{field('temperature', 0, 2)}{field('top_p', 0, 1)}{field('max_tokens', 20, 1200, 10)}</div>
-        <details className="studio-sampling-advanced"><summary>Дополнительные параметры</summary><div className="studio-sampling-grid">{field('presence_penalty', -2, 2, 0.1)}{field('frequency_penalty', -2, 2, 0.1)}{field('repetition_penalty', 1, 2, 0.05)}{field('seed', -2147483648, 2147483647, 1)}</div></details>
-        <div className="studio-provider-line"><span>{selectedProvider?.name || 'Active provider'} · {selectedProvider?.model_name || 'default model'}</span>{STUDIO_CAPABILITY_KEYS.map(key => <Badge key={key} variant={capabilities[key] ? 'green' : 'muted'}>{STUDIO_SAMPLER_LABELS[key]} {capabilities[key] ? 'sent' : 'skipped'}</Badge>)}</div>
+        <div className="studio-sampling-grid">{field('temperature', 0, 2)}{field('top_p', 0, 1)}{field('max_tokens', 20, 1200, 10, false)}</div>
+        <details className="studio-sampling-advanced"><summary>Дополнительные параметры</summary><div className="studio-sampling-grid">{field('presence_penalty', -2, 2, 0.1)}{field('frequency_penalty', -2, 2, 0.1)}{field('repetition_penalty', 1, 2, 0.05)}{field('seed', -2147483648, 2147483647, 1, false)}</div></details>
+        <div className="studio-provider-line"><span>{selectedProvider?.name || 'Активный провайдер'} · {selectedProvider?.model_name || 'модель по умолчанию'}</span>{STUDIO_CAPABILITY_KEYS.map(key => <Badge key={key} variant={capabilities[key] ? 'green' : 'muted'}>{STUDIO_SAMPLER_LABELS[key]} {capabilities[key] ? 'отправлен' : 'пропущен'}</Badge>)}</div>
     </section>;
 }
 function studioConfigsFromState(state) {
@@ -1007,7 +1031,7 @@ function SandboxPanel({ toast }) {
     const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [presetName, setPresetName] = useState(''); const [activePresetId, setActivePresetId] = useState(null);
     const [editingResponse, setEditingResponse] = useState(null); const [editedResponse, setEditedResponse] = useState('');
     const [userQuery, setUserQuery] = useState(''); const [foundUsers, setFoundUsers] = useState([]); const [selectedContextUser, setSelectedContextUser] = useState(null); const [loadingUserContext, setLoadingUserContext] = useState(false);
-    const run = async (action, success) => { try { const response = await action(); if (success) toast?.(success); return response; } catch (error) { toast?.(error.message === 'AUTH' ? 'Сессия админки истекла. Войдите снова.' : error.message); return null; } };
+    const run = async (action, success) => { try { const response = await action(); if (success) toast?.(success); return response; } catch (error) { toast?.(error.message === 'AUTH' ? 'Сессия админки истекла. Войдите снова.' : error.message, 'error'); return null; } };
     const activeConfig = draftConfigs[activeIntent] || cloneSandboxPreset();
     const editingB = abMode && editingVariant === 'B';
     const editableConfig = editingB ? abConfig : activeConfig;
@@ -1071,7 +1095,7 @@ function SandboxPanel({ toast }) {
     }
     function saveResponseEdit() {
         const nextResponse = editedResponse.trim();
-        if (!nextResponse) return toast?.('Ответ не может быть пустым');
+        if (!nextResponse) return toast?.('Ответ не может быть пустым', 'error');
         const variant = abMode ? selectedVariant : 'A';
         setResult(current => {
             if (!current) return current;
@@ -1109,7 +1133,7 @@ function SandboxPanel({ toast }) {
     }
     async function generate() {
         const message = userText.trim();
-        if (!message) return toast?.('Введите сообщение для Sandbox');
+        if (!message) return toast?.('Введите сообщение для Sandbox', 'error');
         const selectedResult = getSandboxSelectedResult(result, abMode, selectedVariant);
         const shouldCommitPendingResult = Boolean(submittedMessage && selectedResult?.response && !selectedResult.error);
         const nextHistory = shouldCommitPendingResult
@@ -1156,7 +1180,7 @@ function SandboxPanel({ toast }) {
     }
     async function savePreset() {
         const name = presetName.trim();
-        if (!name) return toast?.('Введите имя пресета');
+        if (!name) return toast?.('Введите имя пресета', 'error');
         const config = studioConfigsToSandboxPreset(draftConfigs, name);
         const method = activePresetId ? 'PATCH' : 'POST';
         const path = activePresetId ? `/api/sandbox/presets/${activePresetId}` : '/api/sandbox/presets';
@@ -1207,73 +1231,77 @@ function SandboxPanel({ toast }) {
     }
     const visibleIncluded = new Set((result?.historyIncluded || history.slice(-10)).map(item => String(item.id)));
     const selectedChatResult = getSandboxSelectedResult(result, abMode, selectedVariant);
+    const activeProvider = providers.find(provider => Number(provider.id) === Number(activeConfig.model?.provider_id)) || providers.find(provider => provider.is_active) || providers[0];
+    const productionChanges = getSandboxConfigChanges(productionConfig, activeConfig);
     return <div className="studio-shell sandbox-panel">
         <div className="studio-topbar">
-            <div><span className="eyebrow">AI Sandbox / Prompt Studio</span><h2>Тестируй ответ как диалог, публикуй как версию</h2><p>Изменения живут в Draft, пока ты явно не сохранишь и не опубликуешь их.</p></div>
-            <div className="studio-topbar-meta"><Badge variant={isDirty ? 'yellow' : 'green'}>{isDirty ? 'Есть изменения' : 'Синхронизировано'}</Badge><span>{STUDIO_INTENT_LABELS[activeIntent]} · draft v{draftVersion} · production v{productionVersion}</span></div>
+            <div><span className="eyebrow">AI Sandbox / Редактор промптов</span><h2>Тестируй ответ как диалог, публикуй как версию</h2><p>Изменения живут в черновике, пока ты явно не сохранишь и не опубликуешь их.</p></div>
+            <div className="studio-topbar-meta"><Badge variant={isDirty ? 'yellow' : 'green'}>{isDirty ? 'Есть изменения' : 'Синхронизировано'}</Badge><span>{STUDIO_INTENT_LABELS[activeIntent]} · черновик v{draftVersion} · production v{productionVersion}</span></div>
         </div>
+        <div className="studio-status-strip" aria-label="Статус текущей Sandbox-сессии"><Badge variant="blue">{activeProvider?.name || 'Активный провайдер'} · {activeProvider?.model_name || 'модель по умолчанию'}</Badge><Badge>{selectedContextUser ? `Контекст: ${selectedContextUser.user.first_name || selectedContextUser.user.telegram_id}` : 'Контекст пользователя: не подключён'}</Badge><Badge>История: {history.length}</Badge>{mediaPreview && <Badge variant="yellow">Превью медиа</Badge>}</div>
         <div className="studio-workbench">
             <aside className="studio-sidebar">
                 <section className="studio-card studio-editor-card">
-                    <div className="studio-section-heading"><div><span className="eyebrow">Editing</span><h3>Intent & variant</h3></div><Badge variant="blue">{activeIntent}</Badge></div>
+                    <div className="studio-section-heading"><div><span className="eyebrow">Редактирование</span><h3>Intent и варианты</h3></div><Badge variant="blue">{activeIntent}</Badge></div>
                     <div className="studio-intent-tabs" role="tablist" aria-label="Intent">
                         {STUDIO_INTENTS.map(intent => <button type="button" role="tab" aria-selected={activeIntent === intent} key={intent} title={intent === 'AUTO' ? 'Classifier выберет режим' : intent === 'CASUAL' ? 'Обычный разговор' : intent === 'JOKE' ? 'Шутки и ирония' : 'Интимный диалог'} className={cn('studio-intent-tab', activeIntent === intent && 'is-active')} onClick={() => selectIntent(intent)}>{intent}</button>)}
                     </div>
-                    <div className="studio-version-grid"><div><span>Draft</span><strong>v{draftVersion}</strong></div><div><span>Production</span><strong>v{productionVersion}</strong></div></div>
-                    <div className="studio-action-row"><Button variant="outline" onClick={saveDraft}><CheckCircle2 size={14} />Save</Button><Button variant="outline" onClick={() => document.getElementById('sandbox-preset-name')?.focus()}><Tag size={14} />Save as preset</Button><ConfirmAction title={`Опубликовать ${activeIntent} в Production?`} description={`Draft v${draftVersion} станет Production-версией выбранного intent. Остальные intent не изменятся.`} confirmText="Publish" variant="primary" disabled={!isDirty} onConfirm={publishIntent}>Publish</ConfirmAction></div>
+                    <div className="studio-version-grid"><div><span>Черновик</span><strong>v{draftVersion}</strong></div><div><span>Production</span><strong>v{productionVersion}</strong></div></div>
+                    {isDirty && <div className="studio-publish-review"><strong>К публикации: {productionChanges.length ? `${productionChanges.length} изменений` : 'конфигурация синхронизирована'}</strong>{productionChanges.length > 0 && <span>{productionChanges.slice(0, 3).map(([label]) => label).join(' · ')}{productionChanges.length > 3 ? ` и ещё ${productionChanges.length - 3}` : ''}</span>}</div>}
+                    <div className="studio-action-row"><Button variant="outline" onClick={saveDraft}><CheckCircle2 size={14} />Сохранить черновик</Button><Button variant="outline" onClick={() => document.getElementById('sandbox-preset-name')?.focus()}><Tag size={14} />Сохранить как пресет</Button><ConfirmAction title={`Опубликовать ${activeIntent} в Production?`} description={<><span>Черновик v{draftVersion} станет Production-версией выбранного intent. Остальные intent не изменятся.</span>{productionChanges.length > 0 && <span className="dialog-review">Изменения: {productionChanges.map(([label]) => label).join(', ')}.</span>}</>} confirmText="Опубликовать" variant="primary" disabled={!isDirty} onConfirm={publishIntent}>Опубликовать</ConfirmAction></div>
                     <div className="studio-editor-divider" />
-                    <div className="studio-variant-panel-heading"><div><span className="eyebrow">Sandbox variants</span><h3>{editingB ? 'Variant B config' : 'Variant A config'}</h3></div><label className="studio-ab-switch"><input type="checkbox" checked={abMode} onChange={event => { setAbMode(event.target.checked); if (!event.target.checked) { setEditingVariant('A'); setSelectedVariant('A'); } }} aria-label="Сравнивать ответы A/B" /><span className="studio-ab-switch-track" aria-hidden="true"><span className="studio-ab-switch-thumb" /></span><span>A/B test</span></label></div>
+                    <div className="studio-variant-panel-heading"><div><span className="eyebrow">Варианты Sandbox</span><h3>{editingB ? 'Конфигурация варианта B' : 'Конфигурация варианта A'}</h3></div><label className="studio-ab-switch"><input type="checkbox" checked={abMode} onChange={event => { setAbMode(event.target.checked); if (!event.target.checked) { setEditingVariant('A'); setSelectedVariant('A'); } }} aria-label="Сравнивать ответы A/B" /><span className="studio-ab-switch-track" aria-hidden="true"><span className="studio-ab-switch-thumb" /></span><span>A/B-тест</span></label></div>
                     <div className="studio-variant-tabs" role="tablist" aria-label="Редактируемый вариант">
                         <button type="button" role="tab" aria-selected={editingVariant === 'A'} className={cn('studio-variant-tab', editingVariant === 'A' && 'is-active')} onClick={() => setEditingVariant('A')}>Вариант A</button>
                         {abMode && <button type="button" role="tab" aria-selected={editingVariant === 'B'} className={cn('studio-variant-tab', editingVariant === 'B' && 'is-active')} onClick={() => setEditingVariant('B')}>Вариант B</button>}
                     </div>
-                    <p className="studio-section-copy">A и B получают одинаковые input, history, context и intent.</p>
+                    <p className="studio-section-copy">A и B получают одинаковые сообщение, историю, контекст и intent.</p>
                     <SandboxSamplingControls intent={activeIntent} config={editableConfig} providers={providers} onChange={updateEditableConfig} />
                 </section>
                 <SandboxPromptModules config={editableConfig} onChange={updateEditableConfig} />
                 <details className="studio-section">
-                    <summary>Context overrides <span>{context.location_id ? 'set' : 'unset'}</span></summary>
+                    <summary>Переопределения контекста <span>{context.location_id ? 'заданы' : 'не заданы'}</span></summary>
                     <div className="studio-section-copy">Смысловые значения для текущего теста. Production и Telegram не меняются.</div>
                     <div className="studio-context-grid">
-                        <label>Time<input type="datetime-local" value={context.current_time} onChange={event => setContext({ ...context, current_time: event.target.value })} /></label>
-                        <label>Pause<input type="number" min="0" value={context.pre_message_gap_seconds} onChange={event => setContext({ ...context, pre_message_gap_seconds: Number(event.target.value) })} /></label>
-                        <label>Mood<input type="number" min="0" max="100" value={context.mood} onChange={event => setContext({ ...context, mood: Number(event.target.value) })} /></label>
-                        <label>Location<select value={context.location_id} onChange={event => setContext({ ...context, location_id: event.target.value })}><option value="petrogradka_home">Квартира на Петроградке</option><option value="cafe_sloy">Кофейня «Слой»</option><option value="showroom_work">Шоурум Макса</option><option value="vkusvill_lenina">ВкусВилл</option><option value="bar_rubinsteina">Бар на Рубинштейна</option></select></label>
-                        <label>Activity<select value={context.status.task_type} onChange={event => setContext({ ...context, status: { task_type: event.target.value } })}><option value="SLEEP_NIGHT">Спит</option><option value="WORK_LAPTOP">Работает</option><option value="IDLE_HOME_REST">Свободна дома</option></select></label>
-                        <label>Weather<input value={context.weather.text} placeholder="например, дождь" onChange={event => setContext({ ...context, weather: { ...context.weather, text: event.target.value } })} /></label>
+                        <label>Время<input type="datetime-local" value={context.current_time} onChange={event => setContext({ ...context, current_time: event.target.value })} /></label>
+                        <label>Пауза, сек.<input type="number" min="0" value={context.pre_message_gap_seconds} onChange={event => setContext({ ...context, pre_message_gap_seconds: Number(event.target.value) })} /></label>
+                        <label>Настроение<input type="number" min="0" max="100" value={context.mood} onChange={event => setContext({ ...context, mood: Number(event.target.value) })} /></label>
+                        <label>Локация<select value={context.location_id} onChange={event => setContext({ ...context, location_id: event.target.value })}><option value="petrogradka_home">Квартира на Петроградке</option><option value="cafe_sloy">Кофейня «Слой»</option><option value="showroom_work">Шоурум Макса</option><option value="vkusvill_lenina">ВкусВилл</option><option value="bar_rubinsteina">Бар на Рубинштейна</option></select></label>
+                        <label>Занятие<select value={context.status.task_type} onChange={event => setContext({ ...context, status: { task_type: event.target.value } })}><option value="SLEEP_NIGHT">Спит</option><option value="WORK_LAPTOP">Работает</option><option value="IDLE_HOME_REST">Свободна дома</option></select></label>
+                        <label>Погода<input value={context.weather.text} placeholder="например, дождь" onChange={event => setContext({ ...context, weather: { ...context.weather, text: event.target.value } })} /></label>
                     </div>
-                    <label className="studio-textarea-field">Day events<textarea value={context.daily_facts.join('\n')} placeholder="По одному событию на строку" onChange={event => setContext({ ...context, daily_facts: event.target.value.split('\n').map(value => value.trim()).filter(Boolean) })} /></label>
+                    <label className="studio-textarea-field">События дня<textarea value={context.daily_facts.join('\n')} placeholder="По одному событию на строку" onChange={event => setContext({ ...context, daily_facts: event.target.value.split('\n').map(value => value.trim()).filter(Boolean) })} /></label>
                 </details>
                 <details className="studio-section">
-                    <summary>User context <span>{selectedContextUser ? 'loaded' : 'optional'}</span></summary>
+                    <summary>Контекст пользователя <span>{selectedContextUser ? 'загружен' : 'необязательно'}</span></summary>
                     <div className="studio-section-copy">Подключает историю и память конкретного пользователя только к этому Sandbox-чату.</div>
-                    <div className="sandbox-user-search"><input value={userQuery} placeholder="ID, @username или имя" onChange={event => setUserQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') searchSandboxUsers(); }} /><Button size="sm" variant="outline" onClick={searchSandboxUsers}>Find</Button></div>
+                    <div className="sandbox-user-search"><input value={userQuery} placeholder="ID, @username или имя" onChange={event => setUserQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') searchSandboxUsers(); }} /><Button size="sm" variant="outline" onClick={searchSandboxUsers}>Найти</Button></div>
                     {foundUsers.length > 0 && <div className="sandbox-user-results">{foundUsers.map(user => <button key={user.telegram_id} disabled={loadingUserContext} onClick={() => loadSandboxUserContext(user)}><strong>{user.first_name || 'Без имени'}</strong><span>@{user.username || '—'} · {user.telegram_id}</span></button>)}</div>}
                 </details>
                 <details className="studio-section">
-                    <summary>Presets <span>{presets.length + STUDIO_QUICK_PRESETS.length} available</span></summary>
-                    <div className="studio-quick-presets">{STUDIO_QUICK_PRESETS.map(([name, changes]) => <button key={name} className={cn('studio-preset-button', presetName === name && 'is-active')} onClick={() => applyQuickPreset(name, changes)}><strong>{name}</strong><span>Quick preset</span></button>)}</div>
-                    {presets.length > 0 && <div className="studio-saved-presets">{presets.map(item => <div className={cn('studio-saved-preset', activePresetId === item.id && 'is-active')} key={item.id}><button onClick={() => applyPreset(item.config, item.id, item.name)}><strong>{item.name}</strong><span>{item.config?.intent_configs ? '4 intents' : 'legacy config'}</span></button><button aria-label={`Удалить пресет ${item.name}`} onClick={() => deletePreset(item.id)}><X size={14} /></button></div>)}</div>}
-                    <div className="studio-preset-save"><input id="sandbox-preset-name" aria-label="Имя пресета" value={presetName} placeholder="Имя нового пресета" onChange={event => { setPresetName(event.target.value); if (activePresetId) setActivePresetId(null); }} /><Button size="sm" onClick={savePreset}>{activePresetId ? 'Update' : 'Save'}</Button></div>
+                    <summary>Пресеты <span>{presets.length + STUDIO_QUICK_PRESETS.length} доступно</span></summary>
+                    <div className="studio-quick-presets">{STUDIO_QUICK_PRESETS.map(([name, changes]) => <button key={name} className={cn('studio-preset-button', presetName === name && 'is-active')} onClick={() => applyQuickPreset(name, changes)}><strong>{name}</strong><span>Быстрый пресет</span></button>)}</div>
+                    {presets.length > 0 && <div className="studio-saved-presets">{presets.map(item => <div className={cn('studio-saved-preset', activePresetId === item.id && 'is-active')} key={item.id}><button onClick={() => applyPreset(item.config, item.id, item.name)}><strong>{item.name}</strong><span>{item.config?.intent_configs ? '4 intent' : 'старый формат'}</span></button><button aria-label={`Удалить пресет ${item.name}`} onClick={() => deletePreset(item.id)}><X size={14} /></button></div>)}</div>}
+                    <div className="studio-preset-save"><input id="sandbox-preset-name" aria-label="Имя пресета" value={presetName} placeholder="Имя нового пресета" onChange={event => { setPresetName(event.target.value); if (activePresetId) setActivePresetId(null); }} /><Button size="sm" onClick={savePreset}>{activePresetId ? 'Обновить' : 'Сохранить'}</Button></div>
                 </details>
                 <details className="studio-section studio-advanced">
-                    <summary>Advanced <span>provider, overlay, media</span></summary>
-                    <label className="studio-textarea-field">System overlay<textarea value={activeConfig.systemOverlay} placeholder="Опциональная добавка к system prompt" onChange={event => updateActiveConfig({ ...activeConfig, systemOverlay: event.target.value })} /></label>
-                    <label>Media preview<input type="checkbox" checked={mediaPreview} onChange={event => setMediaPreview(event.target.checked)} /></label>
-                    <div className="studio-section-copy">Provider capabilities подсвечены внутри Sampling. Неподдержанные параметры будут показаны в Why this response.</div>
+                    <summary>Дополнительно <span>провайдер, добавка, медиа</span></summary>
+                    <label className="studio-textarea-field">Системная добавка<textarea value={activeConfig.systemOverlay} placeholder="Опциональная добавка к system prompt" onChange={event => updateActiveConfig({ ...activeConfig, systemOverlay: event.target.value })} /></label>
+                    <label>Превью медиа<input type="checkbox" checked={mediaPreview} onChange={event => setMediaPreview(event.target.checked)} /></label>
+                    <div className="studio-section-copy">Возможности провайдера подсвечены в параметрах генерации. Неподдержанные параметры будут показаны в «Почему такой ответ?».</div>
                 </details>
             </aside>
             <main className="studio-chat-column">
                 <Card className="studio-chat-card">
-                    <CardHeader eyebrow="Sandbox chat" title="Живой диалог, а не лог" description="Текущий intent: выбранный режим уйдёт в sandbox. В AUTO classifier выполнится один раз и будет общим для A/B." action={<Button size="sm" variant="outline" onClick={resetSandboxChat}>Новый чат</Button>} />
-                    {selectedContextUser && <div className="sandbox-context-chip"><Users size={14} /><span>Context: <strong>{selectedContextUser.user.first_name || selectedContextUser.user.telegram_id}</strong> · {selectedContextUser.history.length} сообщений · {selectedContextUser.activeMemoryCount} фактов</span><Button size="icon" variant="outline" aria-label="Отключить контекст пользователя" onClick={() => { setSelectedContextUser(null); setHistory([]); }}><X size={14} /></Button></div>}
+                    <CardHeader eyebrow="Диалог Sandbox" title="Живой диалог, а не лог" description="Текущий intent: выбранный режим уйдёт в Sandbox. В AUTO classifier выполнится один раз и будет общим для A/B." action={<Button size="sm" variant="outline" onClick={resetSandboxChat}>Новый чат</Button>} />
+                    {selectedContextUser && <div className="sandbox-context-chip"><Users size={14} /><span>Контекст: <strong>{selectedContextUser.user.first_name || selectedContextUser.user.telegram_id}</strong> · {selectedContextUser.history.length} сообщений · {selectedContextUser.activeMemoryCount} фактов</span><Button size="icon" variant="outline" aria-label="Отключить контекст пользователя" onClick={() => { setSelectedContextUser(null); setHistory([]); }}><X size={14} /></Button></div>}
                     <div className="sandbox-history sandbox-chat-history">
                         {!history.length && !submittedMessage && <div className="sandbox-chat-empty">Напиши Лере первое сообщение — начнём чистую Sandbox-сессию.</div>}
-                        {history.length > 0 && <div className="sandbox-history-window">History window: {visibleIncluded.size} / {history.length} сообщений</div>}
+                        {history.length > 0 && <div className="sandbox-history-window">Окно истории: {visibleIncluded.size} / {history.length} сообщений</div>}
                         {history.map(item => <div key={item.id} className={cn('sandbox-history-row', item.role === 'assistant' ? 'sandbox-history-assistant' : 'sandbox-history-user', !visibleIncluded.has(String(item.id)) && 'sandbox-history-excluded')}><div className="sandbox-history-bubble"><strong>{item.role === 'assistant' ? 'Лера' : selectedContextUser?.user?.first_name || 'Богдан'}</strong><span>{item.content}</span><small>{visibleIncluded.has(String(item.id)) ? 'В окне истории' : 'Вне окна истории'}</small></div></div>)}
                         {submittedMessage && <>
                             <div className="sandbox-current-message"><div className="sandbox-current-message-bubble"><strong>{selectedContextUser?.user?.first_name || 'Богдан'}</strong><span>{submittedMessage}</span></div></div>
-                            {result?.classifier && <div className="sandbox-classifier-note"><Badge variant="green">Resolved intent: {result.resolvedIntent}</Badge>{activeIntent === 'AUTO' && <span>Classifier выполнен один раз для обоих вариантов.</span>}</div>}
+                            {result?.classifier && <div className="sandbox-classifier-note"><Badge variant="green">Определён intent: {result.resolvedIntent}</Badge>{activeIntent === 'AUTO' && <span>Classifier выполнен один раз для обоих вариантов.</span>}</div>}
                             {loading && <div className="sandbox-typing-bubble">Лера печатает…</div>}
                             {!loading && result && <>
                                 <div className="sandbox-result-toolbar">
@@ -1301,8 +1329,8 @@ function SandboxPanel({ toast }) {
                             </>}
                         </>}
                     </div>
-                    <div className="sandbox-send-row studio-composer"><input aria-label="Сообщение для Леры" value={userText} placeholder="Напишите Лере…" onChange={event => setUserText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') generate(); }} /><span className="studio-composer-intent">{activeIntent}</span><Button className="sandbox-send-button" onClick={generate} disabled={loading}><Play size={14} />{loading ? 'Генерирую…' : 'Generate'}</Button></div>
-                    <details className="sandbox-history-editor studio-history-editor"><summary>History editor <span>{history.length} сообщений</span></summary><div className="sandbox-history-edit-list">{history.map((item, index) => <div key={item.id} className="sandbox-history-edit-row"><select value={item.role} onChange={event => setHistory(history.map((entry, itemIndex) => itemIndex === index ? { ...entry, role: event.target.value } : entry))}><option value="user">Пользователь</option><option value="assistant">Лера</option></select><input value={item.content} onChange={event => setHistory(history.map((entry, itemIndex) => itemIndex === index ? { ...entry, content: event.target.value } : entry))} /><Button size="icon" variant="outline" aria-label="Удалить сообщение" onClick={() => setHistory(history.filter((_, itemIndex) => itemIndex !== index))}><X size={14} /></Button></div>)}</div><div className="sandbox-compose-row"><select value={draftRole} onChange={event => setDraftRole(event.target.value)}><option value="user">Пользователь</option><option value="assistant">Лера</option></select><input value={draftText} placeholder="Добавить прошлое сообщение" onChange={event => setDraftText(event.target.value)} /><Button size="sm" variant="outline" onClick={() => { if (draftText.trim()) { setHistory([...history, { id: `local-${Date.now()}`, role: draftRole, content: draftText.trim() }]); setDraftText(''); } }}>Добавить</Button></div></details>
+                    <div className="sandbox-send-row studio-composer"><input aria-label="Сообщение для Леры" value={userText} placeholder="Напишите Лере…" onChange={event => setUserText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') generate(); }} /><span className="studio-composer-intent">{activeIntent}</span><Button className="sandbox-send-button" onClick={generate} disabled={loading}><Play size={14} />{loading ? 'Генерирую…' : 'Сгенерировать'}</Button></div>
+                    <details className="sandbox-history-editor studio-history-editor"><summary>Редактор истории <span>{history.length} сообщений</span></summary><div className="sandbox-history-edit-list">{history.map((item, index) => <div key={item.id} className="sandbox-history-edit-row"><select value={item.role} onChange={event => setHistory(history.map((entry, itemIndex) => itemIndex === index ? { ...entry, role: event.target.value } : entry))}><option value="user">Пользователь</option><option value="assistant">Лера</option></select><input value={item.content} onChange={event => setHistory(history.map((entry, itemIndex) => itemIndex === index ? { ...entry, content: event.target.value } : entry))} /><Button size="icon" variant="outline" aria-label="Удалить сообщение" onClick={() => setHistory(history.filter((_, itemIndex) => itemIndex !== index))}><X size={14} /></Button></div>)}</div><div className="sandbox-compose-row"><select value={draftRole} onChange={event => setDraftRole(event.target.value)}><option value="user">Пользователь</option><option value="assistant">Лера</option></select><input value={draftText} placeholder="Добавить прошлое сообщение" onChange={event => setDraftText(event.target.value)} /><Button size="sm" variant="outline" onClick={() => { if (draftText.trim()) { setHistory([...history, { id: `local-${Date.now()}`, role: draftRole, content: draftText.trim() }]); setDraftText(''); } }}>Добавить</Button></div></details>
                 </Card>
             </main>
         </div>
@@ -1321,7 +1349,7 @@ function LlmSettingsPanel({ toast }) {
     const [promptParams, setPromptParams] = useState({ temperature: 0.7, presence_penalty: 0.1, frequency_penalty: 0.1 });
     const [routingSettings, setRoutingSettings] = useState({});
     const [routingModules, setRoutingModules] = useState({});
-    const run = async (action, success) => { try { const result = await action(); if (success && toast) toast(success); return result; } catch (error) { if (toast) toast(error.message); return null; } };
+    const run = async (action, success) => { try { const result = await action(); if (success && toast) toast(success); return result; } catch (error) { if (toast) toast(error.message, 'error'); return null; } };
     async function loadProviders() { const result = await run(() => api('/api/admin/providers')); if (result) setProviders(result.providers || []); }
     async function loadPrompts() {
         const result = await run(() => api('/api/admin/llm-settings'));
@@ -1472,7 +1500,7 @@ function CrmPanel({ toast }) {
             if (success && toast) toast(success);
             return result;
         } catch (error) {
-            if (toast) toast(error.message);
+            if (toast) toast(error.message, 'error');
             return null;
         }
     };
@@ -1904,7 +1932,7 @@ function ContentPanel({ toast }) {
             if (success && toast) toast(success);
             return result;
         } catch (error) {
-            if (toast) toast(error.message);
+            if (toast) toast(error.message, 'error');
             return null;
         }
     };
@@ -2254,7 +2282,7 @@ function SystemPanel({ readOnly, setReadOnly, toast }) {
     const [queue, setQueue] = useState([]); const [queueForm, setQueueForm] = useState({ taskType: 'LEISURE_HOME', targetLocation: 'petrogradka_home', durationMinutes: 30, priority: 50 }); const [godAction, setGodAction] = useState('RAIN_ON'); const [godValues, setGodValues] = useState({ hunger: '', fatigue: '', rubles: '', stars: '', cycle_day: '' });
     const [diagnostics, setDiagnostics] = useState(null); const [logs, setLogs] = useState([]); const [broadcast, setBroadcast] = useState(null); const [broadcastText, setBroadcastText] = useState('');
 
-    const run = async (action, success) => { try { const result = await action(); if (success && toast) toast(success); return result; } catch (error) { if (toast) toast(error.message); return null; } };
+    const run = async (action, success) => { try { const result = await action(); if (success && toast) toast(success); return result; } catch (error) { if (toast) toast(error.message, 'error'); return null; } };
 
     async function tick() { await api('/api/admin/radiant/tick', { method: 'POST', body: JSON.stringify({}) }); if (toast) toast('Один завершённый тик выполнен'); }
     async function reset() { await api('/api/admin/radiant/reset-runtime', { method: 'POST', body: JSON.stringify({ request_id: `ui-reset-${Date.now()}` }) }); if (toast) toast('Runtime сброшен'); }
@@ -2388,10 +2416,10 @@ function DiaryTabbar({ view, setView }) {
 }
 
 function App() {
-    const [authenticated, setAuthenticated] = useState(null); const [day] = useState(() => isoDate(new Date())); const [view, setView] = useState('diary'); const [data, setData] = useState(null); const [readOnly, setReadOnly] = useState(true); const [toastText, setToastText] = useState('');
+    const [authenticated, setAuthenticated] = useState(null); const [day] = useState(() => isoDate(new Date())); const [view, setView] = useState('diary'); const [data, setData] = useState(null); const [readOnly, setReadOnly] = useState(true); const [notice, setNotice] = useState(null); const toastTimerRef = useRef(null);
     const counts = useMemo(() => ({ meals: data?.meals?.length || 0, sleep: data?.sleep?.length || 0, random: data?.randomEvents?.length || 0 }), [data]);
     useEffect(() => { api('/api/admin/session').then(result => setAuthenticated(result.authenticated)).catch(() => setAuthenticated(false)); }, []);
-    useEffect(() => { if (!authenticated) return; const today = isoDate(new Date()); const at = day === today ? new Date().toISOString() : `${day}T12:00:00+03:00`; api(`/api/admin/radiant/day?at=${encodeURIComponent(at)}`).then(setData).catch(error => setToastText(error.message)); }, [authenticated, day]);
+    useEffect(() => { if (!authenticated) return; const today = isoDate(new Date()); const at = day === today ? new Date().toISOString() : `${day}T12:00:00+03:00`; api(`/api/admin/radiant/day?at=${encodeURIComponent(at)}`).then(setData).catch(error => toast(error.message, 'error')); }, [authenticated, day]);
     useEffect(() => {
         if (!authenticated) return;
         let cancelled = false;
@@ -2406,13 +2434,20 @@ function App() {
         const timer = setInterval(refreshHealth, 15000);
         return () => { cancelled = true; clearInterval(timer); };
     }, [authenticated]);
-    function toast(message) { setToastText(message); setTimeout(() => setToastText(''), 3200); }
+    useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
+    function dismissToast() { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); toastTimerRef.current = null; setNotice(null); }
+    function toast(message, kind = 'success') {
+        if (!message) return;
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        setNotice({ message, kind });
+        if (kind !== 'error') toastTimerRef.current = setTimeout(() => setNotice(null), 3200);
+    }
     if (authenticated === null) return <div className="loading-screen">Загружаю дневник…</div>;
     if (!authenticated) return <Login onLogin={() => setAuthenticated(true)} />;
     const state = data?.state || {}; const profile = data?.profile; const items = data?.timeline || [];
     function exportDay(selectedItems = items) { const body = selectedItems.map(item => `${formatTime(item.at)} — ${item.title}`).join('\n'); const blob = new Blob([`Дневник Леры · ${formatDay(`${day}T12:00:00+03:00`)}\n\n${body}`], { type: 'text/plain;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `lera-${day}.txt`; link.click(); URL.revokeObjectURL(link.href); }
     const viewTitle = view === 'diary' ? 'Дневник жизни' : view === 'dialogs' ? 'Диалоги' : view === 'llm-settings' ? 'AI Sandbox & Prompts' : view === 'crm' ? 'CRM Пользователей и Клиенты' : view === 'content' ? 'Контент и Telegram-канал' : view === 'inventory' ? 'Рюкзак Леры' : 'Движок и Оперативный Контроль';
-    return <div className="v2-shell diary-shell"><main className="v2-main"><DiaryTabbar view={view} setView={setView} />{view !== 'diary' && <header className="v2-header"><div><div className="eyebrow">{view.toUpperCase()}</div><h1>{viewTitle}</h1></div><div className="header-actions"><Badge variant={data?.health?.status === 'ONLINE' ? 'green' : 'yellow'}><span className="status-dot" /> {data?.health?.status || 'Проверка'}</Badge><Badge>{state.location_name || '—'}</Badge></div></header>}<div className={cn('v2-content', view === 'diary' && 'diary-home')}>{view === 'diary' && <><NeedsPanel state={state} profile={profile} /><InventoryWidget state={state} weather={data?.weather} toast={toast} onOpenInventory={() => setView('inventory')} />{/* CurrentDecision stays in the kanban home composition. */}<KanbanBoard schedule={data?.schedule} activeTask={data?.activeTask} clockAt={data?.at} health={data?.health} state={state} rationale={data?.rationale} /><DaySummary summary={data?.summary} /></>}{view === 'dialogs' && <LlmPanel toast={toast} />}{view === 'llm-settings' && <AiSandboxPromptStudio toast={toast} />}{view === 'crm' && <CrmPanel toast={toast} />}{view === 'content' && <ContentPanel toast={toast} />}{view === 'inventory' && <InventoryPanel state={state} weather={data?.weather} toast={toast} />}{view === 'system' && <SystemPanel readOnly={readOnly} setReadOnly={setReadOnly} toast={toast} />}</div></main>{toastText && <div className="toast-v2">{toastText}</div>}</div>;
+    return <div className="v2-shell diary-shell"><main className="v2-main"><DiaryTabbar view={view} setView={setView} />{view !== 'diary' && <header className="v2-header"><div><div className="eyebrow">{view.toUpperCase()}</div><h1>{viewTitle}</h1></div><div className="header-actions"><Badge variant={data?.health?.status === 'ONLINE' ? 'green' : 'yellow'}><span className="status-dot" /> {data?.health?.status || 'Проверка'}</Badge><Badge>{state.location_name || '—'}</Badge></div></header>}<div className={cn('v2-content', view === 'diary' && 'diary-home')}>{view === 'diary' && <><NeedsPanel state={state} profile={profile} /><InventoryWidget state={state} weather={data?.weather} toast={toast} onOpenInventory={() => setView('inventory')} />{/* CurrentDecision stays in the kanban home composition. */}<KanbanBoard schedule={data?.schedule} activeTask={data?.activeTask} clockAt={data?.at} health={data?.health} state={state} rationale={data?.rationale} /><DaySummary summary={data?.summary} /></>}{view === 'dialogs' && <LlmPanel toast={toast} />}{view === 'llm-settings' && <AiSandboxPromptStudio toast={toast} />}{view === 'crm' && <CrmPanel toast={toast} />}{view === 'content' && <ContentPanel toast={toast} />}{view === 'inventory' && <InventoryPanel state={state} weather={data?.weather} toast={toast} />}{view === 'system' && <SystemPanel readOnly={readOnly} setReadOnly={setReadOnly} toast={toast} />}</div></main>{notice && <Toast notice={notice} onDismiss={dismissToast} />}</div>;
 }
 
 class ErrorBoundary extends React.Component {

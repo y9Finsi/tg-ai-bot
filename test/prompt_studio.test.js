@@ -93,8 +93,8 @@ test('Draft and publish routes expose explicit intent-scoped version workflow', 
     assert.match(router, /production\[intent\] = \{/);
     assert.match(ui, /Draft/);
     assert.match(ui, /Production/);
-    assert.match(ui, /Save as preset/);
-    assert.match(ui, /Publish/);
+    assert.match(ui, /Сохранить как пресет/);
+    assert.match(ui, /Опубликовать/);
 });
 
 test('Production history module toggle is an actual gate, not just a visual flag', () => {

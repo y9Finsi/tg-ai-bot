@@ -3571,3 +3571,227 @@
   .studio-composer-intent, .studio-composer .sandbox-send-button { grid-row: 2; }
   .sandbox-regenerate-button { width: 100%; margin-left: 0; }
 }
+
+/* Admin v2 semantic UI foundation. New screens use these tokens first; legacy
+   styles can migrate without a visual rewrite. */
+:root {
+  --color-canvas: #09090b;
+  --color-surface-1: #141416;
+  --color-surface-2: #18181b;
+  --color-surface-3: #202024;
+  --color-border: #2d2d33;
+  --color-border-strong: #51515b;
+  --color-text-primary: #f4f4f5;
+  --color-text-secondary: #c4c4cc;
+  --color-text-tertiary: #9b9ba5;
+  --color-accent: #60a5fa;
+  --color-accent-hover: #93c5fd;
+  --color-accent-subtle: #172554;
+  --color-success: #4ade80;
+  --color-success-bg: #102a1a;
+  --color-warning: #f4b942;
+  --color-warning-bg: #3d2d0b;
+  --color-danger: #f87171;
+  --color-danger-bg: #351316;
+  --focus-ring: #93c5fd;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[role="tab"]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-button {
+  min-height: 40px;
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
+  transition: color .16s ease, background .16s ease, border-color .16s ease, opacity .16s ease;
+}
+
+.ui-button:hover:not(:disabled) {
+  border-color: var(--color-text-secondary);
+  background: var(--color-surface-3);
+}
+
+.ui-button:disabled,
+.ui-button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: .52;
+}
+
+.ui-button-primary {
+  color: #09090b;
+  background: #fafafa;
+  border-color: #fafafa;
+}
+
+.ui-button-primary:hover:not(:disabled) {
+  color: #09090b;
+  background: #e4e4e7;
+  border-color: #e4e4e7;
+}
+
+.ui-button-danger {
+  color: #fecaca;
+  border-color: #7f1d1d;
+  background: var(--color-danger-bg);
+}
+
+.ui-button-sm {
+  min-height: 32px;
+}
+
+.ui-button-icon {
+  width: 40px;
+  min-height: 40px;
+  padding: 0;
+}
+
+.ui-button-sm.ui-button-icon {
+  width: 32px;
+  min-height: 32px;
+}
+
+.ui-button-loading {
+  cursor: progress;
+}
+
+.ui-card {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-1);
+}
+
+.form-field {
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.form-field input {
+  min-height: 40px;
+  border-color: var(--color-border);
+}
+
+.login-box .ui-button {
+  width: 100%;
+}
+
+.toast-v2 {
+  z-index: 60;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  width: min(420px, calc(100vw - 32px));
+  padding: 10px 10px 10px 12px;
+  border-radius: 9px;
+  color: var(--color-text-primary);
+  box-shadow: 0 16px 45px #000a;
+}
+
+.toast-v2-success {
+  border-color: #166534;
+  color: #bbf7d0;
+  background: var(--color-success-bg);
+}
+
+.toast-v2-error {
+  border-color: #991b1b;
+  color: #fecaca;
+  background: var(--color-danger-bg);
+}
+
+.toast-v2-info {
+  border-color: #1d4ed8;
+  color: #dbeafe;
+  background: var(--color-accent-subtle);
+}
+
+.toast-v2-dismiss {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: currentColor;
+  background: transparent;
+  cursor: pointer;
+}
+
+.toast-v2-dismiss:hover {
+  background: #ffffff16;
+}
+
+.studio-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: -2px 0 12px;
+}
+
+.studio-publish-review {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid #854d0e;
+  border-radius: 8px;
+  color: #fde68a;
+  background: var(--color-warning-bg);
+  font-size: 11px;
+}
+
+.studio-publish-review span,
+.dialog-review {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.dialog-review {
+  display: block;
+  margin-top: 8px;
+}
+
+.diary-tabbar {
+  scroll-padding-inline: 16px;
+}
+
+@media (max-width: 900px) {
+  .diary-tabs-root {
+    justify-content: flex-start;
+  }
+
+  .diary-tabbar {
+    width: 100%;
+    padding-right: 28px;
+  }
+}
+
+@media (max-width: 540px) {
+  .login-box .form-field input {
+    font-size: 16px;
+  }
+
+  .toast-v2 {
+    right: 16px;
+    bottom: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+  }
+}

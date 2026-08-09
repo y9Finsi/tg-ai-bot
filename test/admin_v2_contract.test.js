@@ -121,7 +121,7 @@ test('sandbox uses a chat-first layout and keeps technical controls collapsed', 
     assert.match(source, /className="studio-workbench"/);
     assert.match(source, /className="studio-chat-card"/);
     assert.match(source, /type="range"/);
-    assert.match(source, /Context overrides/);
+    assert.match(source, /Переопределения контекста/);
     assert.match(source, /className="studio-debug"/);
     assert.match(source, /sandbox-production-settings/);
     assert.match(css, /\.studio-chat-card \{/);
@@ -134,13 +134,13 @@ test('sandbox keeps chat actions and A/B replies in one compact Telegram-like fl
     const css = read('admin-v2/src/styles.css');
 
     for (const marker of [
-        'User context',
+        'Контекст пользователя',
         'Сравнивать ответы A/B',
         'sandbox-current-message',
         'sandbox-chat-answers',
         'sandbox-result-bubble',
-        'Save as preset',
-        'Publish',
+        'Сохранить как пресет',
+        'Опубликовать',
         'sandbox-send-button'
     ]) {
         assert.match(source, new RegExp(marker));
