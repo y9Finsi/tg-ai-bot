@@ -1,7 +1,7 @@
 const DASH_CHARACTERS = /[-\u058A\u05BE\u1400\u1806\u2010-\u2015\u2E17\u2E1A\u2E3A-\u2E3B\u2E40\u301C\u3030\u30A0\uFE31-\uFE32\uFE58\uFE63\uFF0D]/gu;
 const DECORATIVE_QUOTES = /[«»“”„‟]/gu;
 const SENTENCE_BOUNDARY = /(?<!\.)\.(?=\s+)|[!?](?=\s+)/gu;
-const LONG_MESSAGE_LIMIT = 220;
+const LADDER_PART_LIMIT = 100;
 
 export function cleanResponseText(rawText) {
     if (!rawText) return '';
@@ -58,7 +58,7 @@ export function splitResponseMessages(text) {
 }
 
 function splitLongResponsePart(part) {
-    if (part.length <= LONG_MESSAGE_LIMIT || !SENTENCE_BOUNDARY.test(part)) {
+    if (part.length <= LADDER_PART_LIMIT || !SENTENCE_BOUNDARY.test(part)) {
         SENTENCE_BOUNDARY.lastIndex = 0;
         return [part];
     }

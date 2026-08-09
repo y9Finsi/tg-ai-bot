@@ -47,3 +47,13 @@ test('response splitter keeps the first three ladder bubbles when limiting a lon
         ['раз', 'два', 'три', 'четыре пять']
     );
 });
+
+test('response splitter creates a fallback ladder for a long reply without delimiters', () => {
+    assert.deepEqual(
+        splitResponseMessages('подрабатываю в небольшой дизайн студии, помогаю с соцсетками и картинками. там норм атмосфера, но иногда заказчики такое присылают, что хочется плакать'),
+        [
+            'подрабатываю в небольшой дизайн студии, помогаю с соцсетками и картинками',
+            'там норм атмосфера, но иногда заказчики такое присылают, что хочется плакать'
+        ]
+    );
+});
