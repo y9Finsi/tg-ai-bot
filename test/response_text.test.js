@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { cleanResponseText, splitResponseMessages } from '../src/utils/response_text.js';
+import { cleanResponseText, findResponseFormatIssues, splitResponseMessages } from '../src/utils/response_text.js';
 
 test('response cleaner removes dash variants and decorative guillemets', () => {
-    const cleaned = cleanResponseText('«ну — типа»\n- вот ‒ ещё ― строка');
+    const cleaned = cleanResponseText('«ну — типа»\n- вот ‒ ещё ― строка ️');
     assert.equal(cleaned, 'ну типа\nвот ещё строка');
 });
 
@@ -85,5 +85,29 @@ test('response splitter creates short conversational ladder pieces', () => {
             'я себе сейчас налила, но могу и тебе сделать',
             'мысленный'
         ]
+    );
+});
+
+test('response format validator detects glued conversational phrases without rewriting text', () => {
+    assert.deepEqual(
+        findResponseFormatIssues('хахахах блин, ты прямо как взаправдукак ощущения'),
+        ['attached_conversational_boundary']
+    );
+    assert.deepEqual(
+        splitResponseMessages('хахахах блин, ты прямо как взаправдукак ощущения'),
+        ['хахахах блин, ты прямо как взаправдукак ощущения']
+    );
+});
+
+test('response format validator does not flag normal words or grammar', () => {
+    assert.deepEqual(findResponseFormatIssues('я не знаю, как это ощущается'), []);
+    assert.deepEqual(findResponseFormatIssues('никак не могу понять'), []);
+    assert.deepEqual(findResponseFormatIssues('знаешь как дела'), []);
+});
+
+test('response format validator trusts newline-separated raw replies', () => {
+    assert.deepEqual(
+        findResponseFormatIssues('ты прямо как взаправду\nкак ощущения'),
+        []
     );
 });

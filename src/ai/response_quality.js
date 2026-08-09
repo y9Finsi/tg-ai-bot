@@ -1,3 +1,5 @@
+import { findResponseFormatIssues } from '../utils/response_text.js';
+
 const INTERNAL_STATE_PATTERNS = [
     /\b(?:mood|fatigue|hunger|boredom|bladder|horny|willingness|active_state|confirmed_facts)\b/i,
     /настроени[ея]\s*\d+\s*\/\s*100/i,
@@ -66,6 +68,9 @@ export function evaluateLeraReply(text, userText = '', expected = null, options 
     const checks = {
         nonEmpty: reply.length > 0,
         concise: reply.length > 0 && reply.length <= 700,
+        // Keep the original line breaks here. They are meaningful Telegram
+        // bubble boundaries and must not be lost before the format check.
+        format: findResponseFormatIssues(text).length === 0,
         noInternalStateLeak: !INTERNAL_STATE_PATTERNS.some(pattern => pattern.test(reply)),
         staysInRole: !ROLE_BREAK_PATTERNS.some(pattern => pattern.test(reply)),
         noStaleStyle: !STALE_STYLE_PATTERNS.some(pattern => pattern.test(reply)),

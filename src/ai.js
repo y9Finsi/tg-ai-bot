@@ -515,7 +515,8 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         recentReplies: recentReplyTexts
     }).violations;
     const needsQualityRetry = !isInitiative && qualityIssues.some(issue => [
-        'noRecentRepeat'
+        'noRecentRepeat',
+        'format'
     ].includes(issue));
     const judgeNeedsRetry = !isInitiative && judgeSettings.judgeMode === 'ENFORCE' && judgeResult.passed === false;
     if (!isInitiative && userText && (
@@ -526,9 +527,11 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         const retryReason = judgeNeedsRetry
             ? `judge_${judgeResult.code || 'rejected'}`
             : needsQualityRetry
-            ? 'recent_repeat'
+            ? qualityIssues.includes('format') ? 'response_format' : 'recent_repeat'
             : repeatsGreeting ? 'repeated_greeting' : 'exact_repeat';
-        const retryInstruction = judgeNeedsRetry
+        const retryInstruction = qualityIssues.includes('format')
+            ? 'СТОП: в предыдущем ответе склеились две отдельные фразы. Перепиши ответ заново. Между каждой отдельной короткой репликой поставь буквальный разделитель ||| с пробелами по краям: первая реплика ||| вторая реплика. Не склеивай слова, не используй переносы строк и не добавляй пояснений.'
+            : judgeNeedsRetry
             ? `Проверка качества отклонила предыдущий ответ: ${judgeResult.code || 'REJECTED'}. Перепиши его по последней реплике пользователя, сохрани характер Леры и не повторяй предыдущий вариант.`
             : needsQualityRetry
             ? 'СТОП: предыдущий ответ повторяет недавнюю фразу. Перепиши ответ именно на последнюю реплику и не повторяй недавний текст.'

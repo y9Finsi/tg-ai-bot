@@ -5,6 +5,14 @@ const LADDER_PART_LIMIT = 100;
 const LADDER_MESSAGE_LIMIT = 48;
 const MAX_RESPONSE_MESSAGES = 6;
 
+// These are format anomalies, not text-repair rules. We must not guess where
+// arbitrary Russian words should be separated: the model has to regenerate
+// the reply with an explicit `|||` boundary.
+const ATTACHED_CONVERSATIONAL_BOUNDARY = [
+    /(?<=[а-яё])(кстати|короче|зато|только|ещё)(?=[а-яё])/iu,
+    /(?<=[а-яё])(как|что|почему|зачем|куда|где|когда)\s+(?=(?:ощущения|дела|ты|у тебя|это|так)(?:\s|$))/iu
+];
+
 export function cleanResponseText(rawText) {
     if (!rawText) return '';
     let text = String(rawText).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
@@ -34,6 +42,7 @@ export function cleanResponseText(rawText) {
     text = text.replace(/[()]+/g, '');
     text = text.replace(DASH_CHARACTERS, ' ');
     text = text.replace(DECORATIVE_QUOTES, '');
+    text = text.replace(/[\uFE0E\uFE0F\u20E3]/gu, '');
     return text
         .split('\n')
         .map(line => line.replace(/[ \t]+/g, ' ').trim())
@@ -42,7 +51,7 @@ export function cleanResponseText(rawText) {
 }
 
 export function splitResponseMessages(text) {
-    const raw = String(text || '').trim();
+    let raw = String(text || '').trim();
     if (!raw) return [];
 
     let parts = raw.includes('|||')
@@ -57,6 +66,23 @@ export function splitResponseMessages(text) {
         return [...parts.slice(0, MAX_RESPONSE_MESSAGES - 1), parts.slice(MAX_RESPONSE_MESSAGES - 1).join(' ')].filter(Boolean);
     }
     return parts;
+}
+
+export function findResponseFormatIssues(text) {
+    const value = String(text || '');
+    const issues = [];
+
+    // A model may use newlines instead of `|||`. The queue already supports
+    // that layout, so do not spend a retry or rewrite an otherwise usable reply.
+    if (/\r?\n/.test(value) || value.includes('|||')) {
+        return issues;
+    }
+
+    if (ATTACHED_CONVERSATIONAL_BOUNDARY.some(pattern => pattern.test(value))) {
+        issues.push('attached_conversational_boundary');
+    }
+
+    return issues;
 }
 
 function splitLongResponsePart(part) {
