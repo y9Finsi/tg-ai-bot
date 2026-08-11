@@ -7,6 +7,7 @@ import {
 } from './database.js';
 import { splitResponseMessages } from './utils/response_text.js';
 import { sendCatalogContent } from './content_service.js';
+import { sendTypingAction, stopTyping } from './typing_manager.js';
 
 // Парсим URL из .env и жестко задаем IPv4 (family: 4)
 const redisUrl = new URL(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
@@ -64,7 +65,7 @@ async function sendTextLadder(bot, chatId, text, tempMsgId = null, finalOptions 
         await safeSendMessage(bot.telegram, chatId, messages[0], firstOptions);
     }
     for (const message of messages.slice(1)) {
-        bot.telegram.sendChatAction(chatId, 'typing').catch(() => {});
+        void sendTypingAction(bot, chatId);
         await new Promise(resolve => setTimeout(resolve, Math.min(Math.max(message.length * 35, 500), 1600)));
         await safeSendMessage(bot.telegram, chatId, message, { parse_mode: 'Markdown' });
     }
@@ -240,15 +241,7 @@ async function processAiJob(bot, job) {
             }).catch(error => console.error(`[CONVERSATION OUT EVENT ERROR] user ${userId}:`, error.message));
         };
         try {
-            const keepTyping = !tempMsgId;
-            const sendTypingAction = () => bot.telegram.sendChatAction(chatId, 'typing').catch(() => {});
-            if (keepTyping) sendTypingAction();
-            const typingInterval = keepTyping ? setInterval(sendTypingAction, 4000) : null;
-            try {
-                response = await generateResponse(userId, text, { batchId, eventIds, firstMessageAt, preMessageGapSeconds });
-            } finally {
-                if (typingInterval) clearInterval(typingInterval);
-            }
+            response = await generateResponse(userId, text, { batchId, eventIds, firstMessageAt, preMessageGapSeconds });
             const historyClearedAtAfterGeneration = await getChatHistoryClearedAt(userId);
             if (String(historyClearedAtBeforeGeneration || '') !== String(historyClearedAtAfterGeneration || '')) {
                 await refundReservation();
@@ -291,7 +284,7 @@ async function processAiJob(bot, job) {
                             await bot.telegram.sendMessage(chatId, textParts[0], { parse_mode: 'Markdown' });
                         }
                         for (const part of textParts.slice(1)) {
-                            await bot.telegram.sendChatAction(chatId, 'typing').catch(() => {});
+                            await sendTypingAction(bot, chatId);
                             await new Promise(resolve => setTimeout(resolve, Math.min(Math.max(part.length * 35, 500), 1600)));
                             await bot.telegram.sendMessage(chatId, part, { parse_mode: 'Markdown' });
                         }
@@ -386,7 +379,7 @@ async function processAiJob(bot, job) {
                     const delay = Math.min(Math.max(msg.length * 35, 500), 1600);
 
                     // Статус "печатает..." в Telegram отправляем асинхронно без блокировки потока
-                    bot.telegram.sendChatAction(chatId, 'typing').catch(() => {});
+                    void sendTypingAction(bot, chatId);
                     await sleep(delay);
 
                     const isLast = (i === messages.length - 1);
@@ -424,6 +417,8 @@ async function processAiJob(bot, job) {
                 await bot.telegram.sendMessage(chatId, errorMsg, { parse_mode: 'Markdown' });
             }
             await markInputEvents('FAILED', errMsg);
+        } finally {
+            stopTyping(chatId, batchId);
         }
 }
 

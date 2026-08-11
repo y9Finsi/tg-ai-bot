@@ -16,6 +16,7 @@ import {
 import { createPlategaInvoice, checkPlategaInvoice } from './platega.js';
 import { processReferral } from './referral.js';
 import { aiQueue, startWorker, stopWorker as stopAiWorker } from './queue.js';
+import { startTyping, stopTyping } from './typing_manager.js';
 import { Telegraf, Markup } from 'telegraf';
 import { broadcastQueue, startBroadcastWorker, stopBroadcastWorker } from './broadcast.js';
 import { promptTemplates } from './prompts.js';
@@ -62,6 +63,7 @@ function clearUserDebounceBuffer(userId) {
         if (userDebounceBuffer[userId].timer) {
             clearTimeout(userDebounceBuffer[userId].timer);
         }
+        stopTyping(userDebounceBuffer[userId].chatId, userDebounceBuffer[userId].batchId);
         delete userDebounceBuffer[userId];
     }
 }
@@ -75,21 +77,30 @@ async function flushUserBuffer(userId) {
 
     const ctx = buf.lastCtx;
     const combinedText = buf.textParts.join('\n').trim();
-    if (!combinedText) return;
+    if (!combinedText) {
+        stopTyping(buf.chatId, buf.batchId);
+        return;
+    }
     const failPendingEvents = async (reason) => {
         await Promise.all((buf.eventIds || []).map(eventId => updateConversationEventStatus(eventId, 'FAILED', reason).catch(() => null)));
     };
+    const stopBufferedTyping = () => stopTyping(buf.chatId, buf.batchId);
 
     // --- ОГРАНИЧЕНИЕ ДЛИНЫ ЗАПРОСА К ИИ ---
     const MAX_QUERY_LENGTH = 1000;
     if (userId !== ADMIN_ID && combinedText.length > MAX_QUERY_LENGTH) {
+        stopBufferedTyping();
         await failPendingEvents('message too long');
         return ctx.reply(`⚠️ *Ваш запрос слишком длинный!*\nПожалуйста, сократите текст до ${MAX_QUERY_LENGTH} символов (сейчас в нем ${combinedText.length}).\n\n_Большие тексты лучше разбивать на несколько сообщений._`, { parse_mode: 'Markdown' });
     }
 
     const user = await getUser(userId);
-    if (!user) return;
+    if (!user) {
+        stopBufferedTyping();
+        return;
+    }
     if (user.is_blocked && userId !== ADMIN_ID) {
+        stopBufferedTyping();
         await failPendingEvents('user blocked');
         return;
     }
@@ -102,6 +113,7 @@ async function flushUserBuffer(userId) {
             ? await reserveImageRequest(userId)
             : await reserveFreeRequest(userId);
         if (!reservation) {
+            stopBufferedTyping();
             await failPendingEvents(isPhoto ? 'image balance exhausted' : 'text balance exhausted');
             return ctx.reply(isPhoto ? "У вас закончились фото 📸\nПополните баланс в магазине 💎" : "У вас закончились сообщения 😔\nВыберите удобный пакет в магазине 💎", {
                 reply_markup: { inline_keyboard: [[{ text: '⭐️ Магазин', callback_data: 'trigger_buy' }]] }
@@ -114,10 +126,9 @@ async function flushUserBuffer(userId) {
         // Для текста показываем нативный статус печати, для фото оставляем заглушку.
         let tempMsgId = null;
         if (isPhoto) {
+            stopBufferedTyping();
             const tempMsg = await ctx.reply("📸 _Делаю фоточку, подожди секунду..._", { parse_mode: 'Markdown' });
             tempMsgId = tempMsg.message_id;
-        } else {
-            await ctx.telegram.sendChatAction(ctx.chat.id, 'typing').catch(() => {});
         }
 
         // Передаем ID фото-заглушки в очередь, чтобы потом её отредактировать.
@@ -134,6 +145,7 @@ async function flushUserBuffer(userId) {
             preMessageGapSeconds: buf.preMessageGapSeconds
         });
     } catch (e) {
+        stopBufferedTyping();
         if (reservedResource) await refundReservedRequest(userId, reservedResource).catch(() => null);
         await failPendingEvents(`queue enqueue failed: ${e.message}`).catch(() => null);
         console.error(`[Debounce Flush Error] User: ${userId}`, e);
@@ -1556,12 +1568,16 @@ bot.on('text', async (ctx) => {
             textParts: [],
             eventIds: [],
             batchId: randomUUID(),
+            chatId: ctx.chat.id,
             timer: null,
             lastCtx: ctx,
             firstMsgTime: Date.now(),
             firstMessageAt: ctx.message?.date ? new Date(Number(ctx.message.date) * 1000).toISOString() : new Date().toISOString(),
             preMessageGapSeconds: null
         };
+        if (!PHOTO_INTENT_REGEX.test(text)) {
+            startTyping(bot, ctx.chat.id, userDebounceBuffer[userId].batchId);
+        }
     } else {
         if (userDebounceBuffer[userId].timer) {
             clearTimeout(userDebounceBuffer[userId].timer);
