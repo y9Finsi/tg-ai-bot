@@ -8,6 +8,8 @@ import {
 import { splitResponseMessages } from './utils/response_text.js';
 import { sendCatalogContent } from './content_service.js';
 import { sendTypingAction, stopTyping } from './typing_manager.js';
+import { getRoutingSettings } from './ai/intent_router.js';
+import { getEffectiveInitiativeLimit } from './initiative_service.js';
 
 // Парсим URL из .env и жестко задаем IPv4 (family: 4)
 const redisUrl = new URL(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
@@ -118,15 +120,17 @@ async function processContentDeliveryJob(bot, job) {
 
 async function processInitiativeJob(bot, job) {
     const { userId, chatId, anchorEventId, initiativeKind, contentCandidateIds = [] } = job.data;
-    const [user, mute, anchor, latest, counts, duplicate] = await Promise.all([
+    const [user, mute, anchor, latest, counts, duplicate, routingSettings] = await Promise.all([
         getUser(userId),
         getActiveMute(userId),
         getCompletedEvent(anchorEventId, userId),
         getLatestMeaningfulEvent(userId),
         getInitiativeDailyCounts(userId),
-        hasInitiativeStage(userId, anchorEventId, initiativeKind)
+        hasInitiativeStage(userId, anchorEventId, initiativeKind),
+        getRoutingSettings()
     ]);
-    if (!user || user.is_blocked || mute || !anchor || duplicate || counts.initiatives >= 3) return;
+    const initiativeLimit = getEffectiveInitiativeLimit(user, routingSettings);
+    if (!user || user.is_blocked || mute || !anchor || duplicate || counts.initiatives >= initiativeLimit) return;
     if (latest?.role === 'user' && new Date(latest.occurred_at) > new Date(anchor.occurred_at)) return;
     if (initiativeKind !== 'ignore_2' && Number(latest?.id) !== Number(anchorEventId)) return;
     const latestLocalDate = String(latest?.local_date || '');

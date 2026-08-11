@@ -8,7 +8,7 @@ import {
     updateConversationEventMetadata,
     getInitiativeStages
 } from './database.js';
-import { classifyInitiativeState } from './ai/intent_router.js';
+import { classifyInitiativeState, getRoutingSettings } from './ai/intent_router.js';
 
 export const INITIATIVE_LIMIT = 3;
 export const CONTENT_LIMIT = 3;
@@ -31,8 +31,21 @@ function isNewMoscowDay(latestEvent, now = new Date()) {
     return String(latestEvent?.local_date || '') < today;
 }
 
-export function chooseInitiativeKind({ ageSeconds, state, latestEvent, counts, dialogueHasContent, contentAvailable, stageKinds = [], newMoscowDay = false }) {
-    const initiativesAvailable = counts.initiatives < INITIATIVE_LIMIT;
+export function getEffectiveInitiativeLimit(user, settings = {}) {
+    const rawPersonalLimit = user?.initiative_limit;
+    const personalLimit = Number(rawPersonalLimit);
+    if (rawPersonalLimit !== null && rawPersonalLimit !== undefined && rawPersonalLimit !== ''
+        && Number.isInteger(personalLimit) && personalLimit >= 0) {
+        return Math.min(personalLimit, 20);
+    }
+    const globalLimit = Number(settings.initiativeLimit);
+    return Number.isInteger(globalLimit) && globalLimit >= 0
+        ? Math.min(globalLimit, 20)
+        : INITIATIVE_LIMIT;
+}
+
+export function chooseInitiativeKind({ ageSeconds, state, latestEvent, counts, dialogueHasContent, contentAvailable, stageKinds = [], newMoscowDay = false, initiativeLimit = INITIATIVE_LIMIT }) {
+    const initiativesAvailable = counts.initiatives < initiativeLimit;
     if (!initiativesAvailable) return null;
     if (newMoscowDay) return 'new_day';
     if (state === 'IGNORED') {
@@ -75,6 +88,7 @@ async function resolveState(anchor, dialogue) {
 
 export async function enqueuePersonalInitiatives(queue) {
     const latestEvents = await getInitiativeSchedulerUsers();
+    const routingSettings = await getRoutingSettings();
     for (const latest of latestEvents) {
         try {
             if (latest.is_blocked || await getActiveMute(latest.user_id)) continue;
@@ -93,6 +107,7 @@ export async function enqueuePersonalInitiatives(queue) {
             const ageSeconds = Math.max(0, Math.floor((Date.now() - new Date(anchor.occurred_at).getTime()) / 1000));
             const dialogue = await getActiveDialogueEvents(latest.user_id, anchor.occurred_at);
             const counts = await getInitiativeDailyCounts(latest.user_id);
+            const initiativeLimit = getEffectiveInitiativeLimit(latest, routingSettings);
             const state = newMoscowDay
                 ? 'CLOSED'
                 : anchor.role === 'user' ? 'CLOSED' : await resolveState(anchor, dialogue);
@@ -108,7 +123,8 @@ export async function enqueuePersonalInitiatives(queue) {
                 dialogueHasContent: dialogue.some(event => event.event_type === 'CONTENT'),
                 contentAvailable: contentCandidates.length > 0,
                 stageKinds,
-                newMoscowDay
+                newMoscowDay,
+                initiativeLimit
             });
             if (!kind) continue;
             const candidates = kind === 'content_4h'

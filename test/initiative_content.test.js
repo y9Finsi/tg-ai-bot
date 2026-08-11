@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chooseInitiativeKind } from '../src/initiative_service.js';
+import { chooseInitiativeKind, getEffectiveInitiativeLimit } from '../src/initiative_service.js';
 import {
     extractContentFromChannelPost,
     formatContentChannelPost,
@@ -26,6 +26,16 @@ test('initiative scheduler respects the 5–60 minute OPEN window and one stage 
     assert.equal(chooseInitiativeKind({
         ageSeconds: 600, state: 'OPEN', latestEvent: latestText,
         counts: available, contentAvailable: true, stageKinds: ['open']
+    }), null);
+});
+
+test('personal initiative limit overrides the global one and zero disables initiatives', () => {
+    assert.equal(getEffectiveInitiativeLimit({ initiative_limit: null }, { initiativeLimit: 4 }), 4);
+    assert.equal(getEffectiveInitiativeLimit({ initiative_limit: 1 }, { initiativeLimit: 4 }), 1);
+    assert.equal(getEffectiveInitiativeLimit({ initiative_limit: 0 }, { initiativeLimit: 4 }), 0);
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 600, state: 'OPEN', latestEvent: latestText,
+        counts: available, initiativeLimit: 0
     }), null);
 });
 

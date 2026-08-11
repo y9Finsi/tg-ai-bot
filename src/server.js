@@ -200,6 +200,42 @@ export function startAdminServer() {
         promise,
         new Promise((_, reject) => setTimeout(() => reject(new Error(`Операция превысила ${ms} мс`)), ms))
     ]);
+    const enrichInitiativeUsage = async (users, globalLimit) => {
+        const ids = users.map(user => Number(user.telegram_id)).filter(Number.isFinite);
+        if (!ids.length) return users;
+        const result = await query(
+            `SELECT user_id,
+                COUNT(*) FILTER (WHERE event_type = 'INITIATIVE')::int AS initiatives,
+                COUNT(*) FILTER (WHERE event_type = 'CONTENT')::int AS content
+             FROM conversation_events
+             WHERE user_id = ANY($1::bigint[])
+               AND status = 'COMPLETED'
+               AND local_date = (NOW() AT TIME ZONE 'Europe/Moscow')::date
+               AND event_type IN ('INITIATIVE', 'CONTENT')
+             GROUP BY user_id`,
+            [ids]
+        );
+        const usageByUserId = new Map(result.rows.map(row => [String(row.user_id), row]));
+        return users.map(user => {
+            const usage = usageByUserId.get(String(user.telegram_id)) || {};
+            const rawPersonalLimit = user.initiative_limit;
+            const personalLimit = Number(rawPersonalLimit);
+            const initiativeLimit = rawPersonalLimit !== null && rawPersonalLimit !== undefined && rawPersonalLimit !== ''
+                && Number.isInteger(personalLimit) && personalLimit >= 0
+                ? personalLimit
+                : globalLimit;
+            const initiativesUsed = Number(usage.initiatives || 0);
+            const contentUsed = Number(usage.content || 0);
+            return {
+                ...user,
+                initiative_limit_effective: initiativeLimit,
+                initiatives_used_today: initiativesUsed,
+                initiatives_remaining_today: Math.max(0, initiativeLimit - initiativesUsed),
+                content_used_today: contentUsed,
+                content_remaining_today: Math.max(0, 3 - contentUsed)
+            };
+        });
+    };
 
     if (!ADMIN_KEY) throw new Error('ADMIN_WEB_KEY обязателен для запуска веб-админки');
 
@@ -1909,11 +1945,14 @@ export function startAdminServer() {
         try {
             const limit = parseInt(req.query.limit, 10) || 50;
             const offset = parseInt(req.query.offset, 10) || 0;
-            const usersRes = await query('SELECT * FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
-            const totalRes = await query('SELECT COUNT(*) FROM users');
+            const [usersRes, totalRes, routingSettings] = await Promise.all([
+                query('SELECT * FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]),
+                query('SELECT COUNT(*) FROM users'),
+                getRoutingSettings()
+            ]);
             res.json({
                 success: true,
-                users: usersRes.rows,
+                users: await enrichInitiativeUsage(usersRes.rows, routingSettings.initiativeLimit),
                 total: parseInt(totalRes.rows[0].count, 10) || 0
             });
         } catch (e) {
@@ -1923,8 +1962,11 @@ export function startAdminServer() {
 
     app.get('/api/admin/users/search', async (req, res) => {
         try {
-            const users = await searchUsers(req.query.q || '', 25);
-            res.json({ success: true, users });
+            const [users, routingSettings] = await Promise.all([
+                searchUsers(req.query.q || '', 25),
+                getRoutingSettings()
+            ]);
+            res.json({ success: true, users: await enrichInitiativeUsage(users, routingSettings.initiativeLimit) });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
@@ -1942,15 +1984,39 @@ export function startAdminServer() {
 
     app.get('/api/admin/users/:id/full', async (req, res) => {
         try {
-            const [user, payments, facts, conversations, relationship] = await Promise.all([
+            const [user, payments, facts, conversations, relationship, routingSettings] = await Promise.all([
                 getUser(req.params.id),
                 getPaymentHistory(req.params.id, 50),
                 getUserMemoriesAdmin(req.params.id, true),
                 getRecentConversationEvents(req.params.id, 80),
-                getUserRelationshipAdmin(req.params.id, 30)
+                getUserRelationshipAdmin(req.params.id, 30),
+                getRoutingSettings()
             ]);
             if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
-            res.json({ success: true, user, payments, facts, conversations, relationship });
+            const [enrichedUser] = await enrichInitiativeUsage([user], routingSettings.initiativeLimit);
+            res.json({ success: true, user: enrichedUser, payments, facts, conversations, relationship });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.patch('/api/admin/users/:id/initiative-settings', async (req, res) => {
+        try {
+            const rawLimit = req.body?.initiativeLimit;
+            const initiativeLimit = rawLimit === null || rawLimit === '' || rawLimit === undefined
+                ? null
+                : Number(rawLimit);
+            if (initiativeLimit !== null && (!Number.isInteger(initiativeLimit) || initiativeLimit < 0 || initiativeLimit > 20)) {
+                return res.status(400).json({ error: 'Лимит инициатив должен быть целым числом от 0 до 20 или пустым.' });
+            }
+            const updated = await query(
+                'UPDATE users SET initiative_limit = $1 WHERE telegram_id = $2 RETURNING *',
+                [initiativeLimit, req.params.id]
+            );
+            if (!updated.rows[0]) return res.status(404).json({ error: 'Пользователь не найден' });
+            const routingSettings = await getRoutingSettings();
+            const [user] = await enrichInitiativeUsage(updated.rows, routingSettings.initiativeLimit);
+            res.json({ success: true, user });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }

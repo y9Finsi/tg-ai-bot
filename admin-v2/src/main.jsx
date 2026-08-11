@@ -1679,6 +1679,18 @@ function LlmSettingsPanel({ toast }) {
 
             <div className="routing-section">
                 <div className="routing-section-head">
+                    <div><span className="eyebrow">Инициативы</span><strong>Когда Лера пишет первой</strong><small>Общий дневной лимит. Персональный лимит пользователя настраивается в его карточке CRM.</small></div>
+                    <Badge variant="blue">Только инициативы</Badge>
+                </div>
+                <div className="routing-fields-grid">
+                    <label>Общий лимит в сутки<input type="number" min="0" max="20" value={routingSettings.initiativeLimit ?? 3} onChange={event => setRoutingSettings({ ...routingSettings, initiativeLimit: Number(event.target.value) })} /></label>
+                </div>
+                <label className="classifier-prompt-editor">Prompt провайдера инициатив<textarea value={routingSettings.initiativePrompt || ''} placeholder="Дополнительные правила для генерации инициатив. Оставь пустым, если достаточно стандартных правил." onChange={event => setRoutingSettings({ ...routingSettings, initiativePrompt: event.target.value })} /></label>
+                <div className="field-hint">Этот prompt добавляется только к генерации инициатив и не меняет обычные ответы в чате.</div>
+            </div>
+
+            <div className="routing-section">
+                <div className="routing-section-head">
                     <div><span className="eyebrow">Режимы генерации</span><strong>Параметры основного ответа</strong><small>Выбирается только один стилевой модуль. Игровой контекст и память добавляются всегда.</small></div>
                 </div>
                 <div className="routing-mode-grid">
@@ -1787,6 +1799,7 @@ function CrmPanel({ toast }) {
     const [selectedUser, setSelectedUser] = useState(null);
     const [dossierTab, setDossierTab] = useState('balance');
     const [userForm, setUserForm] = useState({ textBalance: 10, imageBalance: 0 });
+    const [initiativeLimitForm, setInitiativeLimitForm] = useState('');
 
     const [facts, setFacts] = useState([]);
     const [factText, setFactText] = useState('');
@@ -1824,6 +1837,7 @@ function CrmPanel({ toast }) {
                 textBalance: result.user.free_requests_left ?? 10,
                 imageBalance: result.user.image_balance ?? 0
             });
+            setInitiativeLimitForm(result.user.initiative_limit === null || result.user.initiative_limit === undefined ? '' : String(result.user.initiative_limit));
             setFactUserId(String(id));
             setFacts(result.facts || []);
             setRelationshipForm({
@@ -1852,6 +1866,20 @@ function CrmPanel({ toast }) {
             body: JSON.stringify({ action, ...extra })
         }), 'Пользователь обновлён');
         if (result) setSelectedUser({ ...selectedUser, user: result.user });
+    }
+
+    async function saveInitiativeLimit(limitOverride) {
+        if (!selectedUser?.user?.telegram_id) return;
+        const nextLimit = limitOverride === undefined ? initiativeLimitForm : limitOverride;
+        const result = await run(() => api(`/api/admin/users/${selectedUser.user.telegram_id}/initiative-settings`, {
+            method: 'PATCH',
+            body: JSON.stringify({ initiativeLimit: nextLimit === '' ? null : Number(nextLimit) })
+        }), 'Лимит инициатив сохранён');
+        if (result) {
+            setSelectedUser({ ...selectedUser, user: result.user });
+            setUsers(current => current.map(user => user.telegram_id === result.user.telegram_id ? { ...user, ...result.user } : user));
+            setInitiativeLimitForm(result.user.initiative_limit === null || result.user.initiative_limit === undefined ? '' : String(result.user.initiative_limit));
+        }
     }
 
     function addPresetBalance(addText, addImg) {
@@ -1975,6 +2003,7 @@ function CrmPanel({ toast }) {
                                             <strong>{user.first_name || 'Без имени'}</strong>
                                             <span>@{user.username || '—'} · {user.telegram_id}</span>
                                             <span className="user-balance-badge">💬 {user.free_requests_left ?? 0} · 🖼️ {user.image_balance ?? 0}</span>
+                                            <span className="user-balance-badge">Инициативы: {user.initiatives_used_today ?? 0}/{user.initiative_limit_effective ?? 3} · осталось {user.initiatives_remaining_today ?? 0}</span>
                                         </div>
                                         <Badge variant={user.is_blocked ? 'red' : user.is_premium ? 'green' : 'blue'}>{user.is_blocked ? 'Заблокирован' : user.is_premium ? 'Premium' : 'Free'}</Badge>
                                     </button>
@@ -2030,6 +2059,13 @@ function CrmPanel({ toast }) {
                                                 <label>Текстовый баланс<input type="number" value={userForm.textBalance} onChange={event => setUserForm({ ...userForm, textBalance: event.target.value })} /></label>
                                                 <label>Баланс фото<input type="number" value={userForm.imageBalance} onChange={event => setUserForm({ ...userForm, imageBalance: event.target.value })} /></label>
                                                 <Button size="sm" onClick={() => userAction('set_balances', userForm)}>Сохранить баланс</Button>
+                                            </div>
+                                            <h3 style={{ marginTop: 24 }}>Инициативы</h3>
+                                            <div className="field-hint">Сегодня использовано: {selectedUser.user.initiatives_used_today ?? 0}. Эффективный лимит: {selectedUser.user.initiative_limit_effective ?? 3}. Осталось: {selectedUser.user.initiatives_remaining_today ?? 0}.</div>
+                                            <div className="inline-controls" style={{ marginTop: 12 }}>
+                                                <label>Личный лимит в сутки<input type="number" min="0" max="20" value={initiativeLimitForm} placeholder="Общий лимит" onChange={event => setInitiativeLimitForm(event.target.value)} /></label>
+                                                <Button size="sm" onClick={saveInitiativeLimit}>Сохранить лимит</Button>
+                                                <Button size="sm" variant="outline" onClick={() => { setInitiativeLimitForm(''); saveInitiativeLimit(''); }}>Использовать общий</Button>
                                             </div>
                                         </div>
                                     )}

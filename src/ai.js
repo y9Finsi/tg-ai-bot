@@ -289,7 +289,10 @@ async function buildMessagePayload(user, userId, { userText, isInitiative, routi
                 : initiativeKind === 'content_4h'
                     ? 'Ты сама решила поделиться чем-то из того, что смотришь или слушаешь. Обязательно сделай естественную подводку и скажи, что сейчас скинешь.'
                     : 'Естественно продолжи незакрытую тему прошлого диалога. Не начинай новую случайную тему.';
-        modeInstruction = `\n\n[ИНИЦИАТИВА ${initiativeKind || 'open'}]: ${initiativeRules}\nПричина: ${initiativeReason || 'естественное продолжение разговора'}. Не раскрывай приватные данные других пользователей.`;
+        const initiativePrompt = productionRoutingSettings.initiativePrompt
+            ? `\n\n[ОБЩИЕ ПРАВИЛА ИНИЦИАТИВ]\n${productionRoutingSettings.initiativePrompt}`
+            : '';
+        modeInstruction = `\n\n[ИНИЦИАТИВА ${initiativeKind || 'open'}]: ${initiativeRules}\nПричина: ${initiativeReason || 'естественное продолжение разговора'}. Не раскрывай приватные данные других пользователей.${initiativePrompt}`;
     }
 
     if (contentCandidates.length > 0) {
