@@ -18,7 +18,7 @@ export const DEFAULT_ROUTING_SETTINGS = {
     classifierModel: '',
     classifierPrompt: 'Ты классификатор действия Леры. Проанализируй последние сообщения и новую реплику. Верни строго CASUAL, EROTIC, JOKE или REACTION <emoji>.\n\nCASUAL — обычный разговор, флирт, бытовые вопросы, инициатива и вопросы про жизнь Леры.\nEROTIC — контекстный интимный или горячий диалог, включая продолжение уже начатой сцены.\nJOKE — только явная просьба в НОВОЙ реплике пользователя о шутке, меме, анекдоте или иронии. Прошлая шутка Леры не делает следующий ответ JOKE: режим действует ровно на один ответ. Не выбирай JOKE для неоднозначного продолжения; если продолжается эротический контекст, выбирай EROTIC.\nREACTION <emoji> — вместо текстового ответа поставить выбранную тобой одну уместную Telegram-реакцию на новую реплику. Выбирай только если диалог явно затухает, а новая реплика короткая и односложная. Не выбирай REACTION для вопроса, просьбы, нового факта, конфликта, эротического продолжения или фото.\n\nНе объясняй решение и не возвращай JSON.',
     classifierTimeoutMs: 7000,
-    classifierMaxTokens: 3,
+    classifierMaxTokens: 4,
     casualTemperature: 0.68,
     casualMaxTokens: 200,
     eroticTemperature: 0.75,
@@ -156,7 +156,7 @@ export async function getRoutingSettings() {
         classifierModel: String(raw.classifierModel || ''),
         classifierPrompt: String(raw.classifierPrompt || DEFAULT_ROUTING_SETTINGS.classifierPrompt),
         classifierTimeoutMs: asNumber(raw.classifierTimeoutMs, 7000, 1000, 60000),
-        classifierMaxTokens: asNumber(raw.classifierMaxTokens, 3, 1, 8),
+        classifierMaxTokens: asNumber(raw.classifierMaxTokens, 4, 4, 8),
         casualTemperature: asNumber(raw.casualTemperature, 0.68, 0, 2),
         casualMaxTokens: asNumber(raw.casualMaxTokens, 200, 20, 1000),
         eroticTemperature: asNumber(raw.eroticTemperature, 0.75, 0, 2),
@@ -192,7 +192,7 @@ export async function updateRoutingSettings(input = {}) {
         classifierModel: String(next.classifierModel || '').trim(),
         classifierPrompt: String(next.classifierPrompt || current.classifierPrompt || DEFAULT_ROUTING_SETTINGS.classifierPrompt).trim(),
         classifierTimeoutMs: asNumber(next.classifierTimeoutMs, current.classifierTimeoutMs, 1000, 60000),
-        classifierMaxTokens: asNumber(next.classifierMaxTokens, current.classifierMaxTokens, 1, 8),
+        classifierMaxTokens: asNumber(next.classifierMaxTokens, current.classifierMaxTokens, 4, 8),
         casualTemperature: asNumber(next.casualTemperature, current.casualTemperature, 0, 2),
         casualMaxTokens: asNumber(next.casualMaxTokens, current.casualMaxTokens, 20, 1000),
         eroticTemperature: asNumber(next.eroticTemperature, current.eroticTemperature, 0, 2),
@@ -394,24 +394,72 @@ export async function classifyIntent({ userId = 0, userText = '', history = [], 
             }
         );
         const normalizedMode = normalizeIntent(result.rawText);
-        const reactionEmoji = normalizedMode === 'REACTION'
+        let reactionEmoji = normalizedMode === 'REACTION'
             ? extractReactionEmoji(result.rawText)
             : '';
+        let reactionRepairUsage = {};
+        let reactionRepairLatencyMs = 0;
+        if (normalizedMode === 'REACTION' && !reactionEmoji) {
+            try {
+                const repairStartedAt = Date.now();
+                const repair = await requestLlmCompletion(
+                    { roleplay_mode: 'intent-reaction-emoji', max_tokens: 4 },
+                    [
+                        {
+                            role: 'system',
+                            content: 'Классификатор уже выбрал действие REACTION. Выбери ровно один уместный Telegram emoji для реакции на новую реплику. Верни только emoji, без слов, JSON и пояснений.'
+                        },
+                        {
+                            role: 'user',
+                            content: `Последние сообщения:\n${history.slice(-3).map(item => `${item.role === 'assistant' ? 'Лера' : 'Пользователь'}: ${String(item.content || '').slice(0, 700)}`).join('\n') || 'Нет'}\n\nНовая реплика пользователя:\n${String(userText || '').slice(0, 1200)}`
+                        }
+                    ],
+                    false,
+                    async () => {
+                        const provider = providers[0] || await getActiveAiProvider();
+                        if (!provider) throw new Error('Нет настроенных провайдеров классификатора');
+                        return {
+                            client: getCachedOpenAIClient(provider.base_url, provider.api_key, provider.timeout_ms || settings.classifierTimeoutMs),
+                            model: settings.classifierModel || provider.model_name
+                        };
+                    },
+                    {
+                        trace,
+                        userId,
+                        kind: 'INTENT_REACTION_EMOJI_REPAIR',
+                        mode: 'ROUTER',
+                        userText,
+                        temperature: 0,
+                        maxTokens: 4,
+                        timeoutMs: settings.classifierTimeoutMs,
+                        providers,
+                        modelOverride: settings.classifierModel || null
+                    }
+                );
+                reactionEmoji = extractReactionEmoji(`REACTION ${repair.rawText || ''}`);
+                reactionRepairUsage = repair.usage || {};
+                reactionRepairLatencyMs = Date.now() - repairStartedAt;
+            } catch (repairError) {
+                console.error('[INTENT ROUTER] REACTION emoji repair failed:', repairError.message);
+            }
+        }
         const mode = normalizedMode === 'JOKE' && !isExplicitJokeRequest(userText)
             ? 'CASUAL'
-            : normalizedMode === 'REACTION' && !reactionEmoji
-                ? 'CASUAL'
-                : normalizedMode;
+            : normalizedMode;
         return {
             mode,
             rawText: result.rawText || '',
             jokeGuarded: normalizedMode === 'JOKE' && mode !== 'JOKE',
             reactionGuarded: normalizedMode === 'REACTION' && mode !== 'REACTION',
             reactionEmoji: mode === 'REACTION' ? reactionEmoji : '',
-            usage: result.usage || {},
+            reactionEmojiMissing: mode === 'REACTION' && !reactionEmoji,
+            usage: {
+                prompt_tokens: Number(result.usage?.prompt_tokens || 0) + Number(reactionRepairUsage.prompt_tokens || 0),
+                completion_tokens: Number(result.usage?.completion_tokens || 0) + Number(reactionRepairUsage.completion_tokens || 0)
+            },
             model: result.model,
             providerName: result.providerName,
-            latencyMs: result.latencyMs || 0,
+            latencyMs: (result.latencyMs || 0) + reactionRepairLatencyMs,
             settings
         };
     } catch (error) {

@@ -829,7 +829,7 @@ export async function generateResponse(userId, text, envelope = {}) {
         classifierResult = { mode: 'CASUAL', error: routingError.message };
     }
 
-    if (classifierResult?.mode === 'REACTION' && !PHOTO_INTENT_REGEX.test(text)) {
+    if (classifierResult?.mode === 'REACTION') {
         const reactionEmoji = classifierResult.reactionEmoji;
         savePromptLog({
             userId,
@@ -852,6 +852,7 @@ export async function generateResponse(userId, text, envelope = {}) {
             text: '',
             photo: null,
             reactionEmoji,
+            reactionRequested: true,
             routingMode: 'REACTION',
             debugInfo: {
                 rawText: `REACTION:${reactionEmoji}`,

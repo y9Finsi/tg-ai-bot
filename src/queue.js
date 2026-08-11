@@ -263,18 +263,34 @@ async function processAiJob(bot, job) {
                 return;
             }
 
-            if (response.reactionEmoji && reactionMessageId) {
-                await bot.telegram.setMessageReaction(chatId, reactionMessageId, [{
-                    type: 'emoji',
-                    emoji: response.reactionEmoji
-                }]);
-                await refundReservation();
-                await saveLeraEvent(response.reactionEmoji, 'REACTION', {
-                    emoji: response.reactionEmoji,
-                    target_telegram_message_id: reactionMessageId,
-                    routing_mode: 'REACTION'
-                });
-                await markInputEvents('COMPLETED');
+            if (response.reactionRequested) {
+                if (!response.reactionEmoji || !reactionMessageId) {
+                    await refundReservation();
+                    if (tempMsgId) await bot.telegram.deleteMessage(chatId, tempMsgId).catch(() => {});
+                    await markInputEvents('FAILED', !response.reactionEmoji
+                        ? 'Classifier requested REACTION without a valid emoji'
+                        : 'Classifier requested REACTION without a target message');
+                    console.error(`[REACTION ERROR] user ${userId}: missing ${!response.reactionEmoji ? 'emoji' : 'target message'}`);
+                    return;
+                }
+                try {
+                    await bot.telegram.setMessageReaction(chatId, reactionMessageId, [{
+                        type: 'emoji',
+                        emoji: response.reactionEmoji
+                    }]);
+                    await refundReservation();
+                    await saveLeraEvent(response.reactionEmoji, 'REACTION', {
+                        emoji: response.reactionEmoji,
+                        target_telegram_message_id: reactionMessageId,
+                        routing_mode: 'REACTION'
+                    });
+                    await markInputEvents('COMPLETED');
+                } catch (reactionError) {
+                    await refundReservation();
+                    if (tempMsgId) await bot.telegram.deleteMessage(chatId, tempMsgId).catch(() => {});
+                    await markInputEvents('FAILED', `Telegram reaction failed: ${reactionError.message}`);
+                    console.error(`[REACTION ERROR] user ${userId}:`, reactionError.message);
+                }
                 return;
             }
 
