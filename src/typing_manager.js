@@ -15,6 +15,14 @@ export async function sendTypingAction(bot, chatId) {
     }
 }
 
+async function refreshTypingAction(state, chatId) {
+    const sent = await sendTypingAction(state.bot, chatId);
+    if (sent && !state.successLogged) {
+        state.successLogged = true;
+        console.info(`[TYPING ACTION OK] chat ${chatId}`);
+    }
+}
+
 export function startTyping(bot, chatId, requestId) {
     if (chatId == null || !requestId) return;
 
@@ -24,17 +32,18 @@ export function startTyping(bot, chatId, requestId) {
         state = {
             bot,
             requestIds: new Set(),
-            interval: null
+            interval: null,
+            successLogged: false
         };
         typingChats.set(key, state);
         state.interval = setInterval(() => {
-            void sendTypingAction(state.bot, chatId);
+            void refreshTypingAction(state, chatId);
         }, TYPING_REFRESH_MS);
         state.interval.unref?.();
     }
 
     state.requestIds.add(String(requestId));
-    void sendTypingAction(state.bot, chatId);
+    void refreshTypingAction(state, chatId);
 }
 
 export function stopTyping(chatId, requestId) {
