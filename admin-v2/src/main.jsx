@@ -1673,7 +1673,7 @@ function LlmSettingsPanel({ toast }) {
                     <label>Timeout, мс<input type="number" min="1000" max="60000" value={routingSettings.classifierTimeoutMs ?? 7000} onChange={event => setRoutingSettings({ ...routingSettings, classifierTimeoutMs: Number(event.target.value) })} /></label>
                     <label>Max tokens<input type="number" min="1" max="8" value={routingSettings.classifierMaxTokens ?? 3} onChange={event => setRoutingSettings({ ...routingSettings, classifierMaxTokens: Number(event.target.value) })} /></label>
                 </div>
-                <label className="classifier-prompt-editor">Prompt классификатора<textarea value={routingSettings.classifierPrompt || ''} placeholder="Верни строго одно слово: CASUAL, EROTIC, JOKE или REACTION." onChange={event => setRoutingSettings({ ...routingSettings, classifierPrompt: event.target.value })} /></label>
+                <label className="classifier-prompt-editor">Prompt классификатора<textarea value={routingSettings.classifierPrompt || ''} placeholder="Верни CASUAL, EROTIC, JOKE или REACTION &lt;emoji&gt;." onChange={event => setRoutingSettings({ ...routingSettings, classifierPrompt: event.target.value })} /></label>
                 <div className="field-hint">Здесь редактируется инструкция именно для микро-вызова классификации, а не prompt ответа Леры.</div>
             </div>
 

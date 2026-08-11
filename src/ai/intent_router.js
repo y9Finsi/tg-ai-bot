@@ -16,7 +16,7 @@ export const DEFAULT_ROUTING_SETTINGS = {
     enabled: true,
     classifierProviderId: '',
     classifierModel: '',
-    classifierPrompt: 'Ты классификатор действия Леры. Проанализируй последние сообщения и новую реплику. Верни строго одно слово: CASUAL, EROTIC, JOKE или REACTION.\n\nCASUAL — обычный разговор, флирт, бытовые вопросы, инициатива и вопросы про жизнь Леры.\nEROTIC — контекстный интимный или горячий диалог, включая продолжение уже начатой сцены.\nJOKE — только явная просьба в НОВОЙ реплике пользователя о шутке, меме, анекдоте или иронии. Прошлая шутка Леры не делает следующий ответ JOKE: режим действует ровно на один ответ. Не выбирай JOKE для неоднозначного продолжения; если продолжается эротический контекст, выбирай EROTIC.\nREACTION — вместо текстового ответа поставить реакцию на новую реплику. Выбирай только если диалог явно затухает, а новая реплика короткая и односложная: подтверждение или согласие вроде «понял», «ок», «давай». Не выбирай REACTION для вопроса, просьбы, нового факта, конфликта, эротического продолжения, фото или сообщения длиннее трёх слов.\n\nНе объясняй решение и не возвращай JSON.',
+    classifierPrompt: 'Ты классификатор действия Леры. Проанализируй последние сообщения и новую реплику. Верни строго CASUAL, EROTIC, JOKE или REACTION <emoji>.\n\nCASUAL — обычный разговор, флирт, бытовые вопросы, инициатива и вопросы про жизнь Леры.\nEROTIC — контекстный интимный или горячий диалог, включая продолжение уже начатой сцены.\nJOKE — только явная просьба в НОВОЙ реплике пользователя о шутке, меме, анекдоте или иронии. Прошлая шутка Леры не делает следующий ответ JOKE: режим действует ровно на один ответ. Не выбирай JOKE для неоднозначного продолжения; если продолжается эротический контекст, выбирай EROTIC.\nREACTION <emoji> — вместо текстового ответа поставить выбранную тобой одну уместную Telegram-реакцию на новую реплику. Выбирай только если диалог явно затухает, а новая реплика короткая и односложная. Не выбирай REACTION для вопроса, просьбы, нового факта, конфликта, эротического продолжения или фото.\n\nНе объясняй решение и не возвращай JSON.',
     classifierTimeoutMs: 7000,
     classifierMaxTokens: 3,
     casualTemperature: 0.68,
@@ -269,6 +269,16 @@ export function normalizeIntent(rawText) {
     return found || 'CASUAL';
 }
 
+export function extractReactionEmoji(rawText) {
+    const suffix = String(rawText || '').match(/\bREACTION\b([\s\S]*)/iu)?.[1] || '';
+    const segments = typeof Intl?.Segmenter === 'function'
+        ? Array.from(new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(suffix), item => item.segment)
+        : Array.from(suffix);
+    const emojis = segments.filter(segment => /(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3)/u.test(segment));
+    const emoji = emojis.length === 1 ? emojis[0] : '';
+    return Array.from(emoji).length <= 16 ? emoji : '';
+}
+
 function buildClassifierMessages(history = [], userText = '', classifierPrompt = DEFAULT_ROUTING_SETTINGS.classifierPrompt) {
     const recent = history
         .filter(item => item?.content)
@@ -278,7 +288,7 @@ function buildClassifierMessages(history = [], userText = '', classifierPrompt =
     return [
         {
             role: 'system',
-            content: `${classifierPrompt}\n\nОБЯЗАТЕЛЬНОЕ ДОПОЛНЕНИЕ К ТЕКУЩЕЙ ИНСТРУКЦИИ: верни ровно одно из четырёх слов: CASUAL, EROTIC, JOKE, REACTION. JOKE допустим только когда текущая новая реплика пользователя прямо просит шутку, мем, анекдот или иронию. История сама по себе никогда не является причиной выбрать JOKE. REACTION допустим только для короткого затухающего диалога; если новая реплика требует любого содержательного ответа, выбери CASUAL или EROTIC.`
+            content: `${classifierPrompt}\n\nОБЯЗАТЕЛЬНОЕ ДОПОЛНЕНИЕ К ТЕКУЩЕЙ ИНСТРУКЦИИ: верни ровно CASUAL, EROTIC, JOKE или REACTION <emoji>. Для REACTION обязательно выбери ровно один emoji. JOKE допустим только когда текущая новая реплика пользователя прямо просит шутку, мем, анекдот или иронию. История сама по себе никогда не является причиной выбрать JOKE. REACTION допустим только для короткого затухающего диалога; если новая реплика требует любого содержательного ответа, выбери CASUAL или EROTIC.`
         },
         {
             role: 'user',
@@ -289,13 +299,6 @@ function buildClassifierMessages(history = [], userText = '', classifierPrompt =
 
 export function isExplicitJokeRequest(userText = '') {
     return /(?:пошути|шутк[ауие]|анекдот|мем(?:чик)?|прикол|смешн(?:ое|ую)|ироничн|порофли)/iu.test(String(userText));
-}
-
-export function isReactionEligible(userText = '') {
-    const text = String(userText || '').trim();
-    const words = text.match(/[\p{L}\p{N}]+/gu) || [];
-    if (!text || words.length > 3 || /[?!]/u.test(text)) return false;
-    return !/(?:привет|как|почему|зачем|когда|где|кто|что|скинь|пришли|покажи|расскажи|объясни|сделай|помоги|фото|видео|голос)/iu.test(text);
 }
 
 const INITIATIVE_STATE_PROMPT = `Ты определяешь, можно ли Лере снова написать после последней реплики.
@@ -391,9 +394,12 @@ export async function classifyIntent({ userId = 0, userText = '', history = [], 
             }
         );
         const normalizedMode = normalizeIntent(result.rawText);
+        const reactionEmoji = normalizedMode === 'REACTION'
+            ? extractReactionEmoji(result.rawText)
+            : '';
         const mode = normalizedMode === 'JOKE' && !isExplicitJokeRequest(userText)
             ? 'CASUAL'
-            : normalizedMode === 'REACTION' && !isReactionEligible(userText)
+            : normalizedMode === 'REACTION' && !reactionEmoji
                 ? 'CASUAL'
                 : normalizedMode;
         return {
@@ -401,6 +407,7 @@ export async function classifyIntent({ userId = 0, userText = '', history = [], 
             rawText: result.rawText || '',
             jokeGuarded: normalizedMode === 'JOKE' && mode !== 'JOKE',
             reactionGuarded: normalizedMode === 'REACTION' && mode !== 'REACTION',
+            reactionEmoji: mode === 'REACTION' ? reactionEmoji : '',
             usage: result.usage || {},
             model: result.model,
             providerName: result.providerName,

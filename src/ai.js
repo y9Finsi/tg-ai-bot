@@ -25,17 +25,6 @@ setInterval(() => rateLimitMap.clear(), 60 * 1000);
 let activeProviderCache = null;
 let openaiClientInstance = null;
 
-function getReactionEmoji(userText = '') {
-    const normalized = String(userText)
-        .toLocaleLowerCase('ru-RU')
-        .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    if (/^(давай|го|погнали)$/u.test(normalized)) return '🔥';
-    if (/^(понял|пон|ок|окей|ясно|хорошо|ладно|договорились)$/u.test(normalized)) return '👍';
-    return '❤';
-}
-
 function getMoscowHour() {
     return Number(new Intl.DateTimeFormat('en-GB', {
         timeZone: 'Europe/Moscow', hour: '2-digit', hour12: false
@@ -841,7 +830,7 @@ export async function generateResponse(userId, text, envelope = {}) {
     }
 
     if (classifierResult?.mode === 'REACTION' && !PHOTO_INTENT_REGEX.test(text)) {
-        const reactionEmoji = getReactionEmoji(text);
+        const reactionEmoji = classifierResult.reactionEmoji;
         savePromptLog({
             userId,
             kind: 'CHAT_REACTION',
