@@ -42,6 +42,7 @@ for (const envName of requiredEnvs) {
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const ADMIN_ID = Number(process.env.ADMIN_ID);
+const DEFAULT_CONTENT_CHANNEL_ID = '-1003729264804';
 
 // Единое хранилище состояний (и для админа, и для юзеров)
 const userState = {};
@@ -1172,9 +1173,9 @@ bot.on('channel_post', async (ctx) => {
         console.log(`[ФОТО КАНАЛ СОБЫТИЕ] Получен пост из канала ID: ${post.chat.id}`);
 
         const targetChannelId = process.env.PHOTO_CHANNEL_ID;
-        const contentChannelId = process.env.CONTENT_CHANNEL_ID;
+        const contentChannelId = await getSetting('content_channel_id', DEFAULT_CONTENT_CHANNEL_ID);
 
-        if (contentChannelId && String(post.chat.id) === String(contentChannelId)) {
+        if (String(post.chat.id) === String(contentChannelId)) {
             const content = extractContentFromChannelPost(post);
             if (!content) {
                 console.log(`[КОНТЕНТ КАНАЛ ИГНОР] В посте ${post.message_id} нет поддерживаемого медиа или URL entity`);

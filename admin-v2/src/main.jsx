@@ -2244,6 +2244,7 @@ function ContentPanel({ toast }) {
     const [catalog, setCatalog] = useState([]);
     const [contentSent, setContentSent] = useState([]);
     const [contentForm, setContentForm] = useState({ telegram_type: 'link', telegram_file_id: '', url: '', description: '', enabled: true, allow_in_dialogue: true, allow_initiative: true });
+    const [contentChannelId, setContentChannelId] = useState('-1003729264804');
 
     const [channel, setChannel] = useState(null);
     const [channelHistory, setChannelHistory] = useState([]);
@@ -2285,7 +2286,15 @@ function ContentPanel({ toast }) {
         if (result) {
             setCatalog(result.content || []);
             setContentSent(result.sent || []);
+            setContentChannelId(result.contentChannelId || '-1003729264804');
         }
+    }
+
+    async function saveContentChannelId() {
+        await run(() => api('/api/admin/content/settings', {
+            method: 'PATCH',
+            body: JSON.stringify({ content_channel_id: contentChannelId })
+        }), 'Канал контента сохранён');
     }
 
     async function addContent() {
@@ -2456,7 +2465,22 @@ function ContentPanel({ toast }) {
             {contentTab === 'catalog' && (
                 <div className="content-photos-layout">
                     <Card>
-                        <CardHeader eyebrow="Музыка, TikTok и ссылки" title="Добавить материал" description="Посты из CONTENT_CHANNEL_ID появляются здесь автоматически." />
+                        <CardHeader eyebrow="Источник каталога" title="Канал контента" description="Бот автоматически забирает из него музыку, TikTok, видео и ссылки. Тут же можно отправить в канал памятку с правилами." />
+                        <div className="photo-upload-form">
+                            <label>Telegram Channel ID<input value={contentChannelId} placeholder="-1003729264804" onChange={event => setContentChannelId(event.target.value)} /></label>
+                            <Button onClick={saveContentChannelId}>Сохранить канал</Button>
+                            <ConfirmAction
+                                title="Опубликовать правила в канал?"
+                                description="От имени Леры уйдёт один готовый пост с правилами оформления материалов."
+                                confirmText="Опубликовать"
+                                onConfirm={() => run(() => api('/api/admin/content/publish-guide', { method: 'POST', body: '{}' }), 'Правила опубликованы')}
+                            >
+                                Опубликовать правила
+                            </ConfirmAction>
+                        </div>
+                    </Card>
+                    <Card>
+                        <CardHeader eyebrow="Музыка, TikTok и ссылки" title="Добавить материал" description="Посты из выбранного канала появляются здесь автоматически." />
                         <div className="photo-upload-form">
                             <label>Тип<select value={contentForm.telegram_type} onChange={event => setContentForm({ ...contentForm, telegram_type: event.target.value })}>{['link', 'audio', 'video', 'animation', 'document', 'photo'].map(type => <option key={type} value={type}>{type}</option>)}</select></label>
                             <input value={contentForm.telegram_file_id} placeholder="Telegram file_id для нативного медиа" onChange={event => setContentForm({ ...contentForm, telegram_file_id: event.target.value })} />

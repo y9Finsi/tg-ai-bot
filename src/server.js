@@ -104,6 +104,26 @@ import {
     migratePresetToCurrent
 } from './ai/sandbox_service.js';
 
+const DEFAULT_CONTENT_CHANNEL_ID = '-1003729264804';
+const CONTENT_CHANNEL_GUIDE = `я тут собираю себе музыку, тиктоки и всякое, что потом могу вам скидывать
+
+чтобы всё нормально работало:
+
+— один пост = один материал
+— к музыке, видео или гифке обязательно подпиши по-человечески, что это и почему оно прикольное. эта подпись попадёт мне в каталог
+— тиктоки и другие ссылки кидай отдельным постом с кликабельной ссылкой и коротким описанием
+— не надо тегов, технических file_id и огромных полотен текста
+— не кидай голосовые и кружки, их я пока отсюда не беру
+— если передумал с подписью, лучше удалить пост и кинуть заново: правки уже добавленного материала я не вижу
+
+типа норм:
+«трек, который у меня последнее время на повторе, спокойный вечерний вайб»
+
+или
+«оч смешной тикток про работу, я с него чёт выпала»
+
+короче, пишите как живой человек, чтобы я понимала, в какой момент этим вообще уместно поделиться`;
+
 const ADMIN_DAY_TASKS = ['SLEEP_NIGHT', 'SLEEP_EXHAUSTED', 'EAT_BREAKFAST', 'EAT_LUNCH', 'EAT_DINNER', 'EMERGENCY_EAT', 'WORK_LAPTOP', 'TRAVEL', 'SOCIAL_NASTYA', 'LEISURE_HOME', 'IDLE_HOME_REST'];
 function humanizeAdminEvent(type, payload = {}) {
     const task = payload.taskType || payload.task_type;
@@ -1172,16 +1192,41 @@ export function startAdminServer() {
 
     app.get('/api/admin/content', async (req, res) => {
         try {
-            const [items, sent] = await Promise.all([
+            const [items, sent, contentChannelId] = await Promise.all([
                 getAllLeraContent(),
                 query(`SELECT e.id, e.user_id, e.occurred_at, e.metadata, e.content,
                               c.telegram_type, c.description
                        FROM conversation_events e
                        LEFT JOIN lera_content c ON c.id::text = e.metadata->>'content_id'
                        WHERE e.event_type = 'CONTENT' AND e.status = 'COMPLETED'
-                       ORDER BY e.occurred_at DESC, e.id DESC LIMIT 50`)
+                       ORDER BY e.occurred_at DESC, e.id DESC LIMIT 50`),
+                getSetting('content_channel_id', DEFAULT_CONTENT_CHANNEL_ID)
             ]);
-            res.json({ success: true, content: items, sent: sent.rows });
+            res.json({ success: true, content: items, sent: sent.rows, contentChannelId });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.patch('/api/admin/content/settings', async (req, res) => {
+        try {
+            const contentChannelId = String(req.body?.content_channel_id || '').trim();
+            if (!/^-100\d+$/.test(contentChannelId)) {
+                return res.status(400).json({ error: 'Укажите Telegram Channel ID в формате -100…' });
+            }
+            await setSetting('content_channel_id', contentChannelId);
+            res.json({ success: true, contentChannelId });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/content/publish-guide', async (req, res) => {
+        try {
+            if (!botInstance) return res.status(503).json({ error: 'Telegram-бот не инициализирован' });
+            const contentChannelId = await getSetting('content_channel_id', DEFAULT_CONTENT_CHANNEL_ID);
+            const sent = await botInstance.telegram.sendMessage(contentChannelId, CONTENT_CHANNEL_GUIDE);
+            res.json({ success: true, messageId: sent?.message_id || null, contentChannelId });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
