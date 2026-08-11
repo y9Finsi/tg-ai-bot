@@ -3,7 +3,7 @@ import { getCachedOpenAIClient } from './llm_client.js';
 import { logLlmTrace } from './llm_client.js';
 import { parseLlmJson } from '../utils/robust_json.js';
 
-function isMemoryCandidate(text) {
+export function isMemoryCandidate(text) {
     const value = String(text || '').trim();
     if (value.length < 8) return false;
     if (/(?:^|\s)(?:я|мне)\b[\s\S]{0,40}\b(?:спать|спть|поспать|ложиться|отбой|устал(?:а|ый)?|сон)\b/iu.test(value)) return false;
@@ -47,7 +47,9 @@ export async function extractFactsInBackground(userId, userText) {
             ? existingMemories.map(m => `(id:${m.id}) ${m.fact}`).join('\n')
             : 'Пока нет сохраненных фактов.';
 
-        const prompt = renderMemoryPrompt(memSettings.prompt, existingListText, userText);
+        const prompt = `${renderMemoryPrompt(memSettings.prompt, existingListText, userText)}
+
+Дополнение: короткие прямые утверждения тоже являются фактами. Например, «я дизайнер» — это факт о профессии пользователя, его нужно вернуть в new_facts. Не выдумывай детали и не добавляй факт только из ответа Леры.`;
 
         const client = getCachedOpenAIClient(provider.base_url, provider.api_key, memSettings.timeout_ms);
         const requestCompletion = (maxTokens, retry = false) => client.chat.completions.create({
