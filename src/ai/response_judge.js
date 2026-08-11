@@ -22,12 +22,19 @@ function compactConversation(messages = []) {
         .join('\n');
 }
 
-function compactPersona(messages = []) {
-    const systemMessage = messages.find(item => item?.role === 'system' && item?.content);
-    return String(systemMessage?.content || '').slice(0, 3000);
+function compactBlock(value, limit = 5000) {
+    return String(value || '').trim().slice(0, limit);
 }
 
-export function buildJudgeMessages({ mode = 'CASUAL', messages = [], userText = '', reply = '', judgePrompt = '' } = {}) {
+export function buildJudgeMessages({
+    mode = 'CASUAL',
+    messages = [],
+    userText = '',
+    reply = '',
+    judgePrompt = '',
+    dayContext = '',
+    leraRules = ''
+} = {}) {
     const relationshipContract = ' Дополнительно верни relationship_event по последней реплике пользователя: тип NEUTRAL, SUPPORT, COMPLIMENT, AFFECTION, INSULT, DISRESPECT или APOLOGY и intensity 0.0–1.0. Для обычного сообщения NEUTRAL с intensity 0. Не меняй verdict из-за relationship_event. Формат результата: JSON {"verdict":"PASS","relationship_event":{"type":"NEUTRAL","intensity":0}}.';
     return [
         {
@@ -38,7 +45,8 @@ export function buildJudgeMessages({ mode = 'CASUAL', messages = [], userText = 
             role: 'user',
             content: [
                 `Режим: ${mode}`,
-                `Правила и личность Леры:\n${compactPersona(messages) || 'не переданы'}`,
+                `Контекст Леры на сегодня:\n${compactBlock(dayContext) || 'не передан'}`,
+                `Как Лера должна говорить и обязательные правила:\n${compactBlock(leraRules) || 'не переданы'}`,
                 `Диалог:\n${compactConversation(messages) || 'нет предыдущих сообщений'}`,
                 `Последняя реплика пользователя:\n${String(userText || '').slice(0, 1200)}`,
                 `Кандидат-ответ Леры:\n${String(reply || '').slice(0, 1600)}`,
@@ -78,6 +86,8 @@ export async function judgeLeraReply({
     messages = [],
     userText = '',
     reply = '',
+    dayContext = '',
+    leraRules = '',
     settings = {}
 } = {}) {
     if (!['OBSERVE', 'ENFORCE'].includes(settings.judgeMode)) {
@@ -90,7 +100,9 @@ export async function judgeLeraReply({
         messages,
         userText,
         reply,
-        judgePrompt: settings.judgePrompt
+        judgePrompt: settings.judgePrompt,
+        dayContext,
+        leraRules
     });
 
     try {

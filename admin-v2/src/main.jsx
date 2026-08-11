@@ -1708,14 +1708,15 @@ function LlmSettingsPanel({ toast }) {
                     <label>Timeout, мс<input type="number" min="1000" max="60000" value={routingSettings.judgeTimeoutMs ?? 5000} onChange={event => setRoutingSettings({ ...routingSettings, judgeTimeoutMs: Number(event.target.value) })} /></label>
                     <label>Max tokens<input type="number" min="40" max="120" value={routingSettings.judgeMaxTokens ?? 80} onChange={event => setRoutingSettings({ ...routingSettings, judgeMaxTokens: Number(event.target.value) })} /></label>
                 </div>
-                <label className="classifier-prompt-editor">Prompt судьи<textarea value={routingSettings.judgePrompt || ''} placeholder="Верни JSON с verdict и relationship_event." onChange={event => setRoutingSettings({ ...routingSettings, judgePrompt: event.target.value })} /></label>
+                <label className="classifier-prompt-editor">Инструкция судьи<textarea value={routingSettings.judgePrompt || ''} placeholder="Верни JSON с verdict и relationship_event." onChange={event => setRoutingSettings({ ...routingSettings, judgePrompt: event.target.value })} /></label>
+                <div className="field-hint">Это единственное редактируемое правило именно для судьи. Ниже можно посмотреть весь фактический набор данных, с которым он сравнивает ответ.</div>
                 <details className="judge-transfer-details">
                     <summary>Как prompt передаётся судье</summary>
                     <div className="judge-transfer-grid">
                         <div><span>System message</span><pre>{routingSettings.judgePrompt || 'Верни строго PASS или REJECT:CODE.'}</pre></div>
-                        <div><span>User message</span><pre>{`Режим: {{CASUAL|EROTIC|JOKE}}\n\nПравила и личность Леры: {{первые 3000 символов основного system prompt}}\n\nДиалог: {{последние 6 сообщений, до 700 символов каждое}}\n\nПоследняя реплика пользователя: {{до 1200 символов}}\n\nКандидат-ответ Леры: {{до 1600 символов}}\n\nВерни только PASS или REJECT:<CODE>.`}</pre></div>
+                        <div><span>User message</span><pre>{`Режим: {{CASUAL|EROTIC|JOKE}}\n\nКонтекст Леры на сегодня: {{время, локация, занятие, погода, события, отношения}}\n\nКак Лера должна говорить и обязательные правила: {{активные модули core + common + текущий режим}}\n\nДиалог: {{последние 6 сообщений, до 700 символов каждое}}\n\nПоследняя реплика пользователя: {{до 1200 символов}}\n\nКандидат-ответ Леры: {{до 1600 символов}}\n\nВерни только PASS или REJECT:<CODE>.`}</pre></div>
                     </div>
-                    <div className="field-hint">Это отдельный короткий LLM-вызов. Основной prompt Леры не заменяется: судья только возвращает PASS или REJECT. При ошибке судьи ответ пропускается дальше.</div>
+                    <div className="field-hint">Контекст дня и правила приходят отдельными блоками, а не случайным обрезком общего system prompt. Это отдельный короткий LLM-вызов: при ошибке судьи ответ пропускается дальше.</div>
                 </details>
                 <div className="field-hint">Коды reject: REPETITION, IGNORES_USER, OUT_OF_CHARACTER, STALE_CONTEXT, INVENTED_FACT, BROKEN_LOGIC, FORMAT. Ошибка судьи не блокирует ответ и видна в trace.</div>
             </div>

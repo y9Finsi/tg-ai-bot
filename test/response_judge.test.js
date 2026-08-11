@@ -13,8 +13,9 @@ test('reply judge payload keeps editable prompt in system and bounded context in
     const messages = buildJudgeMessages({
         mode: 'EROTIC',
         judgePrompt: 'CUSTOM JUDGE RULES',
+        dayContext: 'Лера дома, вечер, дождь.',
+        leraRules: 'LERA SPEECH AND RULES',
         messages: [
-            { role: 'system', content: 'LERA PERSONA' },
             { role: 'user', content: 'Привет' },
             { role: 'assistant', content: 'Ответ' }
         ],
@@ -25,7 +26,8 @@ test('reply judge payload keeps editable prompt in system and bounded context in
     assert.match(messages[0].content, /^CUSTOM JUDGE RULES/);
     assert.match(messages[0].content, /relationship_event/);
     assert.match(messages[1].content, /Режим: EROTIC/);
-    assert.match(messages[1].content, /LERA PERSONA/);
+    assert.match(messages[1].content, /Лера дома, вечер, дождь/);
+    assert.match(messages[1].content, /LERA SPEECH AND RULES/);
     assert.match(messages[1].content, /Новая реплика/);
     assert.match(messages[1].content, /Кандидат/);
 });

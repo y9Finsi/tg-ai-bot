@@ -19,7 +19,7 @@ test('24-hour day and Telegram conversation share one evolving context stream', 
 test('Telegram context does not turn an uncompleted plan into a completed fact', () => {
     const smoke = runTelegramDaySmoke();
     const evening = smoke.checkpoints[2].prompt;
-    assert.match(evening, /События уже произошли; планы — только намерения/);
+    assert.match(evening, /События из аналитики уже завершились\. Говори о них в прошедшем времени/);
     assert.doesNotMatch(evening, /SOCIAL_MEETING_COMPLETED.*Встреча/);
     assert.doesNotMatch(evening, /ЧЕГО МЫ НЕ ЗНАЕМ|причина не установлена/);
     assert.doesNotMatch(evening, /TASK_COMPLETED|SOCIAL_MEETING_COMPLETED|locationId|taskType|\{"/);

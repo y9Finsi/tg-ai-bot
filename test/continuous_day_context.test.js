@@ -49,8 +49,8 @@ test('LLM prompt gives a compact day analysis with only facts and plans', () => 
     assert.match(prompt, /СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ/);
     assert.match(prompt, /ГЛАВНЫЕ СОБЫТИЯ ЗА ДЕНЬ/);
     assert.match(prompt, /В плане:/);
-    assert.match(prompt, /События уже произошли; планы — только намерения/);
-    assert.match(prompt, /Не придумывай факты или подробности событий/);
+    assert.match(prompt, /События из аналитики уже завершились\. Говори о них в прошедшем времени/);
+    assert.match(prompt, /Не добавляй к аналитике выдуманные факты/);
     assert.doesNotMatch(prompt, /ЧЕГО МЫ НЕ ЗНАЕМ|ОБЩЕЕ НАБЛЮДЕНИЕ — НЕ ФАКТ|причина не установлена|ПРИЧИНЫ И ПОСЛЕДСТВИЯ|\[НАБЛЮДЕНИЕ\]/);
     assert.doesNotMatch(prompt, /Мы уже сидим в баре/);
     assert.doesNotMatch(prompt, /TASK_COMPLETED|TRAVEL_COMPLETED|locationId|taskType|\{"/);

@@ -359,6 +359,7 @@ async function buildMessagePayload(user, userId, { userText, isInitiative, routi
         memories,
         systemPrompt,
         radiantContext: radiantContextText,
+        judgeLeraRules: baseSystemPromptText,
         leraState: tamagotchiInstruction ? radiantLayers : null
     };
 }
@@ -438,7 +439,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     // 1. Формирование контекста сообщений (с параллельными запросами БД)
     const {
         messages, isPhotoRequest, recommendationPost, preselectedPhoto, lastLeraText,
-        recentReplyTexts, memories, leraState, systemPrompt, radiantContext
+        recentReplyTexts, memories, leraState, systemPrompt, radiantContext, judgeLeraRules
     } = await buildMessagePayload(user, userId, { userText, isInitiative, routingMode, initiativeReason, initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds, firstMessageAt });
     const routingSettings = await getRoutingSettings();
     const generationParams = getModeGenerationParams(routingMode, routingSettings);
@@ -513,6 +514,8 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
             messages: judgeConversation,
             userText,
             reply: text,
+            dayContext: radiantContext,
+            leraRules: judgeLeraRules,
             settings: judgeSettings
         })
         : { skipped: true, verdict: 'SKIPPED', passed: true, code: null };
@@ -622,6 +625,8 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
                 messages: judgeConversation,
                 userText,
                 reply: text,
+                dayContext: radiantContext,
+                leraRules: judgeLeraRules,
                 settings: judgeSettings
             });
             generationTrace.push({

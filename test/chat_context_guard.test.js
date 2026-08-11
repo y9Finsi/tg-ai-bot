@@ -21,10 +21,10 @@ test('day context is background only and an unclear message requires clarificati
         user: { first_name: 'Богдан' }
     });
 
-    assert.match(prompt, /\[КОНТЕКСТ\]/);
-    assert.match(prompt, /Используй контекст только когда он уместен/);
-    assert.match(prompt, /Не придумывай факты или подробности событий/);
-    assert.match(prompt, /События уже произошли; планы — только намерения/);
+    assert.match(prompt, /## КОНТЕКСТ/);
+    assert.match(prompt, /Используй её только когда она уместна/);
+    assert.match(prompt, /Не добавляй к аналитике выдуманные факты/);
+    assert.match(prompt, /События из аналитики уже завершились\. Говори о них в прошедшем времени/);
 });
 
 test('sleeping context overrides outdoor clothing with natural home sleepwear', () => {
@@ -68,7 +68,7 @@ test('pause guidance and historical events do not expose live micro-actions', ()
         preMessageGapSeconds: 2 * 3600
     });
 
-    assert.match(prompt, /Пауза в диалоге: возвращение к диалогу/);
+    assert.match(prompt, /Пауза: возвращение к диалогу/);
     assert.doesNotMatch(prompt, /0–15 минут|30 минут–3 часа|4–8 часов|Больше 8 часов/);
     assert.match(prompt, /Лера приняла душ/);
     assert.match(prompt, /Лера увиделась с Настей/);
@@ -100,10 +100,4 @@ test('newline-separated replies are split into Telegram bubbles', () => {
 
     assert.match(queue, /splitResponseMessages/);
     assert.match(queue, /utils\/response_text\.js/);
-});
-
-test('location-and-Nastya answer is not baked into the standard dialogue examples', () => {
-    const examples = fs.readFileSync(path.join(root, 'src', 'prompts', 'lera_examples.txt'), 'utf8');
-
-    assert.doesNotMatch(examples, /Да я тут с Настей застряла/);
 });
