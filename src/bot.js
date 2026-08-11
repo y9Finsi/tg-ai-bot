@@ -10,7 +10,7 @@ import {
     processPlategaPayment, updateLastActive, setStoreOpened, getUsersForRetargetingStore, markStorePromoSent,
     createPromocode, activatePromocode, getPaymentHistory,
     getAllPromocodes, getPromocodeById, togglePromoStatus, togglePromoNewUsersOnly, deletePromocode, updatePromoField, getUsersForBonusNotify, markBonusNotified,
-    addLeraPhoto, addLeraContent, appendConversationEvent, updateConversationEventStatus,
+    addLeraPhoto, addLeraContent, findDuplicateLeraContent, appendConversationEvent, updateConversationEventStatus,
     reserveFreeRequest, reserveImageRequest, refundReservedRequest
 } from './database.js';
 import { createPlategaInvoice, checkPlategaInvoice } from './platega.js';
@@ -29,7 +29,7 @@ import { StateRepository } from './db/state_repository.js';
 import { MemorySummarizer } from './memory/summarizer.js';
 import { initDatabaseTables } from './database.js';
 import { initChannelPoster, stopChannelPoster } from './channel_poster.js';
-import { extractContentFromChannelPost } from './content_service.js';
+import { editContentChannelPost, extractContentFromChannelPost } from './content_service.js';
 import { enqueuePersonalInitiatives } from './initiative_service.js';
 
 const requiredEnvs = ['BOT_TOKEN', 'ADMIN_ID', 'OPENROUTER_API_KEY', 'DATABASE_URL'];
@@ -1165,9 +1165,9 @@ setupProfile(bot, userState);
 setupAi(bot, userState, modeNames, getMainKeyboard);
 
 // ---------------- ОБРАБОТЧИК ПОСТОВ ИЗ ПРИВАТНОГО КАНАЛА ФОТО ----------------
-bot.on('channel_post', async (ctx) => {
+bot.on(['channel_post', 'edited_channel_post'], async (ctx) => {
     try {
-        const post = ctx.channelPost;
+        const post = ctx.channelPost || ctx.editedChannelPost;
         if (!post) return;
 
         console.log(`[ФОТО КАНАЛ СОБЫТИЕ] Получен пост из канала ID: ${post.chat.id}`);
@@ -1181,7 +1181,23 @@ bot.on('channel_post', async (ctx) => {
                 console.log(`[КОНТЕНТ КАНАЛ ИГНОР] В посте ${post.message_id} нет поддерживаемого медиа или URL entity`);
                 return;
             }
-            const saved = await addLeraContent(content);
+            const duplicate = await findDuplicateLeraContent(content);
+            const isSamePost = duplicate
+                && String(duplicate.source_channel_id) === String(content.sourceChannelId)
+                && String(duplicate.source_message_id) === String(content.sourceMessageId);
+            if (duplicate && !isSamePost) {
+                await editContentChannelPost(ctx.telegram, post, {
+                    ...duplicate,
+                    description: content.description
+                }, { duplicate: true });
+                console.log(`[КОНТЕНТ КАНАЛ ДУБЛЬ] Пост ${post.message_id} уже сохранён как content_id=${duplicate.id}`);
+                return;
+            }
+            const saved = await addLeraContent({
+                ...content,
+                enabled: Boolean(content.description)
+            });
+            await editContentChannelPost(ctx.telegram, post, saved);
             console.log(`[КОНТЕНТ КАНАЛ УСПЕХ] Добавлен ${saved.telegram_type}, content_id=${saved.id}`);
             return;
         }
@@ -1652,7 +1668,7 @@ async function safeStartBot() {
             }
 
             await bot.launch({
-            allowedUpdates: ['message', 'message_reaction', 'callback_query', 'pre_checkout_query', 'channel_post'],
+            allowedUpdates: ['message', 'message_reaction', 'callback_query', 'pre_checkout_query', 'channel_post', 'edited_channel_post'],
                 dropPendingUpdates: true
             });
             console.log('🚀 Бот успешно запущен и подключен к Telegram!');

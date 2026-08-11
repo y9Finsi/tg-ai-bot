@@ -91,6 +91,7 @@ import { SimulationWorker } from './workers/simulation_worker.js';
 import { devtoolEvents, publishDevtoolEvent } from './devtools/event_bus.js';
 import { runTelegramDaySmoke } from './radiant/telegram_day_smoke.js';
 import { evaluateLeraReply } from './ai/response_quality.js';
+import { CONTENT_CHANNEL_GUIDE } from './content_service.js';
 import { getDayProfile, isWithinWindow } from './radiant/day_profile.js';
 import { taskDefinition } from './radiant/task_catalog.js';
 import { normalizePersonality, DEFAULT_PERSONALITY, personalityModifiers } from './radiant/personality.js';
@@ -105,24 +106,6 @@ import {
 } from './ai/sandbox_service.js';
 
 const DEFAULT_CONTENT_CHANNEL_ID = '-1003729264804';
-const CONTENT_CHANNEL_GUIDE = `я тут собираю себе музыку, тиктоки и всякое, что потом могу вам скидывать
-
-чтобы всё нормально работало:
-
-— один пост = один материал
-— к музыке, видео или гифке обязательно подпиши по-человечески, что это и почему оно прикольное. эта подпись попадёт мне в каталог
-— тиктоки и другие ссылки кидай отдельным постом с кликабельной ссылкой и коротким описанием
-— не надо тегов, технических file_id и огромных полотен текста
-— не кидай голосовые и кружки, их я пока отсюда не беру
-— если передумал с подписью, лучше удалить пост и кинуть заново: правки уже добавленного материала я не вижу
-
-типа норм:
-«трек, который у меня последнее время на повторе, спокойный вечерний вайб»
-
-или
-«оч смешной тикток про работу, я с него чёт выпала»
-
-короче, пишите как живой человек, чтобы я понимала, в какой момент этим вообще уместно поделиться`;
 
 const ADMIN_DAY_TASKS = ['SLEEP_NIGHT', 'SLEEP_EXHAUSTED', 'EAT_BREAKFAST', 'EAT_LUNCH', 'EAT_DINNER', 'EMERGENCY_EAT', 'WORK_LAPTOP', 'TRAVEL', 'SOCIAL_NASTYA', 'LEISURE_HOME', 'IDLE_HOME_REST'];
 function humanizeAdminEvent(type, payload = {}) {

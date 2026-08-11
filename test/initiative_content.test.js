@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chooseInitiativeKind } from '../src/initiative_service.js';
-import { extractContentFromChannelPost } from '../src/content_service.js';
+import {
+    extractContentFromChannelPost,
+    formatContentChannelPost,
+    stripContentChannelStatus
+} from '../src/content_service.js';
 
 const available = { initiatives: 0, content: 0 };
 const latestText = { event_type: 'MESSAGE' };
@@ -77,4 +81,45 @@ test('content channel reads native media and URL only from Telegram entities', (
     assert.equal(extractContentFromChannelPost({
         chat: { id: -100123 }, message_id: 7, text: 'https://example.com/no-entity'
     }), null);
+});
+
+test('content channel turns a post into a readable catalog card', () => {
+    const card = formatContentChannelPost({
+        id: 12,
+        telegram_type: 'audio',
+        description: 'трек на спокойный вечер',
+        enabled: true,
+        allow_in_dialogue: true,
+        allow_initiative: true
+    }, { maxLength: 1024 });
+
+    assert.match(card, /^трек на спокойный вечер/);
+    assert.match(card, /📚 Каталог Леры/);
+    assert.match(card, /✅ добавила в каталог под номером #12/);
+    assert.match(card, /тип: музыка/);
+    assert.match(card, /в диалоге и когда пишу первая/);
+    assert.equal(stripContentChannelStatus(card), 'трек на спокойный вечер');
+});
+
+test('bare links are stored without a fake description and ask for one', () => {
+    const extracted = extractContentFromChannelPost({
+        chat: { id: -100123 },
+        message_id: 8,
+        text: 'https://music.yandex.ru/album/1/track/2',
+        entities: [{ type: 'url', offset: 0, length: 40 }]
+    });
+    assert.equal(extracted.description, '');
+
+    const card = formatContentChannelPost({
+        id: 13,
+        telegram_type: 'link',
+        url: extracted.url,
+        description: '',
+        enabled: false,
+        allow_in_dialogue: true,
+        allow_initiative: true
+    });
+    assert.match(card, /сохранила, но пока выключила/);
+    assert.match(card, /тип: Яндекс Музыка/);
+    assert.match(card, /ссылка: https:\/\/music\.yandex\.ru/);
 });

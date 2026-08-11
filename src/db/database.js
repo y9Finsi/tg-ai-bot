@@ -754,12 +754,30 @@ export async function addLeraContent({ telegramType, telegramFileId = null, url 
            WHERE source_channel_id IS NOT NULL AND source_message_id IS NOT NULL
          DO UPDATE SET telegram_type = EXCLUDED.telegram_type,
              telegram_file_id = EXCLUDED.telegram_file_id, url = EXCLUDED.url,
-             description = EXCLUDED.description, updated_at = NOW()
+             description = EXCLUDED.description, enabled = EXCLUDED.enabled,
+             allow_in_dialogue = EXCLUDED.allow_in_dialogue,
+             allow_initiative = EXCLUDED.allow_initiative, updated_at = NOW()
          RETURNING *`,
         [telegramType, telegramFileId, url, description, enabled, allowInDialogue,
             allowInitiative, sourceChannelId, sourceMessageId]
     );
     return result.rows[0];
+}
+
+export async function findDuplicateLeraContent({ telegramFileId = null, url = null, sourceChannelId = null, sourceMessageId = null }) {
+    const result = await query(
+        `SELECT * FROM lera_content
+         WHERE ($1::bigint IS NOT NULL AND $2::bigint IS NOT NULL
+                AND source_channel_id = $1 AND source_message_id = $2)
+            OR ($3::text IS NOT NULL AND telegram_file_id = $3)
+            OR ($4::text IS NOT NULL AND url = $4)
+         ORDER BY
+            CASE WHEN source_channel_id = $1 AND source_message_id = $2 THEN 0 ELSE 1 END,
+            id ASC
+         LIMIT 1`,
+        [sourceChannelId, sourceMessageId, telegramFileId, url]
+    );
+    return result.rows[0] || null;
 }
 
 export async function getLeraContent(id) {
