@@ -240,7 +240,15 @@ async function processAiJob(bot, job) {
             }).catch(error => console.error(`[CONVERSATION OUT EVENT ERROR] user ${userId}:`, error.message));
         };
         try {
-            response = await generateResponse(userId, text, { batchId, eventIds, firstMessageAt, preMessageGapSeconds });
+            const keepTyping = !tempMsgId;
+            const sendTypingAction = () => bot.telegram.sendChatAction(chatId, 'typing').catch(() => {});
+            if (keepTyping) sendTypingAction();
+            const typingInterval = keepTyping ? setInterval(sendTypingAction, 4000) : null;
+            try {
+                response = await generateResponse(userId, text, { batchId, eventIds, firstMessageAt, preMessageGapSeconds });
+            } finally {
+                if (typingInterval) clearInterval(typingInterval);
+            }
             const historyClearedAtAfterGeneration = await getChatHistoryClearedAt(userId);
             if (String(historyClearedAtBeforeGeneration || '') !== String(historyClearedAtAfterGeneration || '')) {
                 await refundReservation();
