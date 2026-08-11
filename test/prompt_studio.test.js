@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
     STUDIO_INTENTS,
     extractReactionEmoji,
+    getReactionFallbackEmoji,
     getModeGenerationParams,
     normalizeIntent,
     normalizeIntentConfig,
@@ -50,6 +51,9 @@ test('Classifier accepts REACTION without turning it into a Prompt Studio mode',
     assert.equal(extractReactionEmoji('REACTION 🇷🇺'), '🇷🇺');
     assert.equal(extractReactionEmoji('REACTION 🔥 ❤️'), '');
     assert.equal(extractReactionEmoji('REACTION'), '');
+    assert.equal(getReactionFallbackEmoji(() => 0), '❤️');
+    assert.equal(getReactionFallbackEmoji(() => 0.5), '👍');
+    assert.equal(getReactionFallbackEmoji(() => 0.99), '🔥');
 });
 
 test('Prompt Studio clamps values and keeps legacy mode settings as fallback', () => {

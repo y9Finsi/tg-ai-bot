@@ -10,6 +10,7 @@ import { requestLlmCompletion, getCachedOpenAIClient } from './llm_client.js';
 export const INTENT_MODES = ['CASUAL', 'EROTIC', 'JOKE'];
 export const CLASSIFIER_MODES = [...INTENT_MODES, 'REACTION'];
 export const STUDIO_INTENTS = ['AUTO', ...INTENT_MODES];
+export const REACTION_FALLBACK_EMOJIS = Object.freeze(['❤️', '👍', '🔥']);
 export const INTENT_STUDIO_DRAFT_KEY = 'llm_routing_intent_draft';
 export const INTENT_STUDIO_PRODUCTION_KEY = 'llm_routing_intent_production';
 export const DEFAULT_ROUTING_SETTINGS = {
@@ -279,6 +280,15 @@ export function extractReactionEmoji(rawText) {
     return Array.from(emoji).length <= 16 ? emoji : '';
 }
 
+export function getReactionFallbackEmoji(random = Math.random) {
+    const sample = Number(random());
+    const index = Math.max(0, Math.min(
+        REACTION_FALLBACK_EMOJIS.length - 1,
+        Math.floor((Number.isFinite(sample) ? sample : 0) * REACTION_FALLBACK_EMOJIS.length)
+    ));
+    return REACTION_FALLBACK_EMOJIS[index];
+}
+
 function buildClassifierMessages(history = [], userText = '', classifierPrompt = DEFAULT_ROUTING_SETTINGS.classifierPrompt) {
     const recent = history
         .filter(item => item?.content)
@@ -394,55 +404,12 @@ export async function classifyIntent({ userId = 0, userText = '', history = [], 
             }
         );
         const normalizedMode = normalizeIntent(result.rawText);
-        let reactionEmoji = normalizedMode === 'REACTION'
+        const classifierReactionEmoji = normalizedMode === 'REACTION'
             ? extractReactionEmoji(result.rawText)
             : '';
-        let reactionRepairUsage = {};
-        let reactionRepairLatencyMs = 0;
-        if (normalizedMode === 'REACTION' && !reactionEmoji) {
-            try {
-                const repairStartedAt = Date.now();
-                const repair = await requestLlmCompletion(
-                    { roleplay_mode: 'intent-reaction-emoji', max_tokens: 4 },
-                    [
-                        {
-                            role: 'system',
-                            content: 'Классификатор уже выбрал действие REACTION. Выбери ровно один уместный Telegram emoji для реакции на новую реплику. Верни только emoji, без слов, JSON и пояснений.'
-                        },
-                        {
-                            role: 'user',
-                            content: `Последние сообщения:\n${history.slice(-3).map(item => `${item.role === 'assistant' ? 'Лера' : 'Пользователь'}: ${String(item.content || '').slice(0, 700)}`).join('\n') || 'Нет'}\n\nНовая реплика пользователя:\n${String(userText || '').slice(0, 1200)}`
-                        }
-                    ],
-                    false,
-                    async () => {
-                        const provider = providers[0] || await getActiveAiProvider();
-                        if (!provider) throw new Error('Нет настроенных провайдеров классификатора');
-                        return {
-                            client: getCachedOpenAIClient(provider.base_url, provider.api_key, provider.timeout_ms || settings.classifierTimeoutMs),
-                            model: settings.classifierModel || provider.model_name
-                        };
-                    },
-                    {
-                        trace,
-                        userId,
-                        kind: 'INTENT_REACTION_EMOJI_REPAIR',
-                        mode: 'ROUTER',
-                        userText,
-                        temperature: 0,
-                        maxTokens: 4,
-                        timeoutMs: settings.classifierTimeoutMs,
-                        providers,
-                        modelOverride: settings.classifierModel || null
-                    }
-                );
-                reactionEmoji = extractReactionEmoji(`REACTION ${repair.rawText || ''}`);
-                reactionRepairUsage = repair.usage || {};
-                reactionRepairLatencyMs = Date.now() - repairStartedAt;
-            } catch (repairError) {
-                console.error('[INTENT ROUTER] REACTION emoji repair failed:', repairError.message);
-            }
-        }
+        const reactionEmoji = normalizedMode === 'REACTION'
+            ? classifierReactionEmoji || getReactionFallbackEmoji()
+            : '';
         const mode = normalizedMode === 'JOKE' && !isExplicitJokeRequest(userText)
             ? 'CASUAL'
             : normalizedMode;
@@ -452,14 +419,11 @@ export async function classifyIntent({ userId = 0, userText = '', history = [], 
             jokeGuarded: normalizedMode === 'JOKE' && mode !== 'JOKE',
             reactionGuarded: normalizedMode === 'REACTION' && mode !== 'REACTION',
             reactionEmoji: mode === 'REACTION' ? reactionEmoji : '',
-            reactionEmojiMissing: mode === 'REACTION' && !reactionEmoji,
-            usage: {
-                prompt_tokens: Number(result.usage?.prompt_tokens || 0) + Number(reactionRepairUsage.prompt_tokens || 0),
-                completion_tokens: Number(result.usage?.completion_tokens || 0) + Number(reactionRepairUsage.completion_tokens || 0)
-            },
+            reactionEmojiFallback: mode === 'REACTION' && !classifierReactionEmoji,
+            usage: result.usage || {},
             model: result.model,
             providerName: result.providerName,
-            latencyMs: (result.latencyMs || 0) + reactionRepairLatencyMs,
+            latencyMs: result.latencyMs || 0,
             settings
         };
     } catch (error) {
