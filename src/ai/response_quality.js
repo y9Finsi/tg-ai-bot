@@ -19,6 +19,7 @@ const STALE_STYLE_PATTERNS = [
 ];
 
 const REPEATED_SLEEP_PATTERN = /(?:^|[^\p{L}])ты\s+че\s+не\s+спишь(?=$|[^\p{L}])/iu;
+const RETRYABLE_VIOLATIONS = new Set(['nonEmpty', 'noRecentRepeat', 'format']);
 
 const SEMANTIC_PATTERNS = {
     morning: [
@@ -86,6 +87,10 @@ export function evaluateLeraReply(text, userText = '', expected = null, options 
         mode,
         semantic: semanticCheck(reply, expected)
     };
+}
+
+export function requiresReplyRetry(violations = []) {
+    return Array.isArray(violations) && violations.some(issue => RETRYABLE_VIOLATIONS.has(issue));
 }
 
 export function getQualityFallback(mode = 'CASUAL') {

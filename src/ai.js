@@ -13,7 +13,7 @@ import { requestLlmCompletion } from './ai/llm_client.js';
 import { extractFactsInBackground } from './ai/memory_extractor.js';
 import { ContextBuilder } from './ai/context_builder.js';
 import { validateUserCommand } from './ai/command_gate.js';
-import { evaluateLeraReply, getQualityFallback } from './ai/response_quality.js';
+import { evaluateLeraReply, getQualityFallback, requiresReplyRetry } from './ai/response_quality.js';
 import { classifyIntent, getModeGenerationParams, getModeIntentConfig, getRoutingSettings } from './ai/intent_router.js';
 import { judgeLeraReply } from './ai/response_judge.js';
 import { cleanResponseText } from './utils/response_text.js';
@@ -262,8 +262,9 @@ async function buildMessagePayload(user, userId, { userText, isInitiative, routi
         ? Math.max(0, Number(preMessageGapSeconds))
         : (lastEvent ? Math.max(0, Math.floor((new Date(firstMessageAt || now).getTime() - new Date(lastEvent.occurred_at).getTime()) / 1000)) : 0);
     let modeInstruction = `\n\n[ИНСТРУКЦИЯ ПО ФОТОГРАФИЯМ И КИНУТЫМ МЕДИА]:
-Ты в любой момент можешь прислать собеседнику свое фото. Для этого ДОБАВЬ В САМЫЙ КОНЕЦ ответа тег [IMAGE: краткое описание фото на английском].
-- СТРОГОЕ ПРАВИЛО: Если пользователь просит фото, или если ты сама в тексте говоришь «ща скину», «держи фотку», «покажусь», «глянь фотку» и т.п., ты ОБЯЗАНА ДОБАВИТЬ ТЕГ [IMAGE: ...] в самый конец сообщения! Без этого тега фото не отправится!`;
+Добавляй в конец ответа тег [IMAGE: краткое описание фото на английском] только если пользователь просит фото или ты уже естественно предложила/пообещала прислать его в тексте.
+- Не присылай несвязанное фото сама по себе и никогда не отвечай одним тегом [IMAGE: ...] без обычной текстовой реплики.
+- Если пользователь просит фото, или если ты сама в тексте говоришь «ща скину», «держи фотку», «покажусь», «глянь фотку» и т.п., ты ОБЯЗАНА ДОБАВИТЬ ТЕГ [IMAGE: ...] в самый конец сообщения! Без этого тега фото не отправится!`;
 
     if (preselectedPhoto) {
         const photoDesc = preselectedPhoto.caption || (preselectedPhoto.tags && preselectedPhoto.tags.length > 0 ? preselectedPhoto.tags.join(', ') : 'Твое личное фото');
@@ -540,10 +541,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         mode: routingMode,
         recentReplies: recentReplyTexts
     }).violations;
-    const needsQualityRetry = !isInitiative && qualityIssues.some(issue => [
-        'noRecentRepeat',
-        'format'
-    ].includes(issue));
+    const needsQualityRetry = !isInitiative && requiresReplyRetry(qualityIssues);
     const judgeNeedsRetry = !isInitiative && judgeSettings.judgeMode === 'ENFORCE' && judgeResult.passed === false;
     if (!isInitiative && userText && (
         (lastLeraText && (normalizeReply(text) === normalizeReply(lastLeraText) || repeatsGreeting) && !looksLikeGreeting)
@@ -560,7 +558,9 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
             : judgeNeedsRetry
             ? `Проверка качества отклонила предыдущий ответ: ${judgeResult.code || 'REJECTED'}. Перепиши его по последней реплике пользователя, сохрани характер Леры и не повторяй предыдущий вариант.`
             : needsQualityRetry
-            ? 'СТОП: предыдущий ответ повторяет недавнюю фразу. Перепиши ответ именно на последнюю реплику и не повторяй недавний текст.'
+            ? qualityIssues.includes('nonEmpty')
+                ? 'СТОП: предыдущий ответ оказался пустым после обработки медиа-тегов. Ответь текстом именно на последнюю реплику пользователя. Фото можно добавлять только после нормальной текстовой подписи.'
+                : 'СТОП: предыдущий ответ повторяет недавнюю фразу. Перепиши ответ именно на последнюю реплику и не повторяй недавний текст.'
             : 'СТОП: предыдущий ответ совпал с прошлой репликой. Сгенерируй новый ответ именно на последнюю CURRENT_MESSAGE. Не повторяй приветствие и прошлый текст.';
         const retryMessages = [
             messages[0],

@@ -243,8 +243,27 @@ export async function getJudgeProviders(settings) {
     return [selected, ...ordered.filter(provider => Number(provider.id) !== selectedId)];
 }
 
-function normalizeIntent(rawText) {
-    const normalized = String(rawText || '').toUpperCase().replace(/[^A-Z]+/g, ' ').trim();
+const LATIN_INTENT_CONFUSABLES = Object.freeze({
+    А: 'A',
+    В: 'B',
+    С: 'C',
+    Е: 'E',
+    Н: 'H',
+    І: 'I',
+    К: 'K',
+    М: 'M',
+    О: 'O',
+    Р: 'P',
+    Т: 'T',
+    Х: 'X',
+    У: 'Y'
+});
+
+export function normalizeIntent(rawText) {
+    const latinized = String(rawText || '')
+        .toUpperCase()
+        .replace(/[АВСЕНІКМОРТХУ]/g, character => LATIN_INTENT_CONFUSABLES[character]);
+    const normalized = latinized.replace(/[^A-Z]+/g, ' ').trim();
     const found = normalized.split(/\s+/).find(value => INTENT_MODES.includes(value));
     return found || 'CASUAL';
 }

@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { evaluateLeraReply, getQualityFallback } from '../src/ai/response_quality.js';
+import { evaluateLeraReply, getQualityFallback, requiresReplyRetry } from '../src/ai/response_quality.js';
 import { ContextBuilder } from '../src/ai/context_builder.js';
+import { normalizeIntent } from '../src/ai/intent_router.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -85,4 +86,22 @@ test('quality fallback is safe for CASUAL and JOKE', () => {
     assert.equal(evaluateLeraReply(casualFallback, '?', null, { mode: 'CASUAL' }).passed, true);
     assert.equal(evaluateLeraReply(jokeFallback, 'пошути', null, { mode: 'JOKE' }).passed, true);
     assert.doesNotMatch(casualFallback, /\.\.\.|ммм|слышишь|мне 19/i);
+});
+
+test('intent router accepts Cyrillic lookalikes in an intent label', () => {
+    assert.equal(normalizeIntent('EROТIC'), 'EROTIC');
+});
+
+test('an empty reply after media parsing is retried instead of falling back immediately', () => {
+    const quality = evaluateLeraReply('', 'ну другое тогда чтонибудь', null, { mode: 'JOKE' });
+
+    assert.ok(quality.violations.includes('nonEmpty'));
+    assert.equal(requiresReplyRetry(quality.violations), true);
+});
+
+test('production media instruction forbids tag-only or unrelated image responses', () => {
+    const engine = fs.readFileSync(path.join(root, 'src', 'ai.js'), 'utf8');
+
+    assert.match(engine, /Не присылай несвязанное фото сама по себе/);
+    assert.match(engine, /никогда не отвечай одним тегом \[IMAGE/);
 });
