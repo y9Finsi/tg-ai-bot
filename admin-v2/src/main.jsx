@@ -42,6 +42,14 @@ const CHANNEL_PROMPT_MODULES = [
 
 function formatDay(value) { return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(value)); }
 function formatTime(value) { return new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(new Date(value)); }
+function formatDate(value) {
+    if (!value) return '—';
+    return new Intl.DateTimeFormat('ru-RU', {
+        timeZone: 'Europe/Moscow',
+        dateStyle: 'short',
+        timeStyle: 'short'
+    }).format(new Date(value));
+}
 function mskDateParts(value = new Date()) { return Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(value)).filter(part => part.type !== 'literal').map(part => [part.type, part.value])); }
 function isoDate(value) { const parts = mskDateParts(value); return `${parts.year}-${parts.month}-${parts.day}`; }
 function taskName(value) { return TASK_NAMES[value] || String(value || 'Событие').replaceAll('_', ' ').toLowerCase(); }

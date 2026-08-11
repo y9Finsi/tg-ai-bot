@@ -29,6 +29,17 @@ test('initiative scheduler respects the 5–60 minute OPEN window and one stage 
     }), null);
 });
 
+test('new Moscow day starts one plain initiative regardless of the old dialogue state', () => {
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 20 * 3600, state: 'IGNORED', latestEvent: latestText,
+        counts: available, newMoscowDay: true, contentAvailable: true
+    }), 'new_day');
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 20 * 3600, state: 'CLOSED', latestEvent: latestText,
+        counts: { initiatives: 3, content: 0 }, newMoscowDay: true
+    }), null);
+});
+
 test('ignore chain follows the original anchor and closes after three hours', () => {
     assert.equal(chooseInitiativeKind({
         ageSeconds: 300, state: 'IGNORED', latestEvent: latestText,

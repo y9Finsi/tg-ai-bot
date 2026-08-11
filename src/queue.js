@@ -128,6 +128,19 @@ async function processInitiativeJob(bot, job) {
     if (!user || user.is_blocked || mute || !anchor || duplicate || counts.initiatives >= 3) return;
     if (latest?.role === 'user' && new Date(latest.occurred_at) > new Date(anchor.occurred_at)) return;
     if (initiativeKind !== 'ignore_2' && Number(latest?.id) !== Number(anchorEventId)) return;
+    const latestLocalDate = String(latest?.local_date || '');
+    const todayMsk = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Moscow',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(new Date());
+    const hourMsk = Number(new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Moscow',
+        hour: '2-digit',
+        hourCycle: 'h23'
+    }).format(new Date()));
+    if (initiativeKind === 'new_day' && (latestLocalDate >= todayMsk || hourMsk < 9)) return;
     const anchorAgeSeconds = (Date.now() - new Date(anchor.occurred_at).getTime()) / 1000;
     if (initiativeKind === 'open' && (anchorAgeSeconds < 300 || anchorAgeSeconds > 3600)) return;
     if (initiativeKind === 'ignore_1' && (anchorAgeSeconds < 300 || anchorAgeSeconds > 3600)) return;
@@ -138,7 +151,7 @@ async function processInitiativeJob(bot, job) {
     }
 
     let candidates = [];
-    if (!['ignore_1', 'ignore_2'].includes(initiativeKind) && counts.content < 3) {
+    if (!['ignore_1', 'ignore_2', 'new_day'].includes(initiativeKind) && counts.content < 3) {
         const rows = await Promise.all(contentCandidateIds.map(id => getLeraContent(id)));
         candidates = rows.filter(item => item?.enabled && item.allow_initiative);
         const sentFlags = await Promise.all(candidates.map(item => wasContentSent(userId, item.id)));
@@ -148,6 +161,8 @@ async function processInitiativeJob(bot, job) {
 
     const reason = initiativeKind === 'open'
         ? 'естественно продолжить последний незакрытый диалог'
+        : initiativeKind === 'new_day'
+            ? 'наступил новый день, а вы сегодня ещё не общались'
         : initiativeKind === 'content_4h'
             ? 'после паузы самой поделиться контентом'
             : 'пользователь не ответил на реплику Леры';

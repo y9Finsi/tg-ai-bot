@@ -659,7 +659,6 @@ export async function getInitiativeSchedulerUsers(limit = 500) {
          WHERE e.status = 'COMPLETED'
            AND e.event_type IN ('MESSAGE', 'INITIATIVE', 'CONTENT')
            AND e.role IN ('user', 'lera', 'assistant')
-           AND e.occurred_at >= NOW() - INTERVAL '24 hours'
          ORDER BY e.user_id, e.occurred_at DESC, e.id DESC
          LIMIT $1`,
         [limit]
