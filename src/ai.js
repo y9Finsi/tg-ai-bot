@@ -280,26 +280,17 @@ async function buildMessagePayload(user, userId, { userText, isInitiative, routi
     }
 
     if (isInitiative) {
-        const initiativeRules = initiativeKind === 'ignore_1'
-            ? 'Пользователь оборвал разговор, хотя ты ждала ответа. Коротко и естественно подколоти его за игнор, без медиа.'
-            : initiativeKind === 'ignore_2'
-                ? 'Пользователь продолжает игнорировать. Напиши заметно более раздражённо и резко, но одной естественной репликой, без медиа.'
-                : initiativeKind === 'new_day'
-                    ? 'Начался новый день, и вы сегодня ещё не общались. Напиши коротко и живо первой: просто поздоровайся или спроси, как он. Не упоминай старый диалог, игнор или технические причины. Не используй медиа.'
-                : initiativeKind === 'content_4h'
-                    ? 'Ты сама решила поделиться чем-то из того, что смотришь или слушаешь. Обязательно сделай естественную подводку и скажи, что сейчас скинешь.'
-                    : 'Естественно продолжи незакрытую тему прошлого диалога. Не начинай новую случайную тему.';
         const initiativePrompt = productionRoutingSettings.initiativePrompt
             ? `\n\n[ОБЩИЕ ПРАВИЛА ИНИЦИАТИВ]\n${productionRoutingSettings.initiativePrompt}`
             : '';
-        modeInstruction = `\n\n[ИНИЦИАТИВА ${initiativeKind || 'open'}]: ${initiativeRules}\nПричина: ${initiativeReason || 'естественное продолжение разговора'}. Не раскрывай приватные данные других пользователей.${initiativePrompt}`;
+        modeInstruction = `\n\n[ТИП ИНИЦИАТИВЫ]: ${initiativeKind || 'open'}\n[ПРИЧИНА]: ${initiativeReason || 'естественное продолжение разговора'}\nНе раскрывай приватные данные других пользователей.${initiativePrompt}`;
     }
 
     if (contentCandidates.length > 0) {
         const catalog = contentCandidates.map(item =>
             `- [CONTENT: ${item.id}] ${item.telegram_type}: ${item.description || 'без описания'}`
         ).join('\n');
-        modeInstruction += `\n\n[ДОСТУПНЫЙ КОНТЕНТ]\n${catalog}\nТы можешь выбрать максимум один материал, только если он естественно связан с твоим ответом. Тогда сначала напиши живую подводку лесенкой, включая что сейчас скинешь, и добавь выбранный тег [CONTENT: id] строго в конце. Контент придёт следующим отдельным сообщением без подписи. Если ничего не подходит, не добавляй тег. Не кидай материал рядом с несвязанным ответом.`;
+        modeInstruction += `\n\n[ДОСТУПНЫЙ КОНТЕНТ]\n${catalog}\n${productionRoutingSettings.contentPrompt}`;
     }
 
     const lastLeraText = [...priorEvents].reverse().find(event => event.role === 'lera' && event.content)?.content || '';

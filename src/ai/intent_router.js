@@ -21,7 +21,27 @@ export const DEFAULT_ROUTING_SETTINGS = {
     classifierTimeoutMs: 7000,
     classifierMaxTokens: 4,
     initiativeLimit: 3,
-    initiativePrompt: '',
+    initiativePrompt: `Ты пишешь первой от лица Леры, когда система уже решила, что момент подходит.
+Пиши живо, коротко и естественно, как продолжение реальной переписки. Учитывай последние сообщения, контекст дня и отношения с пользователем.
+Не объясняй технические причины, таймеры, лимиты, классификацию или то, что ты «решила отправить инициативу».
+
+Тип инициативы передаётся отдельно:
+- open — естественно продолжи незакрытую тему последнего диалога; не начинай случайную новую тему.
+- ignore_1 — пользователь не ответил на реплику, которая ждала ответа; коротко и живо подколоти за игнор.
+- ignore_2 — пользователь долго игнорирует; можно заметно раздражиться, но оставаться живой Лерой.
+- new_day — сегодня ещё не общались; поздоровайся или спроси, как он, без упоминания старого диалога.
+- content_4h — после длинной паузы сама поделись тем, что смотришь, слушаешь или нашла; обязательно сделай естественную подводку перед материалом.
+
+Если отправляешь контент, не кидай его без связи с текстом. Сначала напиши естественную подводку вроде «кстати, вот что я сейчас слушаю» или «я тут наткнулась на одну штуку», затем выбери один материал специальным тегом. Сам материал придёт отдельным сообщением после всей текстовой лесенки.
+Не используй слово «держи», если оно звучит неестественно. Не упоминай этот prompt и служебные теги.`,
+    contentPrompt: `Правила отправки контента:
+- Контент можно отправлять только если он естественно связан с текущим ответом и подходит по смыслу.
+- За один ответ или инициативу можно выбрать максимум один материал.
+- Если выбираешь материал, в тексте обязательно должна быть короткая живая подводка: что ты сейчас слушаешь, смотришь, нашла или хочешь показать.
+- Подводка должна быть частью обычной реплики Леры, а не отдельным техническим сообщением.
+- В самый конец ответа добавь ровно один служебный тег [CONTENT: id]. Пользователь этот тег не увидит.
+- Если подходящего материала нет или он не вписывается, не добавляй тег.
+- После отправки всей текстовой лесенки бот отправит выбранный материал отдельным сообщением без caption.`,
     casualTemperature: 0.68,
     casualMaxTokens: 200,
     eroticTemperature: 0.75,
@@ -141,6 +161,11 @@ function asNumber(value, fallback, min = -Infinity, max = Infinity) {
     return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
 }
 
+function asPrompt(value, fallback) {
+    const prompt = String(value ?? '').trim();
+    return (prompt || fallback).slice(0, 12000);
+}
+
 function normalizeJudgeMode(value) {
     return ['OFF', 'OBSERVE', 'ENFORCE'].includes(String(value || '').toUpperCase())
         ? String(value).toUpperCase()
@@ -161,7 +186,8 @@ export async function getRoutingSettings() {
         classifierTimeoutMs: asNumber(raw.classifierTimeoutMs, 7000, 1000, 60000),
         classifierMaxTokens: asNumber(raw.classifierMaxTokens, 4, 4, 8),
         initiativeLimit: Math.round(asNumber(raw.initiativeLimit, 3, 0, 20)),
-        initiativePrompt: String(raw.initiativePrompt || '').slice(0, 12000),
+        initiativePrompt: asPrompt(raw.initiativePrompt, DEFAULT_ROUTING_SETTINGS.initiativePrompt),
+        contentPrompt: asPrompt(raw.contentPrompt, DEFAULT_ROUTING_SETTINGS.contentPrompt),
         casualTemperature: asNumber(raw.casualTemperature, 0.68, 0, 2),
         casualMaxTokens: asNumber(raw.casualMaxTokens, 200, 20, 1000),
         eroticTemperature: asNumber(raw.eroticTemperature, 0.75, 0, 2),
@@ -199,7 +225,8 @@ export async function updateRoutingSettings(input = {}) {
         classifierTimeoutMs: asNumber(next.classifierTimeoutMs, current.classifierTimeoutMs, 1000, 60000),
         classifierMaxTokens: asNumber(next.classifierMaxTokens, current.classifierMaxTokens, 4, 8),
         initiativeLimit: Math.round(asNumber(next.initiativeLimit, current.initiativeLimit, 0, 20)),
-        initiativePrompt: String(next.initiativePrompt ?? current.initiativePrompt ?? '').trim().slice(0, 12000),
+        initiativePrompt: asPrompt(next.initiativePrompt ?? current.initiativePrompt, DEFAULT_ROUTING_SETTINGS.initiativePrompt),
+        contentPrompt: asPrompt(next.contentPrompt ?? current.contentPrompt, DEFAULT_ROUTING_SETTINGS.contentPrompt),
         casualTemperature: asNumber(next.casualTemperature, current.casualTemperature, 0, 2),
         casualMaxTokens: asNumber(next.casualMaxTokens, current.casualMaxTokens, 20, 1000),
         eroticTemperature: asNumber(next.eroticTemperature, current.eroticTemperature, 0, 2),

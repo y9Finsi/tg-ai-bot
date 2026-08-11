@@ -1550,6 +1550,7 @@ function LlmSettingsPanel({ toast }) {
     const [providerTesting, setProviderTesting] = useState(false);
     const [promptModules, setPromptModules] = useState({});
     const [routingSettings, setRoutingSettings] = useState({});
+    const [routingDefaults, setRoutingDefaults] = useState({});
     const [routingModules, setRoutingModules] = useState({});
     const [memorySettings, setMemorySettings] = useState({});
     const run = async (action, success) => { try { const result = await action(); if (success && toast) toast(success); return result; } catch (error) { if (toast) toast(error.message, 'error'); return null; } };
@@ -1558,7 +1559,12 @@ function LlmSettingsPanel({ toast }) {
         const result = await run(() => api('/api/admin/llm-settings'));
         if (result) {
             setPromptModules(result.prompts || {});
-            setRoutingSettings(result.routingSettings || {});
+            setRoutingDefaults(result.routingDefaults || {});
+            setRoutingSettings({
+                ...(result.routingSettings || {}),
+                initiativePrompt: result.routingSettings?.initiativePrompt || result.routingDefaults?.initiativePrompt || '',
+                contentPrompt: result.routingSettings?.contentPrompt || result.routingDefaults?.contentPrompt || ''
+            });
             setRoutingModules(result.routingModules || {});
             setMemorySettings(result.memorySettings || {});
         }
@@ -1567,7 +1573,12 @@ function LlmSettingsPanel({ toast }) {
         const result = await run(() => api('/api/admin/llm-settings', { method: 'POST', body: JSON.stringify({ prompts: { ...promptModules, ...Object.fromEntries(Object.entries(routingModules).map(([key, value]) => [`routing_${key}`, value])) }, routingSettings, memorySettings }) }), 'Настройки LLM сохранены');
         if (result) {
             setPromptModules(result.prompts || promptModules);
-            setRoutingSettings(result.routingSettings || routingSettings);
+            setRoutingDefaults(result.routingDefaults || routingDefaults);
+            setRoutingSettings({
+                ...(result.routingSettings || routingSettings),
+                initiativePrompt: result.routingSettings?.initiativePrompt || result.routingDefaults?.initiativePrompt || routingSettings.initiativePrompt || '',
+                contentPrompt: result.routingSettings?.contentPrompt || result.routingDefaults?.contentPrompt || routingSettings.contentPrompt || ''
+            });
             setRoutingModules(result.routingModules || routingModules);
             setMemorySettings(result.memorySettings || memorySettings);
         }
@@ -1685,8 +1696,29 @@ function LlmSettingsPanel({ toast }) {
                 <div className="routing-fields-grid">
                     <label>Общий лимит в сутки<input type="number" min="0" max="20" value={routingSettings.initiativeLimit ?? 3} onChange={event => setRoutingSettings({ ...routingSettings, initiativeLimit: Number(event.target.value) })} /></label>
                 </div>
-                <label className="classifier-prompt-editor">Prompt провайдера инициатив<textarea value={routingSettings.initiativePrompt || ''} placeholder="Дополнительные правила для генерации инициатив. Оставь пустым, если достаточно стандартных правил." onChange={event => setRoutingSettings({ ...routingSettings, initiativePrompt: event.target.value })} /></label>
-                <div className="field-hint">Этот prompt добавляется только к генерации инициатив и не меняет обычные ответы в чате.</div>
+                <label className="classifier-prompt-editor">Основной prompt инициатив<textarea value={routingSettings.initiativePrompt || ''} onChange={event => setRoutingSettings({ ...routingSettings, initiativePrompt: event.target.value })} /></label>
+                <div className="field-actions">
+                    <Button size="sm" variant="outline" onClick={() => setRoutingSettings({ ...routingSettings, initiativePrompt: routingDefaults.initiativePrompt || '' })}>Вернуть стандартный prompt</Button>
+                </div>
+                <div className="field-hint">Это реальные базовые правила генерации. Они применяются только когда Лера пишет первой. Тип инициативы и причина подставляются автоматически.</div>
+                <label className="classifier-prompt-editor">Правила отправки контента<textarea value={routingSettings.contentPrompt || ''} onChange={event => setRoutingSettings({ ...routingSettings, contentPrompt: event.target.value })} /></label>
+                <div className="field-actions">
+                    <Button size="sm" variant="outline" onClick={() => setRoutingSettings({ ...routingSettings, contentPrompt: routingDefaults.contentPrompt || '' })}>Вернуть стандартные правила контента</Button>
+                </div>
+                <div className="field-hint">Здесь настраивается, когда Лера выбирает материал, как делает подводку и что контент уходит отдельным сообщением после текста. Для конкретного файла отдельно работают флаги «В диалоге» и «В инициативе» в разделе «Каталог контента».</div>
+                <details className="judge-transfer-details">
+                    <summary>Как контент реально отправляется</summary>
+                    <div className="judge-transfer-grid">
+                        <div><span>Что получает модель</span><pre>{`[ДОСТУПНЫЙ КОНТЕНТ]
+- [CONTENT: id] тип: описание
+- максимум один материал
+- тег [CONTENT: id] только в конце ответа`}</pre></div>
+                        <div><span>Что делает бот после ответа</span><pre>{`1. Удаляет служебный тег из текста.
+2. Отправляет текст существующей лесенкой.
+3. Отправляет выбранный материал новым сообщением.
+4. После успеха записывает CONTENT event и расходует контентный лимит.`}</pre></div>
+                    </div>
+                </details>
             </div>
 
             <div className="routing-section">

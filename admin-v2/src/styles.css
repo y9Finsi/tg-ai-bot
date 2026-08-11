@@ -2333,6 +2333,12 @@
   font-weight: 600;
 }
 
+.field-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: -8px;
+}
+
 .judge-transfer-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

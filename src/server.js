@@ -81,6 +81,7 @@ import { getRecentLogs, logEmitter } from './logger.js';
 import { getLlmParams, updateLlmParams, getLeraPrompts, updateLeraPrompts, DEFAULT_LLM_PARAMS, getRoutingPromptModules, getRoutedSystemPrompt } from './prompts.js';
 import {
     getRoutingSettings,
+    DEFAULT_ROUTING_SETTINGS,
     updateRoutingSettings,
     classifyIntent,
     getModeGenerationParams,
@@ -1516,6 +1517,10 @@ export function startAdminServer() {
                 prompts: leraPromptsData.prompts,
                 fullPrompt: leraPromptsData.fullPrompt,
                 routingSettings,
+                routingDefaults: {
+                    initiativePrompt: DEFAULT_ROUTING_SETTINGS.initiativePrompt,
+                    contentPrompt: DEFAULT_ROUTING_SETTINGS.contentPrompt
+                },
                 memorySettings: await getMemorySettings(),
                 routingModules,
                 promptStudio: await getPromptStudioState(),
@@ -1555,6 +1560,10 @@ export function startAdminServer() {
                 prompts: leraPromptsData.prompts,
                 fullPrompt: leraPromptsData.fullPrompt,
                 routingSettings: nextRoutingSettings,
+                routingDefaults: {
+                    initiativePrompt: DEFAULT_ROUTING_SETTINGS.initiativePrompt,
+                    contentPrompt: DEFAULT_ROUTING_SETTINGS.contentPrompt
+                },
                 memorySettings: nextMemorySettings,
                 routingModules: await getRoutingPromptModules(),
                 pipeline: 'Two-Stage Routing'
