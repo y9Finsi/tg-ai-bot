@@ -113,21 +113,23 @@ test('admin v2 has one diary workspace and no duplicate decisions tab', () => {
     assert.doesNotMatch(source, /view === 'decisions'/);
 });
 
-test('sandbox uses a chat-first layout and keeps technical controls collapsed', () => {
+test('prompt studio uses an intent workspace with a staged draft-to-production flow', () => {
     const source = read('admin-v2/src/main.jsx');
     const css = read('admin-v2/src/styles.css');
 
     assert.match(source, /className="[^"]*\bstudio-shell\b[^"]*"/);
-    assert.match(source, /className="studio-workbench"/);
-    assert.match(source, /className="studio-chat-card"/);
+    assert.match(source, /AUTO — это маршрутизация Telegram, его не редактируем/);
+    assert.match(source, /1\. Редактирование/);
+    assert.match(source, /2\. Тест и сравнение/);
+    assert.match(source, /3\. Проверка и публикация/);
+    assert.match(source, /Общие правила Production/);
     assert.match(source, /type="range"/);
-    assert.match(source, /Переопределения контекста/);
-    assert.match(source, /className="studio-debug"/);
+    assert.match(source, /Тестовые условия/);
+    assert.match(source, /Экспертный режим: свободный A\/B/);
     assert.match(source, /Система: провайдеры и правила/);
-    assert.match(source, /studio-area-tablist/);
-    assert.match(css, /\.studio-chat-card \{/);
-    assert.match(css, /\.studio-section \{/);
-    assert.match(css, /\.sandbox-history-bubble/);
+    assert.match(css, /\.studio-workspace-header\s*\{/);
+    assert.match(css, /\.studio-workspace-tabs\s*\{/);
+    assert.match(css, /\.studio-test-conditions(?:\s|,|\{)/);
 });
 
 test('provider management exposes the real fallback order and labelled fields', () => {
@@ -182,47 +184,42 @@ test('production settings expose the reply judge observation and enforce modes',
     assert.match(engine, /const judgeSettings = routingSettings/);
 });
 
-test('sandbox keeps chat actions and A/B replies in one compact Telegram-like flow', () => {
+test('prompt studio compares Production to the local candidate and keeps free A/B expert-only', () => {
     const source = read('admin-v2/src/main.jsx');
     const css = read('admin-v2/src/styles.css');
 
     for (const marker of [
         'Контекст пользователя',
-        'Сравнивать ответы A/B',
-        'sandbox-current-message',
-        'sandbox-chat-answers',
-        'sandbox-result-bubble',
-        'Сохранить как пресет',
-        'Опубликовать',
-        'sandbox-send-button'
+        'Production ↔ Черновик',
+        'Оба ответа получают одинаковые intent, сообщение, историю и контекст.',
+        'Экспертный режим: свободный A/B',
+        'Сохранить черновик',
+        'Проверка перед публикацией',
+        'История и уже отправленные сообщения не переписываются.'
     ]) {
         assert.match(source, new RegExp(marker));
     }
     assert.match(source, /<Play size=\{14\} \/>/);
-    assert.match(css, /\.sandbox-result-tabs \{/);
-    assert.match(css, /\.sandbox-result-toolbar \{ display: flex;/);
+    assert.match(css, /\.studio-result-comparison(?:\s|,|\{)/);
+    assert.match(css, /\.studio-result-toolbar\s*\{/);
     assert.match(css, /\.sandbox-regenerate-button \{/);
-    assert.match(css, /\.sandbox-send-button \{[^}]*background: #172554/);
-    assert.match(css, /\.sandbox-result-bubble \{/);
-    assert.match(source, /className="studio-intent-tabs" role="tablist" aria-label="Поведение Леры"/);
+    assert.match(css, /\.studio-result-columns\s*\{/);
+    assert.match(source, /className="studio-intent-tabs" role="tablist" aria-label="Выбранный intent"/);
     assert.match(css, /\.studio-intent-tabs \{/);
 });
 
-test('sandbox keeps A/B configuration and result selection in adjacent tabs', () => {
+test('prompt studio blocks publication of unsaved edits and publishes the saved selected intent', () => {
     const source = read('admin-v2/src/main.jsx');
     const css = read('admin-v2/src/styles.css');
 
-    assert.match(source, /className="studio-variant-tabs" role="tablist" aria-label="Редактируемый вариант"/);
-    assert.match(source, /Вариант A<\/button>/);
-    assert.match(source, /Вариант B<\/button>/);
-    assert.match(source, /className="sandbox-result-tabs" role="tablist" aria-label="Ответы A\/B"/);
-    assert.match(source, /onClick=\{\(\) => setSelectedVariant\('A'\)\}/);
-    assert.match(source, /onClick=\{\(\) => setSelectedVariant\('B'\)\}/);
-    assert.doesNotMatch(source, /<summary>Variant B/);
-    assert.doesNotMatch(source, /sandbox-chat-answers', abMode && 'is-ab'/);
-    assert.match(css, /\.studio-variant-tabs, \.sandbox-result-tabs \{ display: flex;/);
-    assert.match(css, /\.studio-variant-tab\.is-active, \.sandbox-result-tab\.is-active/);
-    assert.doesNotMatch(css, /\.sandbox-chat-answers\.is-ab/);
+    assert.match(source, /body: JSON\.stringify\(\{ intent: activeIntent \}\)/);
+    assert.match(source, /disabled=\{hasUnsavedEdits \|\| !draftDiffersFromProduction\}/);
+    assert.match(source, /Публикация всегда берёт сохранённый черновик/);
+    assert.match(source, /Новые ответы всех пользователей этого intent получат сохранённый черновик/);
+    assert.match(source, /Применение меняет локальные кандидаты; оно не сохраняет и не публикует/);
+    assert.match(css, /\.studio-publish-page(?:\s|,|\{)/);
+    assert.match(css, /\.studio-warning-note\s*\{/);
+    assert.match(css, /\.studio-presets-library(?:\s|,|\{)/);
 });
 
 test('sandbox user context endpoint is read-only and auth reaches every sandbox route', () => {
