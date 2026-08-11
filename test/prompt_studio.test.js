@@ -140,7 +140,10 @@ test('Production no longer exposes legacy generation controls that bypass versio
 
     assert.doesNotMatch(ui, /<span className="eyebrow">Режимы генерации<\/span>/);
     assert.doesNotMatch(ui, /routingSettings\[\`\$\{mode\}Temperature\`\]/);
-    assert.match(ui, /Глобальные тексты prompt/);
+    assert.match(ui, /function ProductionPromptModulesPanel/);
+    assert.match(ui, /Живые тексты Production/);
+    assert.match(ui, /публикация CASUAL \/ EROTIC \/ JOKE их не включает/);
+    assert.doesNotMatch(ui, /CommandPalette|cmdOpen|Поиск.*⌘K/);
 });
 
 test('Production history module toggle is an actual gate, not just a visual flag', () => {

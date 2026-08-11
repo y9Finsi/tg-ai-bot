@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Search, Command } from 'lucide-react';
+import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Command } from 'lucide-react';
 import './styles.css';
 import { Button } from './components/ui/button.jsx';
 import { Badge } from './components/ui/badge.jsx';
@@ -1073,8 +1073,66 @@ function SandboxSamplingControls({ intent, config, providers, onChange }) {
         <div className="studio-section-heading"><div><span className="eyebrow">Параметры генерации</span><h3>Конфигурация {STUDIO_INTENT_LABELS[intent]}</h3></div><Badge variant="muted">Черновик</Badge></div>
         <div className="studio-sampling-grid">{field('temperature', 0, 2)}{field('top_p', 0, 1)}{field('max_tokens', 20, 1200, 10, false)}</div>
         <details className="studio-sampling-advanced"><summary>Дополнительные параметры</summary><div className="studio-sampling-grid">{field('presence_penalty', -2, 2, 0.1)}{field('frequency_penalty', -2, 2, 0.1)}{field('repetition_penalty', 1, 2, 0.05)}{field('seed', -2147483648, 2147483647, 1, false)}</div></details>
-        <div className="studio-provider-line"><span>{selectedProvider?.name || 'Активный провайдер'} · {selectedProvider?.model_name || 'модель по умолчанию'}</span>{STUDIO_CAPABILITY_KEYS.map(key => <Badge key={key} variant={capabilities[key] ? 'green' : 'muted'}>{STUDIO_SAMPLER_LABELS[key]} {capabilities[key] ? 'отправлен' : 'пропущен'}</Badge>)}</div>
+        <div className="studio-provider-line"><span>{selectedProvider?.name || 'Активный провайдер'} · {selectedProvider?.model_name || 'модель по умолчанию'}</span><small>В запрос уйдут: {STUDIO_CAPABILITY_KEYS.filter(key => capabilities[key]).map(key => STUDIO_SAMPLER_LABELS[key]).join(', ') || 'параметры по умолчанию'}.</small></div>
     </section>;
+}
+function ProductionPromptModulesPanel({ toast }) {
+    const [promptModules, setPromptModules] = useState({});
+    const [routingModules, setRoutingModules] = useState({});
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    async function load() {
+        setLoading(true);
+        try {
+            const result = await api('/api/admin/llm-settings');
+            setPromptModules(result.prompts || {});
+            setRoutingModules(result.routingModules || {});
+        } catch (error) {
+            toast?.(error.message, 'error');
+        } finally {
+            setLoading(false);
+        }
+    }
+    async function save() {
+        setSaving(true);
+        try {
+            const result = await api('/api/admin/llm-settings', {
+                method: 'POST',
+                body: JSON.stringify({
+                    prompts: {
+                        ...promptModules,
+                        ...Object.fromEntries(Object.entries(routingModules).map(([key, value]) => [`routing_${key}`, value]))
+                    }
+                })
+            });
+            setPromptModules(result.prompts || promptModules);
+            setRoutingModules(result.routingModules || routingModules);
+            toast?.('Живые тексты Production сохранены');
+        } catch (error) {
+            toast?.(error.message, 'error');
+        } finally {
+            setSaving(false);
+        }
+    }
+    useEffect(() => { load(); }, []);
+    return <details className="studio-section studio-live-prompts">
+        <summary>Живые тексты Production <span>{loading ? 'загрузка…' : '5 модулей'}</span></summary>
+        <div className="studio-section-copy">Эти правила участвуют и в Sandbox, и в новых Production-ответах. Они сохраняются сразу; публикация CASUAL / EROTIC / JOKE их не включает.</div>
+        <div className="context-template-editor">
+            <div className="routing-section-head">
+                <div><span className="eyebrow">Контекст собеседника и дня</span><strong>Шаблон динамического контекста</strong></div>
+                <Badge variant="blue">4 плейсхолдера</Badge>
+            </div>
+            <label className="classifier-prompt-editor">
+                Шаблон контекста
+                <textarea value={promptModules.context_template || ''} placeholder="Используйте плейсхолдеры из подсказки ниже." onChange={event => setPromptModules({ ...promptModules, context_template: event.target.value })} disabled={loading || saving} />
+            </label>
+            <pre className="field-hint context-template-help">{CONTEXT_TEMPLATE_HELP}</pre>
+        </div>
+        <PromptModulesEditor modules={routingModules} onChange={setRoutingModules} definitions={ROUTING_PROMPT_MODULES} />
+        <div className="studio-live-prompts-actions"><Button size="sm" variant="primary" onClick={save} disabled={loading || saving}>{saving ? 'Сохраняю…' : 'Сохранить тексты'}</Button></div>
+        <details className="prompt-expert-details"><summary>Экспертный JSON модулей routing</summary><pre>{JSON.stringify(routingModules, null, 2)}</pre></details>
+    </details>;
 }
 function studioConfigsFromState(state) {
     return Object.fromEntries(STUDIO_INTENTS.map(intent => [intent, normalizeStudioConfig(state?.intents?.[intent]?.draft?.config || {})]));
@@ -1370,6 +1428,7 @@ function SandboxPanel({ toast }) {
                     <label>Превью медиа<input type="checkbox" checked={mediaPreview} onChange={event => setMediaPreview(event.target.checked)} /></label>
                     <div className="studio-section-copy">Возможности провайдера подсвечены в параметрах генерации. Неподдержанные параметры будут показаны в «Почему такой ответ?».</div>
                 </details>
+                <ProductionPromptModulesPanel toast={toast} />
             </aside>
             <main className="studio-chat-column">
                 <Card className="studio-chat-card">
@@ -1555,38 +1614,32 @@ function LlmSettingsPanel({ toast }) {
     const [providerResults, setProviderResults] = useState([]);
     const [providerSubmitting, setProviderSubmitting] = useState(false);
     const [providerTesting, setProviderTesting] = useState(false);
-    const [promptModules, setPromptModules] = useState({});
     const [routingSettings, setRoutingSettings] = useState({});
     const [routingDefaults, setRoutingDefaults] = useState({});
-    const [routingModules, setRoutingModules] = useState({});
     const [memorySettings, setMemorySettings] = useState({});
     const run = async (action, success) => { try { const result = await action(); if (success && toast) toast(success); return result; } catch (error) { if (toast) toast(error.message, 'error'); return null; } };
     async function loadProviders() { const result = await run(() => api('/api/admin/providers')); if (result) setProviders(result.providers || []); }
     async function loadPrompts() {
         const result = await run(() => api('/api/admin/llm-settings'));
         if (result) {
-            setPromptModules(result.prompts || {});
             setRoutingDefaults(result.routingDefaults || {});
             setRoutingSettings({
                 ...(result.routingSettings || {}),
                 initiativePrompt: result.routingSettings?.initiativePrompt || result.routingDefaults?.initiativePrompt || '',
                 contentPrompt: result.routingSettings?.contentPrompt || result.routingDefaults?.contentPrompt || ''
             });
-            setRoutingModules(result.routingModules || {});
             setMemorySettings(result.memorySettings || {});
         }
     }
     async function savePrompts() {
-        const result = await run(() => api('/api/admin/llm-settings', { method: 'POST', body: JSON.stringify({ prompts: { ...promptModules, ...Object.fromEntries(Object.entries(routingModules).map(([key, value]) => [`routing_${key}`, value])) }, routingSettings, memorySettings }) }), 'Настройки LLM сохранены');
+        const result = await run(() => api('/api/admin/llm-settings', { method: 'POST', body: JSON.stringify({ routingSettings, memorySettings }) }), 'Настройки LLM сохранены');
         if (result) {
-            setPromptModules(result.prompts || promptModules);
             setRoutingDefaults(result.routingDefaults || routingDefaults);
             setRoutingSettings({
                 ...(result.routingSettings || routingSettings),
                 initiativePrompt: result.routingSettings?.initiativePrompt || result.routingDefaults?.initiativePrompt || routingSettings.initiativePrompt || '',
                 contentPrompt: result.routingSettings?.contentPrompt || result.routingDefaults?.contentPrompt || routingSettings.contentPrompt || ''
             });
-            setRoutingModules(result.routingModules || routingModules);
             setMemorySettings(result.memorySettings || memorySettings);
         }
     }
@@ -1778,31 +1831,6 @@ function LlmSettingsPanel({ toast }) {
                         <div><span>Подстановка перед запросом</span><pre>{`{{existing_facts}} → до 30 активных фактов пользователя\n{{user_text}} → одна новая реплика пользователя (до 4000 символов)\n\nОжидаемый ответ:\n{"new_facts":[],"deactivate_ids":[]}\n\nПри невалидном JSON: один retry с просьбой вернуть закрытый JSON. Потом только trace — без записи в память.`}</pre></div>
                     </div>
                 </details>
-            </div>
-
-            <div className="routing-section">
-                <div className="routing-section-head">
-                    <div><span className="eyebrow">Глобальные тексты prompt</span><strong>Общие правила для всех ответов</strong><small>Это живые тексты Production: после сохранения они сразу участвуют в новых ответах. Для параметров CASUAL / EROTIC / JOKE используй «Тест ответов и публикация».</small></div>
-                    <Badge variant="blue">5 модулей</Badge>
-                </div>
-                <div className="routing-module-note">Игровой контекст, текущее время, память пользователя и очищенная история добавляются сервером автоматически и не дублируются в этих полях.</div>
-                <div className="context-template-editor">
-                    <div className="routing-section-head">
-                        <div><span className="eyebrow">Контекст собеседника и дня</span><strong>Шаблон динамического контекста</strong><small>Редактируется один раз, а значения подставляются сервером для каждого сообщения.</small></div>
-                        <Badge variant="blue">4 плейсхолдера</Badge>
-                    </div>
-                    <label className="classifier-prompt-editor">
-                        Шаблон контекста
-                        <textarea
-                            value={promptModules.context_template || ''}
-                            placeholder="Используйте плейсхолдеры из подсказки ниже."
-                            onChange={event => setPromptModules({ ...promptModules, context_template: event.target.value })}
-                        />
-                    </label>
-                    <pre className="field-hint context-template-help">{CONTEXT_TEMPLATE_HELP}</pre>
-                </div>
-                <PromptModulesEditor modules={routingModules} onChange={setRoutingModules} definitions={ROUTING_PROMPT_MODULES} />
-                <details className="prompt-expert-details"><summary>Экспертный JSON модулей routing</summary><pre>{JSON.stringify(routingModules, null, 2)}</pre></details>
             </div>
 
             <div className="routing-save-row"><span>Изменения применяются после сохранения.</span><Button variant="primary" onClick={savePrompts}>Сохранить настройки</Button></div>
@@ -2914,97 +2942,8 @@ function DiaryTabbar({ view, setView }) {
     );
 }
 
-function CommandPalette({ open, onClose, onViewChange, onRefresh }) {
-    const [query, setQuery] = useState('');
-    const [selectedIndex, setSelectedIndex] = useState(0);
-
-    const items = useMemo(() => {
-        const allItems = [
-            { id: 'nav-diary', type: 'page', title: 'Дневник и Обзор', section: 'Раздел', action: () => onViewChange('diary'), icon: FileText, shortcut: '⌘1' },
-            { id: 'nav-dialogs', type: 'page', title: 'Диалоги и Логи', section: 'Раздел', action: () => onViewChange('dialogs'), icon: MessageSquare, shortcut: '⌘2' },
-            { id: 'nav-llm-settings', type: 'page', title: 'AI Sandbox & Prompts', section: 'Раздел', action: () => onViewChange('llm-settings'), icon: Settings2, shortcut: '⌘3' },
-            { id: 'nav-crm', type: 'page', title: 'CRM Пользователей', section: 'Раздел', action: () => onViewChange('crm'), icon: Users, shortcut: '⌘4' },
-            { id: 'nav-content', type: 'page', title: 'Контент и Канал', section: 'Раздел', action: () => onViewChange('content'), icon: Image, shortcut: '⌘5' },
-            { id: 'nav-inventory', type: 'page', title: 'Рюкзак Леры', section: 'Раздел', action: () => onViewChange('inventory'), icon: Backpack, shortcut: '⌘6' },
-            { id: 'nav-system', type: 'page', title: 'Движок и Операции', section: 'Раздел', action: () => onViewChange('system'), icon: Zap, shortcut: '⌘7' },
-            { id: 'act-refresh', type: 'action', title: 'Обновить состояние системы', section: 'Команда', action: () => onRefresh(), icon: RefreshCw, shortcut: '⌘R' },
-            { id: 'act-sandbox', type: 'action', title: 'Запустить AI Sandbox', section: 'Команда', action: () => onViewChange('llm-settings'), icon: WandSparkles },
-            { id: 'act-god', type: 'action', title: 'God Mode и управление', section: 'Команда', action: () => onViewChange('system'), icon: ShieldAlert }
-        ];
-        if (!query.trim()) return allItems;
-        const q = query.toLowerCase();
-        return allItems.filter(item => item.title.toLowerCase().includes(q) || item.section.toLowerCase().includes(q));
-    }, [query, onViewChange, onRefresh]);
-
-    useEffect(() => { setSelectedIndex(0); }, [query]);
-
-    useEffect(() => {
-        if (!open) return;
-        function handleKeyDown(e) {
-            if (e.key === 'Escape') {
-                onClose();
-            } else if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                setSelectedIndex(prev => (prev + 1) % (items.length || 1));
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                setSelectedIndex(prev => (prev - 1 + items.length) % (items.length || 1));
-            } else if (e.key === 'Enter') {
-                e.preventDefault();
-                if (items[selectedIndex]) {
-                    items[selectedIndex].action();
-                    onClose();
-                }
-            }
-        }
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [open, items, selectedIndex, onClose]);
-
-    if (!open) return null;
-
-    return (
-        <div className="cmd-palette-overlay" onClick={onClose}>
-            <div className="cmd-palette-modal" onClick={e => e.stopPropagation()}>
-                <div className="cmd-palette-search">
-                    <Search size={16} className="cmd-search-icon" />
-                    <input
-                        autoFocus
-                        placeholder="Поиск по разделам и командам... (Escape закрыть)"
-                        value={query}
-                        onChange={e => setQuery(e.target.value)}
-                    />
-                    <kbd>ESC</kbd>
-                </div>
-                <div className="cmd-palette-list">
-                    {items.length === 0 ? (
-                        <div className="cmd-palette-empty">Ничего не найдено</div>
-                    ) : (
-                        items.map((item, idx) => {
-                            const IconComp = item.icon;
-                            return (
-                                <div
-                                    key={item.id}
-                                    className={cn('cmd-palette-item', idx === selectedIndex && 'selected')}
-                                    onClick={() => { item.action(); onClose(); }}
-                                    onMouseEnter={() => setSelectedIndex(idx)}
-                                >
-                                    <IconComp size={16} />
-                                    <span className="cmd-item-title">{item.title}</span>
-                                    <span className="cmd-item-section">{item.section}</span>
-                                    {item.shortcut && <kbd>{item.shortcut}</kbd>}
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-}
-
 function App() {
-    const [authenticated, setAuthenticated] = useState(null); const [day] = useState(() => isoDate(new Date())); const [view, setView] = useState('diary'); const [data, setData] = useState(null); const [readOnly, setReadOnly] = useState(true); const [notice, setNotice] = useState(null); const [cmdOpen, setCmdOpen] = useState(false); const toastTimerRef = useRef(null);
+    const [authenticated, setAuthenticated] = useState(null); const [day] = useState(() => isoDate(new Date())); const [view, setView] = useState('diary'); const [data, setData] = useState(null); const [readOnly, setReadOnly] = useState(true); const [notice, setNotice] = useState(null); const toastTimerRef = useRef(null);
     const counts = useMemo(() => ({ meals: data?.meals?.length || 0, sleep: data?.sleep?.length || 0, random: data?.randomEvents?.length || 0 }), [data]);
     useEffect(() => { api('/api/admin/session').then(result => setAuthenticated(result.authenticated)).catch(() => setAuthenticated(false)); }, []);
     const refreshData = useRef(null);
@@ -3028,16 +2967,6 @@ function App() {
         const timer = setInterval(refreshHealth, 15000);
         return () => { cancelled = true; clearInterval(timer); };
     }, [authenticated]);
-    useEffect(() => {
-        function handleKeyDown(e) {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-                e.preventDefault();
-                setCmdOpen(prev => !prev);
-            }
-        }
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
     useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
     function dismissToast() { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); toastTimerRef.current = null; setNotice(null); }
     function toast(message, kind = 'success') {
@@ -3088,9 +3017,6 @@ function App() {
                             <h1>{viewTitle}</h1>
                         </div>
                         <div className="header-actions">
-                            <Button variant="outline" className="cmd-trigger-btn" onClick={() => setCmdOpen(true)}>
-                                <Search size={14} /> <span>Поиск</span> <kbd>⌘K</kbd>
-                            </Button>
                             <Badge variant={data?.health?.status === 'ONLINE' ? 'green' : 'yellow'}>
                                 <span className="status-dot" /> {data?.health?.status || 'Проверка'}
                             </Badge>
@@ -3116,7 +3042,6 @@ function App() {
                     {view === 'system' && <SystemPanel readOnly={readOnly} setReadOnly={setReadOnly} toast={toast} />}
                 </div>
             </main>
-            <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} onViewChange={setView} onRefresh={() => refreshData.current && refreshData.current()} />
             {notice && <Toast notice={notice} onDismiss={dismissToast} />}
         </div>
     );
