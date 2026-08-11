@@ -31,6 +31,10 @@ const RESPONSE_FORMAT_CONTRACT = `ФОРМАТ ОТВЕТА В TELEGRAM:
 Пример: первая реплика ||| вторая реплика ||| третья реплика.
 Не заменяй ||| обычными переносами строк, не ставь разделитель отдельной строкой и не пиши его в ответе, если нужна одна реплика.`;
 
+const CONVERSATION_CONTINUITY_CONTRACT = `ЛОГИКА ДИАЛОГА:
+Короткие реакции пользователя («пон», «ага», «ок») не являются поводом внезапно начинать другую сцену или добавлять новую деталь. Оставайся в текущей теме либо ответь коротко и естественно.
+Если пользователь пишет «че?», «чеее?» или «в смысле?» сразу после твоей фразы, поясни именно свою предыдущую мысль. Не отвечай шаблонным «не поняла, что ты имеешь в виду».`;
+
 function loadPromptFile(filename) {
     try {
         const filePath = path.join(__dirname, 'prompts', filename);
@@ -192,6 +196,7 @@ export async function getRoutedSystemPrompt(mode = 'CASUAL', config = {}) {
         enabled.common === false ? '' : modules.common,
         enabled.intent === false ? '' : selected
     ].filter(Boolean);
+    blocks.push(CONVERSATION_CONTINUITY_CONTRACT);
     blocks.push(RESPONSE_FORMAT_CONTRACT);
     if (config.systemOverlay || config.system_overlay) {
         blocks.push(`[SYSTEM PROMPT OVERLAY]\n${String(config.systemOverlay || config.system_overlay).trim()}`);

@@ -93,9 +93,48 @@ export function requiresReplyRetry(violations = []) {
     return Array.isArray(violations) && violations.some(issue => RETRYABLE_VIOLATIONS.has(issue));
 }
 
-export function getQualityFallback(mode = 'CASUAL') {
+function normalizeForComparison(value) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim();
+}
+
+function selectUnrepeatedFallback(candidates, recentReplies = []) {
+    const recent = new Set(recentReplies.map(normalizeForComparison).filter(Boolean));
+    return candidates.find(candidate => !recent.has(normalizeForComparison(candidate)))
+        || candidates[0];
+}
+
+function isClarificationMessage(userText = '') {
+    return /^(?:ч[еёо]+|что|в\s*смысле|не\s*пон(?:ял|яла|ял(?:а)?))[\s?!,.…]*$/iu
+        .test(String(userText || '').trim());
+}
+
+export function getQualityFallback(mode = 'CASUAL', {
+    userText = '',
+    recentReplies = [],
+    lastAssistantText = ''
+} = {}) {
     if (mode === 'JOKE') {
-        return 'не уловила, что именно пошутить — задай тему';
+        return selectUnrepeatedFallback([
+            'не уловила, что именно пошутить — задай тему',
+            'дай тему для шутки, а то я сейчас в пустоту выдам',
+            'про что шутим? кинь тему'
+        ], recentReplies);
     }
-    return 'не поняла, что ты имеешь в виду — скажи ещё раз нормально';
+
+    if (isClarificationMessage(userText) && String(lastAssistantText || '').trim()) {
+        return selectUnrepeatedFallback([
+            'я про то, что только что сказала. где именно потерялся?',
+            'в смысле? я про предыдущую фразу, какую часть не понял?',
+            'а ты про что именно? я про то, что только что написала'
+        ], recentReplies);
+    }
+
+    return selectUnrepeatedFallback([
+        'не поняла, что ты имеешь в виду — скажи ещё раз нормально',
+        'я не догнала. скажи чуть понятнее',
+        'стоп, я потеряла мысль. что ты имеешь в виду?'
+    ], recentReplies);
 }

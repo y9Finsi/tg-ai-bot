@@ -88,6 +88,25 @@ test('quality fallback is safe for CASUAL and JOKE', () => {
     assert.doesNotMatch(casualFallback, /\.\.\.|ммм|слышишь|мне 19/i);
 });
 
+test('CASUAL fallback repairs a clarification instead of repeating a generic misunderstanding', () => {
+    const fallback = getQualityFallback('CASUAL', {
+        userText: 'чеее?',
+        lastAssistantText: 'ну вот, стою, смотрю на эти щиты',
+        recentReplies: ['не поняла, что ты имеешь в виду — скажи ещё раз нормально']
+    });
+
+    assert.match(fallback, /предыдущую фразу|только что/i);
+    assert.notEqual(fallback, 'не поняла, что ты имеешь в виду — скажи ещё раз нормально');
+});
+
+test('quality fallback avoids a recent identical fallback reply', () => {
+    const fallback = getQualityFallback('CASUAL', {
+        recentReplies: ['не поняла, что ты имеешь в виду — скажи ещё раз нормально']
+    });
+
+    assert.equal(fallback, 'я не догнала. скажи чуть понятнее');
+});
+
 test('intent router accepts Cyrillic lookalikes in an intent label', () => {
     assert.equal(normalizeIntent('EROТIC'), 'EROTIC');
 });
@@ -110,6 +129,14 @@ test('production media instruction forbids tag-only or unrelated image responses
 
     assert.match(engine, /Не присылай несвязанное фото сама по себе/);
     assert.match(engine, /никогда не отвечай одним тегом \[IMAGE/);
+});
+
+test('every routed prompt requires continuity after short acknowledgements and clarifications', () => {
+    const prompts = fs.readFileSync(path.join(root, 'src', 'prompts.js'), 'utf8');
+
+    assert.match(prompts, /Короткие реакции пользователя/);
+    assert.match(prompts, /поясни именно свою предыдущую мысль/);
+    assert.match(prompts, /blocks\.push\(CONVERSATION_CONTINUITY_CONTRACT\)/);
 });
 
 test('a valid media-only reply is not rejected after the IMAGE tag is parsed', () => {

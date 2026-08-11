@@ -638,7 +638,11 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
                 relationshipEvent: retryJudge.relationshipEvent || null
             });
             if (judgeSettings.judgeMode === 'ENFORCE' && retryJudge.passed === false) {
-                text = getQualityFallback(routingMode);
+                text = getQualityFallback(routingMode, {
+                    userText,
+                    recentReplies: recentReplyTexts,
+                    lastAssistantText: lastLeraText
+                });
                 photo = null;
                 photoCaption = null;
                 finalRecPost = null;
@@ -658,7 +662,11 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         recentReplies: recentReplyTexts
     });
     if (!isInitiative && userText && !(photo && !text) && !finalQuality.passed) {
-        text = getQualityFallback(routingMode);
+        text = getQualityFallback(routingMode, {
+            userText,
+            recentReplies: recentReplyTexts,
+            lastAssistantText: lastLeraText
+        });
         photo = null;
         photoCaption = null;
         finalRecPost = null;
