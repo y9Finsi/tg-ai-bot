@@ -3562,6 +3562,9 @@
 .studio-provider-line { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 10px; color: var(--subtle); font-size: 12px; }
 .studio-provider-line > span { width: 100%; margin-bottom: 2px; color: var(--muted); }
 .studio-section-copy { margin: 8px 0 10px; color: var(--subtle); font-size: 11px; line-height: 1.5; }
+.studio-impact-note { display: grid; gap: 4px; margin-top: 10px; padding: 9px 10px; border: 1px solid #1e3a8a; border-radius: 8px; color: #bfdbfe; background: #17255466; font-size: 11px; line-height: 1.45; }
+.studio-impact-note strong { color: #dbeafe; }
+.studio-impact-note small { color: #93c5fd; font-size: 10px; }
 .studio-module-list { display: grid; gap: 5px; margin-top: 10px; }
 .studio-module-row, .studio-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 7px 0; border-top: 1px solid #ffffff0a; color: var(--muted); font-size: 11px; cursor: pointer; }
 .studio-module-row:first-child { border-top: 0; }

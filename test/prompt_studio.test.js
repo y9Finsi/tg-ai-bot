@@ -124,6 +124,25 @@ test('Fresh local Sandbox edits enable publishing instead of relying on stale se
     assert.doesNotMatch(ui, /const isDirty = activeState\?\.dirty \?\? JSON\.stringify\(activeConfig\)/);
 });
 
+test('Sandbox edits only production intents and explains publication scope', () => {
+    const ui = read('admin-v2/src/main.jsx');
+
+    assert.match(ui, /const STUDIO_EDITABLE_INTENTS = \['CASUAL', 'EROTIC', 'JOKE'\]/);
+    assert.match(ui, /STUDIO_EDITABLE_INTENTS\.map\(intent/);
+    assert.match(ui, /AUTO — не отдельная настройка и поэтому здесь не редактируется/);
+    assert.match(ui, /После публикации новые ответы всех пользователей с этим intent получат настройки/);
+    assert.match(ui, /Тест ответов и публикация/);
+    assert.match(ui, /Система: провайдеры и правила/);
+});
+
+test('Production no longer exposes legacy generation controls that bypass versioned intent configs', () => {
+    const ui = read('admin-v2/src/main.jsx');
+
+    assert.doesNotMatch(ui, /<span className="eyebrow">Режимы генерации<\/span>/);
+    assert.doesNotMatch(ui, /routingSettings\[\`\$\{mode\}Temperature\`\]/);
+    assert.match(ui, /Глобальные тексты prompt/);
+});
+
 test('Production history module toggle is an actual gate, not just a visual flag', () => {
     const source = read('src/ai.js');
     assert.match(source, /if \(productionIntentConfig\?\.promptModules\?\.history !== false\)/);

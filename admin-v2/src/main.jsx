@@ -964,6 +964,12 @@ function LlmPanel({ toast }) {
 
 const STUDIO_INTENTS = ['AUTO', 'CASUAL', 'EROTIC', 'JOKE'];
 const STUDIO_INTENT_LABELS = { AUTO: 'AUTO', CASUAL: 'CASUAL', JOKE: 'JOKE', EROTIC: 'EROTIC' };
+const STUDIO_EDITABLE_INTENTS = ['CASUAL', 'EROTIC', 'JOKE'];
+const STUDIO_INTENT_DESCRIPTIONS = {
+    CASUAL: 'Обычные диалоги, бытовые вопросы, флирт и инициативы.',
+    EROTIC: 'Продолжение интимного или горячего диалога.',
+    JOKE: 'Шутка, мем или ирония на один ответ.'
+};
 const STUDIO_MODULES = [
     ['core', 'Base', 'Постоянная личность Леры.'],
     ['common', 'Speech', 'Речь, правила и границы.'],
@@ -1065,7 +1071,6 @@ function SandboxSamplingControls({ intent, config, providers, onChange }) {
     const field = (key, min, max, step = 0.01, withRange = true) => <label className="studio-sampling-field" key={key}><span><b>{STUDIO_SAMPLER_LABELS[key]}</b><input type="number" min={min} max={max} step={step} value={sampling[key] ?? ''} onChange={event => onChange(updateStudioSampling(config, key, event.target.value === '' ? null : Number(event.target.value)))} /></span>{withRange && <input aria-label={STUDIO_SAMPLER_LABELS[key]} type="range" min={min} max={max} step={step} value={sampling[key] ?? 0} onChange={event => onChange(updateStudioSampling(config, key, Number(event.target.value)))} />}</label>;
     return <section className="studio-sampling-card">
         <div className="studio-section-heading"><div><span className="eyebrow">Параметры генерации</span><h3>Конфигурация {STUDIO_INTENT_LABELS[intent]}</h3></div><Badge variant="muted">Черновик</Badge></div>
-        {intent === 'AUTO' && <div className="studio-info-note">AUTO запускает classifier один раз; A/B используют один resolved intent.</div>}
         <div className="studio-sampling-grid">{field('temperature', 0, 2)}{field('top_p', 0, 1)}{field('max_tokens', 20, 1200, 10, false)}</div>
         <details className="studio-sampling-advanced"><summary>Дополнительные параметры</summary><div className="studio-sampling-grid">{field('presence_penalty', -2, 2, 0.1)}{field('frequency_penalty', -2, 2, 0.1)}{field('repetition_penalty', 1, 2, 0.05)}{field('seed', -2147483648, 2147483647, 1, false)}</div></details>
         <div className="studio-provider-line"><span>{selectedProvider?.name || 'Активный провайдер'} · {selectedProvider?.model_name || 'модель по умолчанию'}</span>{STUDIO_CAPABILITY_KEYS.map(key => <Badge key={key} variant={capabilities[key] ? 'green' : 'muted'}>{STUDIO_SAMPLER_LABELS[key]} {capabilities[key] ? 'отправлен' : 'пропущен'}</Badge>)}</div>
@@ -1090,11 +1095,11 @@ function studioConfigsToSandboxPreset(configs, name = 'Sandbox draft') {
 function SandboxPanel({ toast }) {
     const [studioState, setStudioState] = useState(null);
     const [draftConfigs, setDraftConfigs] = useState(() => Object.fromEntries(STUDIO_INTENTS.map(intent => [intent, cloneSandboxPreset()])));
-    const [activeIntent, setActiveIntent] = useState('AUTO');
+    const [activeIntent, setActiveIntent] = useState('CASUAL');
     const [abConfig, setAbConfig] = useState(() => cloneSandboxPreset());
     const [providers, setProviders] = useState([]); const [presets, setPresets] = useState([]);
     const [history, setHistory] = useState([]); const [draftText, setDraftText] = useState(''); const [draftRole, setDraftRole] = useState('user');
-    const [userText, setUserText] = useState('привет, чем занимаешься?'); const [submittedMessage, setSubmittedMessage] = useState(''); const [abMode, setAbMode] = useState(true); const [selectedVariant, setSelectedVariant] = useState('A'); const [editingVariant, setEditingVariant] = useState('A'); const [mediaPreview, setMediaPreview] = useState(false);
+    const [userText, setUserText] = useState('привет, чем занимаешься?'); const [submittedMessage, setSubmittedMessage] = useState(''); const [abMode, setAbMode] = useState(false); const [selectedVariant, setSelectedVariant] = useState('A'); const [editingVariant, setEditingVariant] = useState('A'); const [mediaPreview, setMediaPreview] = useState(false);
     const [context, setContext] = useState({ current_time: getMoscowDateTimeLocal(), pre_message_gap_seconds: 0, location_id: 'petrogradka_home', mood: 50, status: { task_type: 'IDLE_HOME_REST' }, outfit_text: '', weather: { text: '', is_raining: false }, daily_facts: [] });
     const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [presetName, setPresetName] = useState(''); const [activePresetId, setActivePresetId] = useState(null);
     const [editingResponse, setEditingResponse] = useState(null); const [editedResponse, setEditedResponse] = useState('');
@@ -1314,10 +1319,12 @@ function SandboxPanel({ toast }) {
         <div className="studio-workbench">
             <aside className="studio-sidebar">
                 <section className="studio-card studio-editor-card">
-                    <div className="studio-section-heading"><div><span className="eyebrow">Редактирование</span><h3>Intent и варианты</h3></div><Badge variant="blue">{activeIntent}</Badge></div>
-                    <div className="studio-intent-tabs" role="tablist" aria-label="Intent">
-                        {STUDIO_INTENTS.map(intent => <button type="button" role="tab" aria-selected={activeIntent === intent} key={intent} title={intent === 'AUTO' ? 'Classifier выберет режим' : intent === 'CASUAL' ? 'Обычный разговор' : intent === 'JOKE' ? 'Шутки и ирония' : 'Интимный диалог'} className={cn('studio-intent-tab', activeIntent === intent && 'is-active')} onClick={() => selectIntent(intent)}>{intent}</button>)}
+                    <div className="studio-section-heading"><div><span className="eyebrow">Что меняем</span><h3>Поведение Леры</h3></div><Badge variant="blue">{activeIntent}</Badge></div>
+                    <p className="studio-section-copy">Выбери тип ответа. Classifier в Telegram сам выбирает один из этих трёх вариантов; AUTO — не отдельная настройка и поэтому здесь не редактируется.</p>
+                    <div className="studio-intent-tabs" role="tablist" aria-label="Поведение Леры">
+                        {STUDIO_EDITABLE_INTENTS.map(intent => <button type="button" role="tab" aria-selected={activeIntent === intent} key={intent} title={STUDIO_INTENT_DESCRIPTIONS[intent]} className={cn('studio-intent-tab', activeIntent === intent && 'is-active')} onClick={() => selectIntent(intent)}>{intent}</button>)}
                     </div>
+                    <div className="studio-impact-note"><strong>{activeIntent} влияет на:</strong><span>{STUDIO_INTENT_DESCRIPTIONS[activeIntent]}</span><small>Sandbox проверяет этот черновик. После публикации новые ответы всех пользователей с этим intent получат настройки; старые сообщения не меняются.</small></div>
                     <div className="studio-version-grid"><div><span>Черновик</span><strong>v{draftVersion}</strong></div><div><span>Production</span><strong>v{productionVersion}</strong></div></div>
                     {isDirty && <div className="studio-publish-review"><strong>К публикации: {productionChanges.length ? `${productionChanges.length} изменений` : 'конфигурация синхронизирована'}</strong>{productionChanges.length > 0 && <span>{productionChanges.slice(0, 3).map(([label]) => label).join(' · ')}{productionChanges.length > 3 ? ` и ещё ${productionChanges.length - 3}` : ''}</span>}</div>}
                     <div className="studio-action-row"><Button variant="outline" onClick={saveDraft}><CheckCircle2 size={14} />Сохранить черновик</Button><Button variant="outline" onClick={() => document.getElementById('sandbox-preset-name')?.focus()}><Tag size={14} />Сохранить как пресет</Button><ConfirmAction title={`Опубликовать ${activeIntent} в Production?`} description={<><span>Черновик v{draftVersion} станет Production-версией выбранного intent. Остальные intent не изменятся.</span>{productionChanges.length > 0 && <span className="dialog-review">Изменения: {productionChanges.map(([label]) => label).join(', ')}.</span>}</>} confirmText="Опубликовать" variant="primary" disabled={!isDirty} onConfirm={publishIntent}>Опубликовать</ConfirmAction></div>
@@ -1327,7 +1334,7 @@ function SandboxPanel({ toast }) {
                         <button type="button" role="tab" aria-selected={editingVariant === 'A'} className={cn('studio-variant-tab', editingVariant === 'A' && 'is-active')} onClick={() => setEditingVariant('A')}>Вариант A</button>
                         {abMode && <button type="button" role="tab" aria-selected={editingVariant === 'B'} className={cn('studio-variant-tab', editingVariant === 'B' && 'is-active')} onClick={() => setEditingVariant('B')}>Вариант B</button>}
                     </div>
-                    <p className="studio-section-copy">A и B получают одинаковые сообщение, историю, контекст и intent.</p>
+                    <p className="studio-section-copy">A и B получают одинаковые сообщение, историю, контекст и intent. Включай только когда хочешь сравнить две конфигурации.</p>
                     {abMode && <SandboxCompareChanges variantA={activeConfig} variantB={abConfig} />}
                     <SandboxSamplingControls intent={activeIntent} config={editableConfig} providers={providers} onChange={updateEditableConfig} />
                 </section>
@@ -1366,7 +1373,7 @@ function SandboxPanel({ toast }) {
             </aside>
             <main className="studio-chat-column">
                 <Card className="studio-chat-card">
-                    <CardHeader eyebrow="Диалог Sandbox" title="Живой диалог, а не лог" description="Текущий intent: выбранный режим уйдёт в Sandbox. В AUTO classifier выполнится один раз и будет общим для A/B." action={<Button size="sm" variant="outline" onClick={resetSandboxChat}>Новый чат</Button>} />
+                    <CardHeader eyebrow="Проверка черновика" title="Живой диалог, а не лог" description={`${activeIntent} в этом чате использует текущий черновик. Telegram и реальные пользователи не меняются, пока не нажмёшь «Опубликовать».`} action={<Button size="sm" variant="outline" onClick={resetSandboxChat}>Новый чат</Button>} />
                     {selectedContextUser && <div className="sandbox-context-chip"><Users size={14} /><span>Контекст: <strong>{selectedContextUser.user.first_name || selectedContextUser.user.telegram_id}</strong> · {selectedContextUser.history.length} сообщений · {selectedContextUser.activeMemoryCount} фактов</span><Button size="icon" variant="outline" aria-label="Отключить контекст пользователя" onClick={() => { setSelectedContextUser(null); setHistory([]); }}><X size={14} /></Button></div>}
                     <div className="sandbox-history sandbox-chat-history">
                         {!history.length && !submittedMessage && <div className="sandbox-chat-empty">Напиши Лере первое сообщение — начнём чистую Sandbox-сессию.</div>}
@@ -1411,8 +1418,8 @@ function SandboxPanel({ toast }) {
 function AiSandboxPromptStudio({ toast }) {
     return <Tabs.Root className="llm-super-panel studio-area-tabs" defaultValue="sandbox">
         <Tabs.List className="studio-area-tablist" aria-label="Рабочая зона AI">
-            <Tabs.Trigger value="sandbox"><WandSparkles size={15} />Sandbox и черновики</Tabs.Trigger>
-            <Tabs.Trigger value="production"><ShieldAlert size={15} />Production: провайдеры и routing</Tabs.Trigger>
+            <Tabs.Trigger value="sandbox"><WandSparkles size={15} />Тест ответов и публикация</Tabs.Trigger>
+            <Tabs.Trigger value="production"><ShieldAlert size={15} />Система: провайдеры и правила</Tabs.Trigger>
         </Tabs.List>
         <Tabs.Content value="sandbox"><SandboxPanel toast={toast} /></Tabs.Content>
         <Tabs.Content value="production"><LlmSettingsPanel toast={toast} /></Tabs.Content>
@@ -1723,25 +1730,6 @@ function LlmSettingsPanel({ toast }) {
 
             <div className="routing-section">
                 <div className="routing-section-head">
-                    <div><span className="eyebrow">Режимы генерации</span><strong>Параметры основного ответа</strong><small>Выбирается только один стилевой модуль. Игровой контекст и память добавляются всегда.</small></div>
-                </div>
-                <div className="routing-mode-grid">
-                    {[
-                        ['casual', 'CASUAL', 'Быт, флирт, обычные вопросы и инициатива.', 'blue'],
-                        ['erotic', 'EROTIC', 'Контекстное продолжение горячего диалога.', 'rose'],
-                        ['joke', 'JOKE', 'Шутка, мем или ирония на один ответ.', 'amber']
-                    ].map(([mode, label, description, tone]) => <div className={cn('routing-mode-card', `routing-mode-card-${tone}`)} key={mode}>
-                        <div className="routing-mode-head"><strong>{label}</strong><Badge>{description}</Badge></div>
-                        <div className="routing-mode-fields">
-                            <label>Temperature<input type="number" min="0" max="2" step="0.01" value={routingSettings[`${mode}Temperature`] ?? ''} onChange={event => setRoutingSettings({ ...routingSettings, [`${mode}Temperature`]: Number(event.target.value) })} /></label>
-                            <label>Max tokens<input type="number" min="20" max="1200" value={routingSettings[`${mode}MaxTokens`] ?? ''} onChange={event => setRoutingSettings({ ...routingSettings, [`${mode}MaxTokens`]: Number(event.target.value) })} /></label>
-                        </div>
-                    </div>)}
-                </div>
-            </div>
-
-            <div className="routing-section">
-                <div className="routing-section-head">
                     <div><span className="eyebrow">AI-судья ответа</span><strong>Проверяет готовый ответ Леры</strong><small>Наблюдение только пишет verdict в лог. Проверка и retry один раз перегенерирует отклонённый ответ и перепроверяет его.</small></div>
                     <Badge variant={routingSettings.judgeMode === 'ENFORCE' ? 'yellow' : routingSettings.judgeMode === 'OBSERVE' ? 'blue' : 'muted'}>{routingSettings.judgeMode === 'ENFORCE' ? 'Проверка и retry' : routingSettings.judgeMode === 'OBSERVE' ? 'Наблюдение' : 'Выключен'}</Badge>
                 </div>
@@ -1794,7 +1782,7 @@ function LlmSettingsPanel({ toast }) {
 
             <div className="routing-section">
                 <div className="routing-section-head">
-                    <div><span className="eyebrow">Модули prompt</span><strong>Что получает основная модель</strong><small>Core Persona и общие правила загружаются всегда. Из трёх стилевых карточек выбирается одна.</small></div>
+                    <div><span className="eyebrow">Глобальные тексты prompt</span><strong>Общие правила для всех ответов</strong><small>Это живые тексты Production: после сохранения они сразу участвуют в новых ответах. Для параметров CASUAL / EROTIC / JOKE используй «Тест ответов и публикация».</small></div>
                     <Badge variant="blue">5 модулей</Badge>
                 </div>
                 <div className="routing-module-note">Игровой контекст, текущее время, память пользователя и очищенная история добавляются сервером автоматически и не дублируются в этих полях.</div>

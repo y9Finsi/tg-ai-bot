@@ -12,7 +12,7 @@ test('admin v2 uses diary navigation and real shadcn-style primitives', () => {
     assert.match(source, /components\/ui\/button/);
     assert.match(source, /components\/ui\/card/);
     assert.match(source, /Дневник дня/);
-    assert.match(source, /Production: провайдеры и routing/);
+    assert.match(source, /Система: провайдеры и правила/);
     assert.match(source, /Только чтение/);
     assert.doesNotMatch(source, /DayPicker|Вернуться к сегодня|Архивный день/);
 });
@@ -123,7 +123,7 @@ test('sandbox uses a chat-first layout and keeps technical controls collapsed', 
     assert.match(source, /type="range"/);
     assert.match(source, /Переопределения контекста/);
     assert.match(source, /className="studio-debug"/);
-    assert.match(source, /Production: провайдеры и routing/);
+    assert.match(source, /Система: провайдеры и правила/);
     assert.match(source, /studio-area-tablist/);
     assert.match(css, /\.studio-chat-card \{/);
     assert.match(css, /\.studio-section \{/);
@@ -204,7 +204,7 @@ test('sandbox keeps chat actions and A/B replies in one compact Telegram-like fl
     assert.match(css, /\.sandbox-regenerate-button \{/);
     assert.match(css, /\.sandbox-send-button \{[^}]*background: #172554/);
     assert.match(css, /\.sandbox-result-bubble \{/);
-    assert.match(source, /className="studio-intent-tabs" role="tablist" aria-label="Intent"/);
+    assert.match(source, /className="studio-intent-tabs" role="tablist" aria-label="Поведение Леры"/);
     assert.match(css, /\.studio-intent-tabs \{/);
 });
 
@@ -323,7 +323,7 @@ test('admin v2 uses dedicated LLM settings and split-screen CRM', () => {
     assert.match(source, /@radix-ui\/react-tabs/);
     assert.match(source, /@radix-ui\/react-alert-dialog/);
     assert.match(source, /Дневник дня/);
-    assert.match(source, /Production: провайдеры и routing/);
+    assert.match(source, /Система: провайдеры и правила/);
     assert.match(source, /CRM Пользователей/);
     assert.match(source, /Контент и Канал/);
     assert.match(source, /Движок и Операции/);
