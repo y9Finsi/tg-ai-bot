@@ -2485,6 +2485,9 @@ function ContentPanel({ toast }) {
                             >
                                 Опубликовать правила
                             </ConfirmAction>
+                            <Button variant="outline" onClick={() => run(() => api('/api/admin/initiatives/test', { method: 'POST', body: '{}' }), 'Лера пишет тебе тестовую инициативу')}>
+                                Тест инициативы себе
+                            </Button>
                         </div>
                     </Card>
                     <Card>

@@ -71,6 +71,7 @@ import {
     getLeraContent
 } from './database.js';
 import { broadcastQueue } from './broadcast.js';
+import { enqueueTestInitiative } from './queue.js';
 import { sendCatalogContent } from './content_service.js';
 import { reloadAIClient } from './ai.js';
 import { requestLlmCompletion, getCachedOpenAIClient } from './ai/llm_client.js';
@@ -1210,6 +1211,18 @@ export function startAdminServer() {
             const contentChannelId = await getSetting('content_channel_id', DEFAULT_CONTENT_CHANNEL_ID);
             const sent = await botInstance.telegram.sendMessage(contentChannelId, CONTENT_CHANNEL_GUIDE);
             res.json({ success: true, messageId: sent?.message_id || null, contentChannelId });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/initiatives/test', async (req, res) => {
+        try {
+            if (!botInstance) return res.status(503).json({ error: 'Telegram-бот не инициализирован' });
+            const userId = Number(process.env.ADMIN_ID);
+            if (!userId) return res.status(400).json({ error: 'ADMIN_ID не задан' });
+            await enqueueTestInitiative(userId);
+            res.json({ success: true });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }

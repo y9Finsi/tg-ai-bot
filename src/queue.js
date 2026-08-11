@@ -193,6 +193,21 @@ async function processInitiativeJob(bot, job) {
     }
 }
 
+async function processTestInitiativeJob(bot, job) {
+    const { userId, chatId } = job.data;
+    const user = await getUser(userId);
+    if (!user || user.is_blocked) return;
+
+    const response = await generateAiInitiativeResponse(
+        userId,
+        'администратор вручную запросил тест инициативы',
+        { initiativeKind: 'admin_test' }
+    );
+    if (!response?.text) throw new Error('AI returned empty test initiative');
+
+    await sendTextLadder(bot, chatId, response.text);
+}
+
 async function processAiJob(bot, job) {
         const { userId, text, chatId, shouldDecrement, reservedResource = null, tempMsgId, eventIds = [], batchId = null, firstMessageAt = null, preMessageGapSeconds = null } = job.data;
         const historyClearedAtBeforeGeneration = await getChatHistoryClearedAt(userId);
@@ -410,6 +425,8 @@ export function startWorker(bot) {
         job.data.userId,
         () => job.name === 'initiative'
             ? processInitiativeJob(bot, job)
+            : job.name === 'initiative-test'
+                ? processTestInitiativeJob(bot, job)
             : job.name === 'content-delivery'
                 ? processContentDeliveryJob(bot, job)
                 : processAiJob(bot, job)
@@ -425,4 +442,17 @@ export function startWorker(bot) {
 export async function stopWorker() {
     if (aiWorker) await aiWorker.close();
     aiWorker = null;
+}
+
+export async function enqueueTestInitiative(userId) {
+    const chatId = Number(userId);
+    if (!chatId) throw new Error('Не указан Telegram user_id для тестовой инициативы');
+
+    await aiQueue.add('initiative-test', {
+        userId: chatId,
+        chatId
+    }, {
+        jobId: `initiative-test-${chatId}-${Date.now()}`,
+        priority: 1
+    });
 }
