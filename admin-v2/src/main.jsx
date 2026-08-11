@@ -1091,6 +1091,8 @@ function ProductionPromptModulesPanel({ toast }) {
     const [routingModules, setRoutingModules] = useState({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [dayContext, setDayContext] = useState('');
+    const [dayContextLoading, setDayContextLoading] = useState(true);
     async function load() {
         setLoading(true);
         try {
@@ -1124,26 +1126,61 @@ function ProductionPromptModulesPanel({ toast }) {
             setSaving(false);
         }
     }
-    useEffect(() => { load(); }, []);
-    return <details className="studio-section studio-live-prompts">
-        <summary>Живые тексты Production <span>{loading ? 'загрузка…' : '5 модулей'}</span></summary>
-            <div className="studio-section-copy">Эти правила участвуют и в Sandbox, и в новых Production-ответах. Они сохраняются сразу; публикация CASUAL / EROTIC / JOKE их не включает.</div>
-        <LeraProfileEditor toast={toast} />
-        <div className="context-template-editor">
-            <div className="routing-section-head">
-                <div><span className="eyebrow">Контекст собеседника и дня</span><strong>Шаблон динамического контекста</strong></div>
-                <Badge variant="blue">4 плейсхолдера</Badge>
+    async function loadDayContext() {
+        setDayContextLoading(true);
+        try {
+            const result = await api('/api/admin/prompt-day-context');
+            setDayContext(result.context || '');
+        } catch (error) {
+            toast?.(error.message, 'error');
+        } finally {
+            setDayContextLoading(false);
+        }
+    }
+    useEffect(() => { load(); loadDayContext(); }, []);
+    return <section className="lera-control-center">
+        <header className="lera-control-center-header">
+            <div>
+                <span className="eyebrow">Production · Настройки Леры</span>
+                <h3>Личность, контекст и проверки — в одном месте</h3>
+                <p>Здесь меняются постоянные правила Леры и сразу видно, какие данные уходят в чат, инициативу и публичный канал.</p>
             </div>
-            <label className="classifier-prompt-editor">
-                Шаблон контекста
-                <textarea value={promptModules.context_template || ''} placeholder="Используйте плейсхолдеры из подсказки ниже." onChange={event => setPromptModules({ ...promptModules, context_template: event.target.value })} disabled={loading || saving} />
-            </label>
-            <pre className="field-hint context-template-help">{CONTEXT_TEMPLATE_HELP}</pre>
+            <Badge variant="green">единый центр</Badge>
+        </header>
+        <div className="lera-control-center-map">
+            <a href="#lera-profile"><strong>01</strong><span>Профиль</span><small>Канон и версии</small></a>
+            <a href="#lera-day-context"><strong>02</strong><span>Контекст дня</span><small>Шаблон и факт дня</small></a>
+            <a href="#lera-judge"><strong>03</strong><span>Judge</span><small>CHAT · INITIATIVE · CHANNEL</small></a>
+            <a href="#lera-modes"><strong>04</strong><span>Режимы</span><small>CASUAL · EROTIC · JOKE</small></a>
         </div>
-        <PromptModulesEditor modules={routingModules} onChange={setRoutingModules} definitions={ROUTING_PROMPT_MODULES} />
-        <div className="studio-live-prompts-actions"><Button size="sm" variant="primary" onClick={save} disabled={loading || saving}>{saving ? 'Сохраняю…' : 'Сохранить тексты'}</Button></div>
-        <details className="prompt-expert-details"><summary>Экспертный JSON модулей routing</summary><pre>{JSON.stringify(routingModules, null, 2)}</pre></details>
-    </details>;
+        <section id="lera-profile" className="lera-control-section">
+            <div className="lera-control-section-heading"><div><span className="eyebrow">01 · Канон</span><h4>Профиль личности Леры</h4><p>Один источник истины для всех трёх поверхностей.</p></div><Badge variant="blue">редактируется ниже</Badge></div>
+            <LeraProfileEditor toast={toast} />
+        </section>
+        <section id="lera-day-context" className="lera-control-section">
+            <div className="lera-control-section-heading"><div><span className="eyebrow">02 · Динамика</span><h4>Контекст дня</h4><p>Шаблон управляет личными ответами. Сам день собирается автоматически из состояния Леры, событий и планов.</p></div><Badge variant="blue">CHAT · INITIATIVE</Badge></div>
+            <div className="context-template-editor">
+                <label className="classifier-prompt-editor">Шаблон контекста<textarea value={promptModules.context_template || ''} placeholder="Используйте плейсхолдеры из подсказки ниже." onChange={event => setPromptModules({ ...promptModules, context_template: event.target.value })} disabled={loading || saving} /></label>
+                <pre className="field-hint context-template-help">{CONTEXT_TEMPLATE_HELP}</pre>
+            </div>
+            <div className="lera-day-context-preview">
+                <div><span className="eyebrow">Фактический preview</span><strong>{dayContextLoading ? 'Загружаю текущий день…' : 'Что реально видит личный prompt'}</strong></div>
+                <Button size="sm" variant="outline" onClick={loadDayContext} disabled={dayContextLoading}><RefreshCw size={14} /> Обновить</Button>
+                <pre>{dayContextLoading ? '—' : dayContext || 'Контекст дня пока пуст.'}</pre>
+            </div>
+            <p className="lera-control-note">В CHANNEL этот приватный контекст не передаётся. Для канала используются только публичные факты, которые задаются в настройках автопостинга.</p>
+        </section>
+        <section id="lera-judge" className="lera-control-section">
+            <div className="lera-control-section-heading"><div><span className="eyebrow">03 · Контроль качества</span><h4>Judge по поверхностям</h4><p>Отдельный режим для личного чата, инициатив и канала. Настройки сохраняются независимо.</p></div><Badge variant="yellow">канал: ENFORCE</Badge></div>
+            <LeraJudgeSettingsEditor toast={toast} />
+        </section>
+        <section id="lera-modes" className="lera-control-section">
+            <div className="lera-control-section-heading"><div><span className="eyebrow">04 · Режимная подача</span><h4>Тексты режимов</h4><p>Это не отдельные личности. Это дополнительные правила подачи поверх единого профиля.</p></div><Badge variant="muted">CASUAL · EROTIC · JOKE</Badge></div>
+            <PromptModulesEditor modules={routingModules} onChange={setRoutingModules} definitions={ROUTING_PROMPT_MODULES} />
+            <div className="studio-live-prompts-actions"><Button size="sm" variant="primary" onClick={save} disabled={loading || saving}>{saving ? 'Сохраняю…' : 'Сохранить контекст и режимы'}</Button></div>
+            <details className="prompt-expert-details"><summary>Экспертный JSON модулей</summary><pre>{JSON.stringify(routingModules, null, 2)}</pre></details>
+        </section>
+    </section>;
 }
 
 const PROFILE_FIELDS = [
@@ -1214,9 +1251,9 @@ function LeraProfileEditor({ toast }) {
         }
     }
     useEffect(() => { load(); }, []);
-    return <details className="studio-section studio-live-prompts" open>
-        <summary>Канонический профиль Леры <span>{loading ? 'загрузка…' : `v${profile?.version || '—'}`}</span></summary>
-        <div className="studio-section-copy">Единый редактор для чата, инициативы и канала. Каждое сохранение создаёт новую версию; старые prompt-модули остаются только как режимные правила.</div>
+    return <div className="lera-profile-editor">
+        <div className="lera-profile-meta"><strong>Канонический профиль · v{loading ? '…' : profile?.version || '—'}</strong><span>{profile?.author || '—'} · {formatDate(profile?.updated_at || profile?.created_at)}</span></div>
+        <div className="studio-section-copy">Каждое сохранение создаёт новую версию. Чат, инициативы и канал получают разные проекции одного профиля.</div>
         <div className="context-template-editor">
             {PROFILE_FIELDS.map(([key, label]) => <label className="classifier-prompt-editor" key={key}>{label}<textarea value={draft[key] || ''} disabled={loading || saving} onChange={event => setDraft({ ...draft, [key]: event.target.value })} /></label>)}
         </div>
@@ -1238,7 +1275,106 @@ function LeraProfileEditor({ toast }) {
                 })}</div>}
             </div>)}
         </details>
-    </details>;
+    </div>;
+}
+
+function LeraJudgeSettingsEditor({ toast }) {
+    const [settings, setSettings] = useState({});
+    const [providers, setProviders] = useState([]);
+    const [channelSettings, setChannelSettings] = useState({});
+    const [channelSaving, setChannelSaving] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    async function load() {
+        setLoading(true);
+        try {
+            const [llm, providerResult, channelResult] = await Promise.all([api('/api/admin/llm-settings'), api('/api/admin/providers'), api('/api/admin/channel/settings')]);
+            setSettings(llm.routingSettings || {});
+            setProviders(providerResult.providers || []);
+            setChannelSettings(channelResult.settings || {});
+        } catch (error) {
+            toast?.(error.message, 'error');
+        } finally {
+            setLoading(false);
+        }
+    }
+    async function save() {
+        setSaving(true);
+        try {
+            const result = await api('/api/admin/llm-settings', { method: 'POST', body: JSON.stringify({ routingSettings: settings }) });
+            setSettings(result.routingSettings || settings);
+            toast?.('Режимы judge сохранены');
+        } catch (error) {
+            toast?.(error.message, 'error');
+        } finally {
+            setSaving(false);
+        }
+    }
+    function update(key, value) { setSettings(current => ({ ...current, [key]: value })); }
+    function updateChannel(key, value) { setChannelSettings(current => ({ ...current, [key]: value })); }
+    async function saveChannel() {
+        setChannelSaving(true);
+        try {
+            const body = {
+                channelId: channelSettings.channel_id || '',
+                channelUrl: channelSettings.channel_url || '',
+                isEnabled: channelSettings.is_enabled === true,
+                frequencyHours: channelSettings.frequency_hours || 4,
+                topics: channelSettings.topics || ['thoughts'],
+                topicWeights: channelSettings.topic_weights || {},
+                messagesCount: channelSettings.messages_count || '1',
+                mediaMode: channelSettings.media_mode || 'none',
+                promptBlocks: channelSettings.prompt_blocks || {},
+                temperature: channelSettings.temperature ?? 0.7,
+                publicProfileEnabled: channelSettings.public_profile_enabled !== false,
+                publicFactsEnabled: channelSettings.public_facts_enabled === true,
+                publicFacts: channelSettings.public_facts || [],
+                creativity: channelSettings.creativity ?? 0.6,
+                ctaStyle: channelSettings.cta_style || '',
+                judgeMode: channelSettings.judge_mode || 'ENFORCE',
+                judgeProviderId: channelSettings.judge_provider_id || '',
+                judgeModel: channelSettings.judge_model || '',
+                judgePrompt: channelSettings.judge_prompt || '',
+                judgeTimeoutMs: channelSettings.judge_timeout_ms || 5000,
+                judgeMaxTokens: channelSettings.judge_max_tokens || 120
+            };
+            const result = await api('/api/admin/channel/settings', { method: 'POST', body: JSON.stringify(body) });
+            setChannelSettings(result.settings || channelSettings);
+            toast?.('Настройки channel-judge сохранены');
+        } catch (error) {
+            toast?.(error.message, 'error');
+        } finally {
+            setChannelSaving(false);
+        }
+    }
+    useEffect(() => { load(); }, []);
+    return <div className="lera-judge-editor">
+        <div className="lera-judge-surface-grid">
+            <div className="lera-judge-surface-card"><span>Личный чат</span><strong>{settings.judgeMode || 'OBSERVE'}</strong><small>Проверка обычных ответов пользователю</small><select value={settings.judgeMode || 'OBSERVE'} onChange={event => update('judgeMode', event.target.value)} disabled={loading || saving}><option value="OFF">OFF</option><option value="OBSERVE">OBSERVE</option><option value="ENFORCE">ENFORCE</option></select></div>
+            <div className="lera-judge-surface-card"><span>Инициативы</span><strong>{settings.initiativeJudgeMode || 'OBSERVE'}</strong><small>Проверка сообщений, которые Лера пишет первой</small><select value={settings.initiativeJudgeMode || 'OBSERVE'} onChange={event => update('initiativeJudgeMode', event.target.value)} disabled={loading || saving}><option value="OFF">OFF</option><option value="OBSERVE">OBSERVE</option><option value="ENFORCE">ENFORCE</option></select></div>
+            <div className="lera-judge-surface-card is-channel"><span>Публичный канал</span><strong>{channelSettings.judge_mode || 'ENFORCE'}</strong><small>Отказ → одна генерация заново → иначе черновик</small><Badge variant="yellow">публичная проверка</Badge></div>
+        </div>
+        <div className="routing-fields-grid judge-fields-grid">
+            <label>Provider судьи<select value={settings.judgeProviderId || ''} onChange={event => update('judgeProviderId', event.target.value)} disabled={loading || saving}><option value="">Текущая цепочка + fallback</option>{providers.map(provider => <option value={provider.id} key={provider.id}>{provider.name} · {provider.model_name}</option>)}</select></label>
+            <label>Модель судьи<input value={settings.judgeModel || ''} placeholder="Модель провайдера" onChange={event => update('judgeModel', event.target.value)} disabled={loading || saving} /></label>
+            <label>Timeout, мс<input type="number" min="1000" max="60000" value={settings.judgeTimeoutMs ?? 5000} onChange={event => update('judgeTimeoutMs', Number(event.target.value))} disabled={loading || saving} /></label>
+            <label>Max tokens<input type="number" min="40" max="120" value={settings.judgeMaxTokens ?? 80} onChange={event => update('judgeMaxTokens', Number(event.target.value))} disabled={loading || saving} /></label>
+        </div>
+        <label className="classifier-prompt-editor">Правила judge для CHAT и INITIATIVE<textarea value={settings.judgePrompt || ''} placeholder="Опиши, что считать ошибкой ответа." onChange={event => update('judgePrompt', event.target.value)} disabled={loading || saving} /></label>
+        <div className="studio-live-prompts-actions"><Button size="sm" variant="primary" onClick={save} disabled={loading || saving}>{saving ? 'Сохраняю…' : 'Сохранить настройки judge'}</Button></div>
+        <div className="lera-channel-judge">
+            <div className="lera-control-section-heading"><div><span className="eyebrow">Публичный канал</span><h4>Правила channel-judge</h4><p>Эти настройки применяются только к постам в ТГК. При ENFORCE плохой текст остаётся черновиком.</p></div><Badge variant={channelSettings.judge_mode === 'ENFORCE' ? 'yellow' : 'blue'}>{channelSettings.judge_mode || 'ENFORCE'}</Badge></div>
+            <div className="routing-fields-grid judge-fields-grid">
+                <label>Режим<select value={channelSettings.judge_mode || 'ENFORCE'} onChange={event => updateChannel('judge_mode', event.target.value)} disabled={loading || channelSaving}><option value="OFF">OFF</option><option value="OBSERVE">OBSERVE</option><option value="ENFORCE">ENFORCE</option></select></label>
+                <label>Provider<select value={channelSettings.judge_provider_id || ''} onChange={event => updateChannel('judge_provider_id', event.target.value)} disabled={loading || channelSaving}><option value="">Текущая цепочка + fallback</option>{providers.map(provider => <option value={provider.id} key={provider.id}>{provider.name} · {provider.model_name}</option>)}</select></label>
+                <label>Модель<input value={channelSettings.judge_model || ''} onChange={event => updateChannel('judge_model', event.target.value)} disabled={loading || channelSaving} /></label>
+                <label>Timeout, мс<input type="number" min="1000" max="60000" value={channelSettings.judge_timeout_ms ?? 5000} onChange={event => updateChannel('judge_timeout_ms', Number(event.target.value))} disabled={loading || channelSaving} /></label>
+                <label>Max tokens<input type="number" min="40" max="240" value={channelSettings.judge_max_tokens ?? 120} onChange={event => updateChannel('judge_max_tokens', Number(event.target.value))} disabled={loading || channelSaving} /></label>
+            </div>
+            <label className="classifier-prompt-editor">Инструкция channel-judge<textarea value={channelSettings.judge_prompt || ''} placeholder="Проверяй публичный пост строго: не выдумывай события и приватные детали." onChange={event => updateChannel('judge_prompt', event.target.value)} disabled={loading || channelSaving} /></label>
+            <div className="studio-live-prompts-actions"><Button size="sm" variant="primary" onClick={saveChannel} disabled={loading || channelSaving}>{channelSaving ? 'Сохраняю…' : 'Сохранить channel-judge'}</Button></div>
+        </div>
+    </div>;
 }
 function studioConfigsFromState(state) {
     return Object.fromEntries(STUDIO_INTENTS.map(intent => [intent, normalizeStudioConfig(state?.intents?.[intent]?.draft?.config || {})]));
@@ -1352,7 +1488,7 @@ function SandboxPanel({ toast }) {
             <div className="studio-version-summary"><span>Production <b>v{productionVersion}</b></span><span>Черновик <b>v{draftVersion}</b></span></div>
         </section>
         <Tabs.Root value={workspaceStep} onValueChange={setWorkspaceStep} className="studio-workspace-tabs">
-            <Tabs.List aria-label="Шаги работы с prompt"><Tabs.Trigger value="edit">1. Редактирование</Tabs.Trigger><Tabs.Trigger value="test">2. Тест и сравнение</Tabs.Trigger><Tabs.Trigger value="publish">3. Проверка и публикация</Tabs.Trigger><Tabs.Trigger value="live">Общие правила Production</Tabs.Trigger></Tabs.List>
+                <Tabs.List aria-label="Шаги работы с prompt"><Tabs.Trigger value="edit">1. Редактирование</Tabs.Trigger><Tabs.Trigger value="test">2. Тест и сравнение</Tabs.Trigger><Tabs.Trigger value="publish">3. Проверка и публикация</Tabs.Trigger><Tabs.Trigger value="live">Настройки Леры</Tabs.Trigger></Tabs.List>
             <Tabs.Content value="edit" className="studio-workspace-content">
                 <section className="studio-editor-layout">
                     <div className="studio-editor-main">
