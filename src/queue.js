@@ -1,7 +1,12 @@
 import { Queue, Worker } from 'bullmq';
-import { generateResponse } from './ai.js';
-import { decrementFreeRequest, appendConversationEvent, updateConversationEventStatus, refundReservedRequest } from './database.js';
+import { generateResponse, generateAiInitiativeResponse } from './ai.js';
+import {
+    decrementFreeRequest, appendConversationEvent, updateConversationEventStatus, refundReservedRequest,
+    getUser, getActiveMute, getCompletedEvent, getLatestMeaningfulEvent, getInitiativeDailyCounts,
+    hasInitiativeStage, getLeraContent, wasContentSent
+} from './database.js';
 import { splitResponseMessages } from './utils/response_text.js';
+import { sendCatalogContent } from './content_service.js';
 
 // Парсим URL из .env и жестко задаем IPv4 (family: 4)
 const redisUrl = new URL(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
@@ -33,6 +38,144 @@ function runUserJob(userId, task) {
             userJobLanes.delete(key);
         }
     });
+}
+
+async function safeSendMessage(telegram, chatId, text, options = { parse_mode: 'Markdown' }) {
+    try {
+        return await telegram.sendMessage(chatId, text, options);
+    } catch {
+        const fallback = { ...options };
+        delete fallback.parse_mode;
+        return telegram.sendMessage(chatId, text, fallback);
+    }
+}
+
+async function sendTextLadder(bot, chatId, text, tempMsgId = null, finalOptions = { parse_mode: 'Markdown' }) {
+    let messages = splitResponseMessages(text);
+    if (messages.length === 0 || messages.length > 10) messages = [text || '...'];
+    const firstOptions = messages.length === 1 ? finalOptions : { parse_mode: 'Markdown' };
+    if (tempMsgId) {
+        try {
+            await bot.telegram.editMessageText(chatId, tempMsgId, null, messages[0], firstOptions);
+        } catch {
+            await safeSendMessage(bot.telegram, chatId, messages[0], firstOptions);
+        }
+    } else {
+        await safeSendMessage(bot.telegram, chatId, messages[0], firstOptions);
+    }
+    for (const message of messages.slice(1)) {
+        bot.telegram.sendChatAction(chatId, 'typing').catch(() => {});
+        await new Promise(resolve => setTimeout(resolve, Math.min(Math.max(message.length * 35, 500), 1600)));
+        await safeSendMessage(bot.telegram, chatId, message, { parse_mode: 'Markdown' });
+    }
+    return messages;
+}
+
+async function enqueueContentDelivery(data) {
+    await aiQueue.add('content-delivery', data, {
+        jobId: `content-${data.userId}-${data.contentId}`,
+        priority: 1,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 3000 }
+    });
+}
+
+async function deliverContentOrRetry(bot, data) {
+    try {
+        await processContentDeliveryJob(bot, { data });
+    } catch (error) {
+        await enqueueContentDelivery(data);
+        console.warn(`[CONTENT DELIVERY] queued retry for user ${data.userId}, content ${data.contentId}:`, error.message);
+    }
+}
+
+async function processContentDeliveryJob(bot, job) {
+    const { userId, chatId, contentId, source, anchorEventId, initiativeEventId = null } = job.data;
+    if (await wasContentSent(userId, contentId)) return;
+    const counts = await getInitiativeDailyCounts(userId);
+    if (counts.content >= 3) return;
+    const content = await getLeraContent(contentId);
+    if (!content?.enabled) return;
+    const sent = await sendCatalogContent(bot.telegram, chatId, content);
+    await appendConversationEvent({
+        userId,
+        eventType: 'CONTENT',
+        role: 'lera',
+        content: content.description || content.url || '',
+        occurredAt: new Date(),
+        telegramMessageId: sent?.message_id || null,
+        metadata: {
+            content_id: Number(content.id),
+            source,
+            anchor_event_id: anchorEventId ? Number(anchorEventId) : null,
+            initiative_event_id: initiativeEventId ? Number(initiativeEventId) : null,
+            telegram_type: content.telegram_type
+        },
+        status: 'COMPLETED'
+    });
+}
+
+async function processInitiativeJob(bot, job) {
+    const { userId, chatId, anchorEventId, initiativeKind, contentCandidateIds = [] } = job.data;
+    const [user, mute, anchor, latest, counts, duplicate] = await Promise.all([
+        getUser(userId),
+        getActiveMute(userId),
+        getCompletedEvent(anchorEventId, userId),
+        getLatestMeaningfulEvent(userId),
+        getInitiativeDailyCounts(userId),
+        hasInitiativeStage(userId, anchorEventId, initiativeKind)
+    ]);
+    if (!user || user.is_blocked || mute || !anchor || duplicate || counts.initiatives >= 3) return;
+    if (latest?.role === 'user' && new Date(latest.occurred_at) > new Date(anchor.occurred_at)) return;
+    if (initiativeKind !== 'ignore_2' && Number(latest?.id) !== Number(anchorEventId)) return;
+    const anchorAgeSeconds = (Date.now() - new Date(anchor.occurred_at).getTime()) / 1000;
+    if (initiativeKind === 'open' && (anchorAgeSeconds < 300 || anchorAgeSeconds > 3600)) return;
+    if (initiativeKind === 'ignore_1' && (anchorAgeSeconds < 300 || anchorAgeSeconds > 3600)) return;
+    if (initiativeKind === 'ignore_2' && (anchorAgeSeconds < 7200 || anchorAgeSeconds >= 10800)) return;
+    if (initiativeKind === 'content_4h' && anchorAgeSeconds < 14400) return;
+    if (['ignore_1', 'ignore_2'].includes(initiativeKind)) {
+        if (anchorAgeSeconds >= 10800) return;
+    }
+
+    let candidates = [];
+    if (!['ignore_1', 'ignore_2'].includes(initiativeKind) && counts.content < 3) {
+        const rows = await Promise.all(contentCandidateIds.map(id => getLeraContent(id)));
+        candidates = rows.filter(item => item?.enabled && item.allow_initiative);
+        const sentFlags = await Promise.all(candidates.map(item => wasContentSent(userId, item.id)));
+        candidates = candidates.filter((_, index) => !sentFlags[index]);
+    }
+    if (initiativeKind === 'content_4h' && candidates.length === 0) return;
+
+    const reason = initiativeKind === 'open'
+        ? 'естественно продолжить последний незакрытый диалог'
+        : initiativeKind === 'content_4h'
+            ? 'после паузы самой поделиться контентом'
+            : 'пользователь не ответил на реплику Леры';
+    const response = await generateAiInitiativeResponse(userId, reason, {
+        initiativeKind,
+        anchorEventId,
+        contentCandidates: candidates
+    });
+    if (!response?.text) throw new Error('AI returned empty initiative');
+    if (initiativeKind === 'content_4h' && !response.contentId) {
+        throw new Error('AI did not select content for content_4h initiative');
+    }
+    await sendTextLadder(bot, chatId, response.text);
+    const initiativeEvent = await appendConversationEvent({
+        userId,
+        eventType: 'INITIATIVE',
+        role: 'lera',
+        content: response.text,
+        occurredAt: new Date(),
+        metadata: { kind: initiativeKind, anchor_event_id: Number(anchorEventId), stage: initiativeKind },
+        status: 'COMPLETED'
+    });
+    if (response.contentId) {
+        await deliverContentOrRetry(bot, {
+            userId, chatId, contentId: response.contentId, source: 'initiative',
+            anchorEventId, initiativeEventId: initiativeEvent.id
+        });
+    }
 }
 
 async function processAiJob(bot, job) {
@@ -102,13 +245,15 @@ async function processAiJob(bot, job) {
                         } else {
                             await bot.telegram.sendMessage(chatId, textParts[0], { parse_mode: 'Markdown' });
                         }
-                        await saveLeraEvent(textParts[0], 'MESSAGE', { has_photo: true });
                         for (const part of textParts.slice(1)) {
                             await bot.telegram.sendChatAction(chatId, 'typing').catch(() => {});
                             await new Promise(resolve => setTimeout(resolve, Math.min(Math.max(part.length * 35, 500), 1600)));
                             await bot.telegram.sendMessage(chatId, part, { parse_mode: 'Markdown' });
-                            await saveLeraEvent(part, 'MESSAGE', { has_photo: true });
                         }
+                        await saveLeraEvent(response.text, 'MESSAGE', {
+                            has_photo: true,
+                            message_count: textParts.length
+                        });
                     } else if (tempMsgId) {
                         await bot.telegram.deleteMessage(chatId, tempMsgId).catch(() => {});
                     }
@@ -184,7 +329,6 @@ async function processAiJob(bot, job) {
                 } else {
                     await safeSendMessage(firstMsg, firstOptions);
                 }
-                await saveLeraEvent(firstMsg);
 
                 // 2. Последующие сообщения "лесенкой" с реальной имитацией набора текста
                 for (let i = 1; i < messages.length; i++) {
@@ -199,8 +343,18 @@ async function processAiJob(bot, job) {
                     const isLast = (i === messages.length - 1);
                     const currentOptions = isLast ? extraOptions : { parse_mode: 'Markdown' };
                     await safeSendMessage(msg, currentOptions);
-                    await saveLeraEvent(msg);
                 }
+                await saveLeraEvent(response.text, 'MESSAGE', { message_count: messages.length });
+            }
+
+            if (response.contentId) {
+                await deliverContentOrRetry(bot, {
+                    userId,
+                    chatId,
+                    contentId: response.contentId,
+                    source: 'dialogue',
+                    anchorEventId: eventIds.at(-1) || null
+                });
             }
 
             await markInputEvents('COMPLETED');
@@ -228,7 +382,11 @@ export function startWorker(bot) {
     if (aiWorker) return aiWorker;
     aiWorker = new Worker('ai-requests', job => runUserJob(
         job.data.userId,
-        () => processAiJob(bot, job)
+        () => job.name === 'initiative'
+            ? processInitiativeJob(bot, job)
+            : job.name === 'content-delivery'
+                ? processContentDeliveryJob(bot, job)
+                : processAiJob(bot, job)
     ), {
         connection,
         concurrency: 5,

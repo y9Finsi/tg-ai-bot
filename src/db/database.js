@@ -258,6 +258,21 @@ export async function initDatabaseTables() {
                 error_text TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS lera_content (
+                id BIGSERIAL PRIMARY KEY,
+                telegram_type VARCHAR(16) NOT NULL,
+                telegram_file_id TEXT,
+                url TEXT,
+                description TEXT NOT NULL DEFAULT '',
+                enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                allow_in_dialogue BOOLEAN NOT NULL DEFAULT TRUE,
+                allow_initiative BOOLEAN NOT NULL DEFAULT TRUE,
+                source_channel_id BIGINT,
+                source_message_id BIGINT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
             CREATE INDEX IF NOT EXISTS idx_conversation_events_user_time
                 ON conversation_events (user_id, occurred_at DESC);
             CREATE INDEX IF NOT EXISTS idx_conversation_events_user_date
@@ -615,6 +630,191 @@ export async function getRecentConversationEvents(userId, limit = 20) {
         [userId, limit]
     );
     return result.rows;
+}
+
+export async function getInitiativeDailyCounts(userId) {
+    const result = await query(
+        `SELECT
+            COUNT(*) FILTER (WHERE event_type = 'INITIATIVE')::int AS initiatives,
+            COUNT(*) FILTER (WHERE event_type = 'CONTENT')::int AS content
+         FROM conversation_events
+         WHERE user_id = $1 AND status = 'COMPLETED'
+           AND local_date = (NOW() AT TIME ZONE 'Europe/Moscow')::date
+           AND event_type IN ('INITIATIVE', 'CONTENT')`,
+        [userId]
+    );
+    return {
+        initiatives: Number(result.rows[0]?.initiatives || 0),
+        content: Number(result.rows[0]?.content || 0)
+    };
+}
+
+export async function getInitiativeSchedulerUsers(limit = 500) {
+    const result = await query(
+        `SELECT DISTINCT ON (e.user_id)
+            e.*, u.is_blocked,
+            EXTRACT(EPOCH FROM (NOW() - e.occurred_at))::bigint AS age_seconds
+         FROM conversation_events e
+         JOIN users u ON u.telegram_id = e.user_id
+         WHERE e.status = 'COMPLETED'
+           AND e.event_type IN ('MESSAGE', 'INITIATIVE', 'CONTENT')
+           AND e.role IN ('user', 'lera', 'assistant')
+           AND e.occurred_at >= NOW() - INTERVAL '24 hours'
+         ORDER BY e.user_id, e.occurred_at DESC, e.id DESC
+         LIMIT $1`,
+        [limit]
+    );
+    return result.rows;
+}
+
+export async function getActiveDialogueEvents(userId, anchorOccurredAt = null, limit = 30) {
+    const result = await query(
+        `WITH ordered AS (
+            SELECT e.*,
+                   LAG(e.occurred_at) OVER (ORDER BY e.occurred_at, e.id) AS previous_at
+            FROM conversation_events e
+            WHERE e.user_id = $1 AND e.status = 'COMPLETED'
+              AND e.event_type IN ('MESSAGE', 'INITIATIVE', 'CONTENT')
+              AND ($2::timestamptz IS NULL OR e.occurred_at <= $2::timestamptz)
+         ), grouped AS (
+            SELECT ordered.*,
+                   SUM(CASE WHEN previous_at IS NULL OR occurred_at - previous_at > INTERVAL '1 hour' THEN 1 ELSE 0 END)
+                     OVER (ORDER BY occurred_at, id) AS dialogue_id
+            FROM ordered
+         )
+         SELECT * FROM grouped
+         WHERE dialogue_id = (SELECT MAX(dialogue_id) FROM grouped)
+         ORDER BY occurred_at ASC, id ASC
+         LIMIT $3`,
+        [userId, anchorOccurredAt, limit]
+    );
+    return result.rows;
+}
+
+export async function updateConversationEventMetadata(eventId, metadata = {}) {
+    const result = await query(
+        `UPDATE conversation_events
+         SET metadata = metadata || $2::jsonb
+         WHERE id = $1 RETURNING *`,
+        [eventId, JSON.stringify(metadata)]
+    );
+    return result.rows[0] || null;
+}
+
+export async function getCompletedEvent(eventId, userId) {
+    const result = await query(
+        `SELECT * FROM conversation_events
+         WHERE id = $1 AND user_id = $2 AND status = 'COMPLETED' LIMIT 1`,
+        [eventId, userId]
+    );
+    return result.rows[0] || null;
+}
+
+export async function getLatestMeaningfulEvent(userId) {
+    const result = await query(
+        `SELECT * FROM conversation_events
+         WHERE user_id = $1 AND status = 'COMPLETED'
+           AND event_type IN ('MESSAGE', 'INITIATIVE', 'CONTENT')
+         ORDER BY occurred_at DESC, id DESC LIMIT 1`,
+        [userId]
+    );
+    return result.rows[0] || null;
+}
+
+export async function hasInitiativeStage(userId, anchorEventId, kind) {
+    const result = await query(
+        `SELECT 1 FROM conversation_events
+         WHERE user_id = $1 AND event_type = 'INITIATIVE' AND status = 'COMPLETED'
+           AND metadata->>'anchor_event_id' = $2::text
+           AND metadata->>'kind' = $3
+         LIMIT 1`,
+        [userId, anchorEventId, kind]
+    );
+    return result.rowCount > 0;
+}
+
+export async function getInitiativeStages(userId, anchorEventId) {
+    const result = await query(
+        `SELECT metadata->>'kind' AS kind
+         FROM conversation_events
+         WHERE user_id = $1 AND event_type = 'INITIATIVE' AND status = 'COMPLETED'
+           AND metadata->>'anchor_event_id' = $2::text`,
+        [userId, anchorEventId]
+    );
+    return result.rows.map(row => row.kind).filter(Boolean);
+}
+
+export async function addLeraContent({ telegramType, telegramFileId = null, url = null, description = '', enabled = true, allowInDialogue = true, allowInitiative = true, sourceChannelId = null, sourceMessageId = null }) {
+    const result = await query(
+        `INSERT INTO lera_content
+            (telegram_type, telegram_file_id, url, description, enabled, allow_in_dialogue,
+             allow_initiative, source_channel_id, source_message_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (source_channel_id, source_message_id)
+           WHERE source_channel_id IS NOT NULL AND source_message_id IS NOT NULL
+         DO UPDATE SET telegram_type = EXCLUDED.telegram_type,
+             telegram_file_id = EXCLUDED.telegram_file_id, url = EXCLUDED.url,
+             description = EXCLUDED.description, updated_at = NOW()
+         RETURNING *`,
+        [telegramType, telegramFileId, url, description, enabled, allowInDialogue,
+            allowInitiative, sourceChannelId, sourceMessageId]
+    );
+    return result.rows[0];
+}
+
+export async function getLeraContent(id) {
+    const result = await query('SELECT * FROM lera_content WHERE id = $1', [id]);
+    return result.rows[0] || null;
+}
+
+export async function getAllLeraContent() {
+    const result = await query('SELECT * FROM lera_content ORDER BY id DESC');
+    return result.rows;
+}
+
+export async function updateLeraContent(id, fields = {}) {
+    const current = await getLeraContent(id);
+    if (!current) return null;
+    const result = await query(
+        `UPDATE lera_content SET description = $2, enabled = $3,
+             allow_in_dialogue = $4, allow_initiative = $5, updated_at = NOW()
+         WHERE id = $1 RETURNING *`,
+        [id, fields.description ?? current.description, fields.enabled ?? current.enabled,
+            fields.allow_in_dialogue ?? current.allow_in_dialogue,
+            fields.allow_initiative ?? current.allow_initiative]
+    );
+    return result.rows[0] || null;
+}
+
+export async function deleteLeraContent(id) {
+    const result = await query('DELETE FROM lera_content WHERE id = $1 RETURNING *', [id]);
+    return result.rows[0] || null;
+}
+
+export async function getContentCandidates(userId, source, limit = 4) {
+    const allowColumn = source === 'initiative' ? 'allow_initiative' : 'allow_in_dialogue';
+    const result = await query(
+        `SELECT c.* FROM lera_content c
+         WHERE c.enabled = TRUE AND c.${allowColumn} = TRUE
+           AND NOT EXISTS (
+             SELECT 1 FROM conversation_events e
+             WHERE e.user_id = $1 AND e.event_type = 'CONTENT' AND e.status = 'COMPLETED'
+               AND e.metadata->>'content_id' = c.id::text
+           )
+         ORDER BY RANDOM() LIMIT $2`,
+        [userId, limit]
+    );
+    return result.rows;
+}
+
+export async function wasContentSent(userId, contentId) {
+    const result = await query(
+        `SELECT 1 FROM conversation_events
+         WHERE user_id = $1 AND event_type = 'CONTENT' AND status = 'COMPLETED'
+           AND metadata->>'content_id' = $2::text LIMIT 1`,
+        [userId, contentId]
+    );
+    return result.rowCount > 0;
 }
 
 export function formatConversationEvent(event) {

@@ -63,9 +63,15 @@ import {
     deleteSandboxPreset,
     getSandboxRuns,
     getSandboxRun,
-    updateAiProviderSamplingCapabilities
+    updateAiProviderSamplingCapabilities,
+    getAllLeraContent,
+    addLeraContent,
+    updateLeraContent,
+    deleteLeraContent,
+    getLeraContent
 } from './database.js';
 import { broadcastQueue } from './broadcast.js';
+import { sendCatalogContent } from './content_service.js';
 import { reloadAIClient } from './ai.js';
 import { requestLlmCompletion, getCachedOpenAIClient } from './ai/llm_client.js';
 import { generateAndPublishChannelPost, generateChannelPostDraft, publishChannelDraft } from './channel_poster.js';
@@ -1158,6 +1164,81 @@ export function startAdminServer() {
     app.delete('/api/admin/photos/:id', async (req, res) => {
         try {
             await deleteLeraPhoto(req.params.id);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.get('/api/admin/content', async (req, res) => {
+        try {
+            const [items, sent] = await Promise.all([
+                getAllLeraContent(),
+                query(`SELECT e.id, e.user_id, e.occurred_at, e.metadata, e.content,
+                              c.telegram_type, c.description
+                       FROM conversation_events e
+                       LEFT JOIN lera_content c ON c.id::text = e.metadata->>'content_id'
+                       WHERE e.event_type = 'CONTENT' AND e.status = 'COMPLETED'
+                       ORDER BY e.occurred_at DESC, e.id DESC LIMIT 50`)
+            ]);
+            res.json({ success: true, content: items, sent: sent.rows });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/content', async (req, res) => {
+        try {
+            const telegramType = String(req.body.telegram_type || 'link');
+            if (!['audio', 'video', 'animation', 'document', 'photo', 'link'].includes(telegramType)) {
+                return res.status(400).json({ error: 'Неподдерживаемый тип контента' });
+            }
+            const telegramFileId = String(req.body.telegram_file_id || '').trim() || null;
+            const url = String(req.body.url || '').trim() || null;
+            if (!telegramFileId && !url) return res.status(400).json({ error: 'Нужен file_id или URL' });
+            const content = await addLeraContent({
+                telegramType,
+                telegramFileId,
+                url,
+                description: String(req.body.description || '').trim(),
+                enabled: req.body.enabled !== false,
+                allowInDialogue: req.body.allow_in_dialogue !== false,
+                allowInitiative: req.body.allow_initiative !== false
+            });
+            res.json({ success: true, content });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.patch('/api/admin/content/:id', async (req, res) => {
+        try {
+            const content = await updateLeraContent(req.params.id, req.body || {});
+            if (!content) return res.status(404).json({ error: 'Контент не найден' });
+            res.json({ success: true, content });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.delete('/api/admin/content/:id', async (req, res) => {
+        try {
+            const content = await deleteLeraContent(req.params.id);
+            if (!content) return res.status(404).json({ error: 'Контент не найден' });
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/content/:id/test', async (req, res) => {
+        try {
+            if (!botInstance) return res.status(503).json({ error: 'Telegram-бот не инициализирован' });
+            const content = await getLeraContent(req.params.id);
+            if (!content) return res.status(404).json({ error: 'Контент не найден' });
+            const chatId = Number(req.body?.user_id || process.env.ADMIN_ID);
+            if (!chatId) return res.status(400).json({ error: 'Не указан user_id и ADMIN_ID не задан' });
+            await sendCatalogContent(botInstance.telegram, chatId, { ...content, enabled: true });
             res.json({ success: true });
         } catch (e) {
             res.status(500).json({ error: e.message });

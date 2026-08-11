@@ -2241,6 +2241,9 @@ function ContentPanel({ toast }) {
     const [photos, setPhotos] = useState([]);
     const [photoForm, setPhotoForm] = useState({ file_id: '', caption: '', tags: '', outfit_tags: '', explicitness: 0, access_level: 'free', time_of_day: 'any' });
     const [photoFileName, setPhotoFileName] = useState('');
+    const [catalog, setCatalog] = useState([]);
+    const [contentSent, setContentSent] = useState([]);
+    const [contentForm, setContentForm] = useState({ telegram_type: 'link', telegram_file_id: '', url: '', description: '', enabled: true, allow_in_dialogue: true, allow_initiative: true });
 
     const [channel, setChannel] = useState(null);
     const [channelHistory, setChannelHistory] = useState([]);
@@ -2275,6 +2278,29 @@ function ContentPanel({ toast }) {
     async function loadPhotos() {
         const result = await run(() => api('/api/admin/photos'));
         if (result) setPhotos(result.photos || []);
+    }
+
+    async function loadContent() {
+        const result = await run(() => api('/api/admin/content'));
+        if (result) {
+            setCatalog(result.content || []);
+            setContentSent(result.sent || []);
+        }
+    }
+
+    async function addContent() {
+        const result = await run(() => api('/api/admin/content', {
+            method: 'POST', body: JSON.stringify(contentForm)
+        }), 'Контент добавлен');
+        if (result) {
+            setContentForm({ telegram_type: 'link', telegram_file_id: '', url: '', description: '', enabled: true, allow_in_dialogue: true, allow_initiative: true });
+            loadContent();
+        }
+    }
+
+    async function updateContent(item, values) {
+        await run(() => api(`/api/admin/content/${item.id}`, { method: 'PATCH', body: JSON.stringify(values) }), 'Контент сохранён');
+        loadContent();
     }
 
     async function addPhoto() {
@@ -2387,6 +2413,7 @@ function ContentPanel({ toast }) {
 
     useEffect(() => {
         loadPhotos();
+        loadContent();
         loadChannel();
     }, []);
 
@@ -2421,7 +2448,52 @@ function ContentPanel({ toast }) {
                 <Button variant={contentTab === 'channel' ? 'primary' : 'outline'} size="sm" onClick={() => setContentTab('channel')}>
                     <Radio size={14} /> 📢 Автопостинг и Канал
                 </Button>
+                <Button variant={contentTab === 'catalog' ? 'primary' : 'outline'} size="sm" onClick={() => setContentTab('catalog')}>
+                    Каталог контента ({catalog.length})
+                </Button>
             </div>
+
+            {contentTab === 'catalog' && (
+                <div className="content-photos-layout">
+                    <Card>
+                        <CardHeader eyebrow="Музыка, TikTok и ссылки" title="Добавить материал" description="Посты из CONTENT_CHANNEL_ID появляются здесь автоматически." />
+                        <div className="photo-upload-form">
+                            <label>Тип<select value={contentForm.telegram_type} onChange={event => setContentForm({ ...contentForm, telegram_type: event.target.value })}>{['link', 'audio', 'video', 'animation', 'document', 'photo'].map(type => <option key={type} value={type}>{type}</option>)}</select></label>
+                            <input value={contentForm.telegram_file_id} placeholder="Telegram file_id для нативного медиа" onChange={event => setContentForm({ ...contentForm, telegram_file_id: event.target.value })} />
+                            <input value={contentForm.url} placeholder="URL для link" onChange={event => setContentForm({ ...contentForm, url: event.target.value })} />
+                            <input value={contentForm.description} placeholder="Короткое описание для Леры" onChange={event => setContentForm({ ...contentForm, description: event.target.value })} />
+                            <label><input type="checkbox" checked={contentForm.allow_in_dialogue} onChange={event => setContentForm({ ...contentForm, allow_in_dialogue: event.target.checked })} /> В диалоге</label>
+                            <label><input type="checkbox" checked={contentForm.allow_initiative} onChange={event => setContentForm({ ...contentForm, allow_initiative: event.target.checked })} /> В инициативе</label>
+                            <Button onClick={addContent}>Добавить</Button>
+                        </div>
+                    </Card>
+                    <Card>
+                        <CardHeader eyebrow="Каталог" title="Доступные материалы" description="Описание определяет, сможет ли Лера естественно связать материал с ответом." />
+                        <div className="photos-card-grid">
+                            {catalog.length ? catalog.map(item => (
+                                <div className="photo-card" key={item.id}>
+                                    <div className="photo-card-header"><Badge variant={item.enabled ? 'green' : 'muted'}>{item.telegram_type}</Badge><span>#{item.id}</span></div>
+                                    <div className="photo-card-body">
+                                        <input defaultValue={item.description} onBlur={event => updateContent(item, { description: event.target.value })} />
+                                        <span className="photo-file-id">{item.url || item.telegram_file_id}</span>
+                                        <label><input type="checkbox" checked={item.enabled} onChange={event => updateContent(item, { enabled: event.target.checked })} /> Включён</label>
+                                        <label><input type="checkbox" checked={item.allow_in_dialogue} onChange={event => updateContent(item, { allow_in_dialogue: event.target.checked })} /> В диалоге</label>
+                                        <label><input type="checkbox" checked={item.allow_initiative} onChange={event => updateContent(item, { allow_initiative: event.target.checked })} /> В инициативе</label>
+                                    </div>
+                                    <div className="photo-card-actions">
+                                        <Button variant="outline" onClick={() => run(() => api(`/api/admin/content/${item.id}/test`, { method: 'POST', body: '{}' }), 'Отправлено админу')}>Тест себе</Button>
+                                        <ConfirmAction title="Удалить материал?" description="История прежних отправок сохранится." confirmText="Удалить" variant="danger" onConfirm={() => run(() => api(`/api/admin/content/${item.id}`, { method: 'DELETE' }), 'Контент удалён').then(loadContent)}>Удалить</ConfirmAction>
+                                    </div>
+                                </div>
+                            )) : <div className="empty-state">Материалов пока нет.</div>}
+                        </div>
+                    </Card>
+                    <Card>
+                        <CardHeader eyebrow="Журнал" title="Последние отправки" description="Тестовые отправки сюда не попадают и лимиты не расходуют." />
+                        <div className="activity-list">{contentSent.length ? contentSent.map(row => <div className="activity-row" key={row.id}><strong>user {row.user_id}</strong><span>{row.telegram_type || 'content'} · {row.description || row.content || 'без описания'}</span><time>{formatDate(row.occurred_at)}</time></div>) : <div className="empty-state">Отправок пока нет.</div>}</div>
+                    </Card>
+                </div>
+            )}
 
             {contentTab === 'photos' && (
                 <div className="content-photos-layout">

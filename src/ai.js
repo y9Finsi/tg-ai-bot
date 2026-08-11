@@ -4,7 +4,8 @@ import {
     getActiveAiProvider, getUserMemories, getMemorySettings,
     getLeraPhotoCandidates, getSentPhotos, recordPhotoSent,
     getRecentConversationEvents, formatConversationEvent, getRecentSimulationReflections,
-    savePromptLog, applyUserRelationshipEvent
+    savePromptLog, applyUserRelationshipEvent, getInitiativeDailyCounts,
+    getActiveDialogueEvents, getContentCandidates
 } from './database.js';
 import { getRoutedSystemPrompt } from './prompts.js';
 import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX, IMAGE_STYLES } from './constants/intents.js';
@@ -216,7 +217,7 @@ async function generatePhotoForPrompt(userId, user, imagePrompt, preselectedPhot
 
 // --- 3. ПАЙПЛАЙН AI ДВИЖКА ---
 
-async function buildMessagePayload(user, userId, { userText, isInitiative, routingMode = 'CASUAL', initiativeReason = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null }) {
+async function buildMessagePayload(user, userId, { userText, isInitiative, routingMode = 'CASUAL', initiativeReason = null, initiativeKind = null, contentCandidates = [], batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null }) {
     const productionRoutingSettings = await getRoutingSettings();
     const productionIntentConfig = getModeIntentConfig(routingMode, productionRoutingSettings);
     const [baseSystemPromptText, conversationEvents, memories] = await Promise.all([
@@ -284,7 +285,21 @@ async function buildMessagePayload(user, userId, { userText, isInitiative, routi
     }
 
     if (isInitiative) {
-        modeInstruction = `\n\n[ИНИЦИАТИВА]: Напиши 1 короткую, живую фразу первой. Причина инициативы: ${initiativeReason || 'пользователь не писал больше 24 часов'}. Не раскрывай приватные данные других пользователей. При желании прикрепи тег [IMAGE: подробный промпт на английском].`;
+        const initiativeRules = initiativeKind === 'ignore_1'
+            ? 'Пользователь оборвал разговор, хотя ты ждала ответа. Коротко и естественно подколоти его за игнор, без медиа.'
+            : initiativeKind === 'ignore_2'
+                ? 'Пользователь продолжает игнорировать. Напиши заметно более раздражённо и резко, но одной естественной репликой, без медиа.'
+                : initiativeKind === 'content_4h'
+                    ? 'Ты сама решила поделиться чем-то из того, что смотришь или слушаешь. Обязательно сделай естественную подводку и скажи, что сейчас скинешь.'
+                    : 'Естественно продолжи незакрытую тему прошлого диалога. Не начинай новую случайную тему.';
+        modeInstruction = `\n\n[ИНИЦИАТИВА ${initiativeKind || 'open'}]: ${initiativeRules}\nПричина: ${initiativeReason || 'естественное продолжение разговора'}. Не раскрывай приватные данные других пользователей.`;
+    }
+
+    if (contentCandidates.length > 0) {
+        const catalog = contentCandidates.map(item =>
+            `- [CONTENT: ${item.id}] ${item.telegram_type}: ${item.description || 'без описания'}`
+        ).join('\n');
+        modeInstruction += `\n\n[ДОСТУПНЫЙ КОНТЕНТ]\n${catalog}\nТы можешь выбрать максимум один материал, только если он естественно связан с твоим ответом. Тогда сначала напиши живую подводку лесенкой, включая что сейчас скинешь, и добавь выбранный тег [CONTENT: id] строго в конце. Контент придёт следующим отдельным сообщением без подписи. Если ничего не подходит, не добавляй тег. Не кидай материал рядом с несвязанным ответом.`;
     }
 
     const lastLeraText = [...priorEvents].reverse().find(event => event.role === 'lera' && event.content)?.content || '';
@@ -351,9 +366,17 @@ async function buildMessagePayload(user, userId, { userText, isInitiative, routi
     };
 }
 
-async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingRecommendationPost = null, preselectedPhoto = null) {
+async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingRecommendationPost = null, preselectedPhoto = null, contentCandidates = []) {
     let workingText = rawText || '';
     let imagePrompt = null;
+    let contentId = null;
+
+    const contentMatch = workingText.match(/\[CONTENT:\s*(\d+)\s*\]/i);
+    if (contentMatch) {
+        const selectedId = Number(contentMatch[1]);
+        if (contentCandidates.some(item => Number(item.id) === selectedId)) contentId = selectedId;
+        workingText = workingText.replace(/\[CONTENT:\s*\d+\s*\]/gi, '').trim();
+    }
 
     const fullMatch = workingText.match(/\[IMAGE:([\s\S]*?)\]/i);
     if (fullMatch) {
@@ -392,7 +415,8 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         photo: photoSendPayload,
         photoCaption,
         recommendationPost: existingRecommendationPost,
-        showBuyButton
+        showBuyButton,
+        contentId
     };
 }
 
@@ -407,7 +431,7 @@ async function recordAiTransaction(userId, usage) {
 
 // --- 4. ДЕКЛАРАТИВНЫЙ ЕДИНЫЙ ДВИЖОК ---
 
-async function runAiEngine(userId, { userText = null, isInitiative = false, routingMode = 'CASUAL', classifierResult = null, initiativeReason = null, commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null } = {}) {
+async function runAiEngine(userId, { userText = null, isInitiative = false, routingMode = 'CASUAL', classifierResult = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null } = {}) {
     const user = await getUser(userId);
     if (!user) return null;
 
@@ -415,7 +439,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     const {
         messages, isPhotoRequest, recommendationPost, preselectedPhoto, lastLeraText,
         recentReplyTexts, memories, leraState, systemPrompt, radiantContext
-    } = await buildMessagePayload(user, userId, { userText, isInitiative, routingMode, initiativeReason, batchId, eventIds, preMessageGapSeconds, firstMessageAt });
+    } = await buildMessagePayload(user, userId, { userText, isInitiative, routingMode, initiativeReason, initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds, firstMessageAt });
     const routingSettings = await getRoutingSettings();
     const generationParams = getModeGenerationParams(routingMode, routingSettings);
 
@@ -466,7 +490,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     }
 
     // 3. Чистка текста и генерация/выборка фото
-    let { text, photo, photoCaption, recommendationPost: finalRecPost, showBuyButton } = await processLlmOutput(userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto);
+    let { text, photo, photoCaption, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates);
     const generationTrace = [{
         step: 'first',
         response: text,
@@ -574,8 +598,8 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         model = retry.model || model;
         providerName = retry.providerName || providerName;
         latencyMs = retry.latencyMs || latencyMs;
-        ({ text, photo, photoCaption, recommendationPost: finalRecPost, showBuyButton } = await processLlmOutput(
-            userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto
+        ({ text, photo, photoCaption, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(
+            userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates
         ));
         generationTrace.push({
             step: 'retry',
@@ -707,6 +731,9 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         photo,
         recommendationPost: finalRecPost,
         showBuyButton,
+        contentId,
+        initiativeKind,
+        anchorEventId,
         debugInfo: {
             state_snapshot: leraState,
             memory_used: (memories && memories.length > 0) ? memories.map(m => m.fact || m) : "Память пока пуста (в БД PostgreSQL для этого юзера еще нет фактов)",
@@ -785,11 +812,25 @@ export async function generateResponse(userId, text, envelope = {}) {
         classifierResult = { mode: 'CASUAL', error: routingError.message };
     }
 
+    let contentCandidates = [];
+    if (routingMode === 'CASUAL' && !isPhoto) {
+        const [counts, dialogue] = await Promise.all([
+            getInitiativeDailyCounts(userId).catch(() => ({ content: 3 })),
+            getActiveDialogueEvents(userId).catch(() => [])
+        ]);
+        const dialogueHasContent = Number(envelope.preMessageGapSeconds || 0) <= 3600
+            && dialogue.some(event => event.event_type === 'CONTENT');
+        if (counts.content < 3 && !dialogueHasContent) {
+            contentCandidates = await getContentCandidates(userId, 'dialogue', 4).catch(() => []);
+        }
+    }
+
     return await runAiEngine(userId, {
         userText: text,
         isInitiative: false,
         routingMode,
         classifierResult,
+        contentCandidates,
         commandGate: command.isCommand ? command : null,
         batchId: envelope.batchId,
         eventIds: envelope.eventIds || [],
@@ -798,10 +839,13 @@ export async function generateResponse(userId, text, envelope = {}) {
     });
 }
 
-export async function generateAiInitiativeResponse(userId, reason = null) {
+export async function generateAiInitiativeResponse(userId, reason = null, options = {}) {
     return await runAiEngine(userId, {
         isInitiative: true,
         routingMode: 'CASUAL',
-        initiativeReason: reason
+        initiativeReason: reason,
+        initiativeKind: options.initiativeKind || 'open',
+        anchorEventId: options.anchorEventId || null,
+        contentCandidates: options.contentCandidates || []
     });
 }

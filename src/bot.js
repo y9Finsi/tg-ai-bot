@@ -7,10 +7,10 @@ import {
     getSetting, setSetting, logPayment, addFreeRequests,
     setBlockStatus, adminSetTextBalance, adminSetImageBalance,
     getUsersTotal, getUsersPage, grantPackage, updateUserMeta,
-    processPlategaPayment, updateLastActive, setStoreOpened, getUsersForRetargeting24h, mark24hPromoSent, getUsersForRetargetingStore, markStorePromoSent,
-    createPromocode, activatePromocode, getPaymentHistory, getPendingCriticalGlobalEvents, markGlobalEventInitiativeSent,
+    processPlategaPayment, updateLastActive, setStoreOpened, getUsersForRetargetingStore, markStorePromoSent,
+    createPromocode, activatePromocode, getPaymentHistory,
     getAllPromocodes, getPromocodeById, togglePromoStatus, togglePromoNewUsersOnly, deletePromocode, updatePromoField, getUsersForBonusNotify, markBonusNotified,
-    addLeraPhoto, appendConversationEvent, updateConversationEventStatus, getActiveMute,
+    addLeraPhoto, addLeraContent, appendConversationEvent, updateConversationEventStatus,
     reserveFreeRequest, reserveImageRequest, refundReservedRequest
 } from './database.js';
 import { createPlategaInvoice, checkPlategaInvoice } from './platega.js';
@@ -23,12 +23,14 @@ import { promptTemplates } from './prompts.js';
 import { setupHelp } from './handlers/help.js';
 import { setupProfile } from './handlers/profile.js';
 import { setupAi } from './handlers/ai_menu.js';
-import { generateAiInitiativeResponse, PHOTO_INTENT_REGEX } from './ai.js';
+import { PHOTO_INTENT_REGEX } from './ai.js';
 import { SimulationWorker } from './workers/simulation_worker.js';
 import { StateRepository } from './db/state_repository.js';
 import { MemorySummarizer } from './memory/summarizer.js';
 import { initDatabaseTables } from './database.js';
 import { initChannelPoster, stopChannelPoster } from './channel_poster.js';
+import { extractContentFromChannelPost } from './content_service.js';
+import { enqueuePersonalInitiatives } from './initiative_service.js';
 
 const requiredEnvs = ['BOT_TOKEN', 'ADMIN_ID', 'OPENROUTER_API_KEY', 'DATABASE_URL'];
 for (const envName of requiredEnvs) {
@@ -1170,10 +1172,20 @@ bot.on('channel_post', async (ctx) => {
         console.log(`[ФОТО КАНАЛ СОБЫТИЕ] Получен пост из канала ID: ${post.chat.id}`);
 
         const targetChannelId = process.env.PHOTO_CHANNEL_ID;
-        if (targetChannelId && String(post.chat.id) !== String(targetChannelId)) {
-            console.log(`[ФОТО КАНАЛ ИГНОР] Пост из канала ${post.chat.id} пропущен (ожидается PHOTO_CHANNEL_ID=${targetChannelId})`);
+        const contentChannelId = process.env.CONTENT_CHANNEL_ID;
+
+        if (contentChannelId && String(post.chat.id) === String(contentChannelId)) {
+            const content = extractContentFromChannelPost(post);
+            if (!content) {
+                console.log(`[КОНТЕНТ КАНАЛ ИГНОР] В посте ${post.message_id} нет поддерживаемого медиа или URL entity`);
+                return;
+            }
+            const saved = await addLeraContent(content);
+            console.log(`[КОНТЕНТ КАНАЛ УСПЕХ] Добавлен ${saved.telegram_type}, content_id=${saved.id}`);
             return;
         }
+
+        if (!targetChannelId || String(post.chat.id) !== String(targetChannelId)) return;
 
         if (post.photo && post.photo.length > 0) {
             const photo = post.photo[post.photo.length - 1];
@@ -1574,66 +1586,9 @@ bot.on('text', async (ctx) => {
 function startAutoFunnels() {
     setInterval(async () => {
         try {
-            // 1. Критическое глобальное событие: инициатива только его источнику.
-            const criticalEvents = await getPendingCriticalGlobalEvents(10);
-            for (const event of criticalEvents) {
-                try {
-                    const uid = Number(event.source_user_id);
-                    const globalState = await StateRepository.getState().catch(() => null);
-                    const queue = await StateRepository.getQueue().catch(() => []);
-                    const activeTask = queue[0] || null;
-                    if (!uid || !globalState || activeTask?.status === 'IN_PROGRESS') continue;
-                    const reason = `произошло важное событие в общей жизни Леры: ${event.payload?.title || event.event_type}`;
-                    const response = await generateAiInitiativeResponse(uid, reason);
-                    const text = response?.text || 'эй, тут такое произошло, я первая решила тебе написать';
-                    if (response?.photo) await bot.telegram.sendPhoto(uid, response.photo, { caption: text, parse_mode: 'Markdown' });
-                    else await bot.telegram.sendMessage(uid, text, { parse_mode: 'Markdown' });
-                    await appendConversationEvent({ userId: uid, eventType: 'INITIATIVE', role: 'lera', content: text, occurredAt: new Date(), metadata: { reason: 'critical_global_event', event_id: event.id }, status: 'COMPLETED' });
-                    await markGlobalEventInitiativeSent(event.id);
-                } catch (error) {
-                    console.warn('[INITIATIVE] critical event skipped:', error.message);
-                }
-            }
+            await enqueuePersonalInitiatives(aiQueue);
 
-            // 2. "Скучаю" (24 часа) - Динамическая ИИ-инициатива от Леры
-            const inactive24h = await getUsersForRetargeting24h();
-            for (const uid of inactive24h) {
-                try {
-                    const globalState = await StateRepository.getState().catch(() => null);
-                    const queue = await StateRepository.getQueue().catch(() => []);
-                    const activeTask = queue[0] || null;
-                    const mute = await getActiveMute(uid).catch(() => null);
-                    if (mute || Number(globalState?.needs?.fatigue || 0) >= 80 || activeTask?.status === 'IN_PROGRESS') {
-                        continue;
-                    }
-                    const aiInitiative = await generateAiInitiativeResponse(uid);
-                    if (aiInitiative && aiInitiative.text) {
-                        if (aiInitiative.photo) {
-                            let captionText = aiInitiative.text;
-                            if (captionText.length > 1024) captionText = captionText.substring(0, 1020) + "...";
-                            await bot.telegram.sendPhoto(uid, aiInitiative.photo, { caption: captionText, parse_mode: 'Markdown' });
-                        } else {
-                            await bot.telegram.sendMessage(uid, aiInitiative.text, { parse_mode: 'Markdown' });
-                        }
-                    } else {
-                        const fallbackMsg = "🤫 Я приготовила для тебя кое-что особенное, но ты почему-то молчишь... Возвращайся в диалог!";
-                        await bot.telegram.sendMessage(uid, fallbackMsg);
-                    }
-                    await appendConversationEvent({
-                        userId: uid,
-                        eventType: 'INITIATIVE',
-                        role: 'lera',
-                        content: aiInitiative?.text || "🤫 Я приготовила для тебя кое-что особенное, но ты почему-то молчишь... Возвращайся в диалог!",
-                        occurredAt: new Date(),
-                        metadata: { reason: 'inactive_24h', has_photo: Boolean(aiInitiative?.photo) },
-                        status: 'COMPLETED'
-                    });
-                    await mark24hPromoSent(uid);
-                    await new Promise(r => setTimeout(r, 100));
-                } catch (e) { /* Игнор отписки */ }
-            }
-
-            // 3. Брошенная корзина (Магазин открыт > 2ч назад)
+            // Брошенная корзина (Магазин открыт > 2ч назад)
             const cartAbandoners = await getUsersForRetargetingStore();
             for (const uid of cartAbandoners) {
                 try {

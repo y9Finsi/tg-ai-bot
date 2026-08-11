@@ -267,6 +267,64 @@ function buildClassifierMessages(history = [], userText = '', classifierPrompt =
     ];
 }
 
+const INITIATIVE_STATE_PROMPT = `Ты определяешь, можно ли Лере снова написать после последней реплики.
+Верни строго одно слово: IGNORED, OPEN или CLOSED.
+
+IGNORED — последняя реплика Леры явно ждала ответа или реакции, но пользователь исчез.
+OPEN — пользователь не обязан отвечать, но тему естественно продолжить ещё одной репликой.
+CLOSED — разговор естественно завершён или новое сообщение будет навязчивым.
+
+Не объясняй решение и не возвращай JSON.`;
+
+function normalizeInitiativeState(rawText) {
+    const value = String(rawText || '').toUpperCase().replace(/[^A-Z]+/g, ' ').trim();
+    return value.split(/\s+/).find(item => ['IGNORED', 'OPEN', 'CLOSED'].includes(item)) || 'CLOSED';
+}
+
+export async function classifyInitiativeState({ userId = 0, history = [], trace = true } = {}) {
+    const settings = await getRoutingSettings();
+    const recent = history
+        .filter(item => item?.content)
+        .slice(-10)
+        .map(item => `${item.role === 'assistant' || item.role === 'lera' ? 'Лера' : 'Пользователь'}: ${item.content}`)
+        .join('\n');
+    const messages = [
+        { role: 'system', content: INITIATIVE_STATE_PROMPT },
+        { role: 'user', content: `Текущий диалог:\n${recent || 'нет сообщений'}` }
+    ];
+    const providers = await getClassifierProviders(settings);
+    try {
+        const result = await requestLlmCompletion(
+            { roleplay_mode: 'initiative-state', max_tokens: 3 },
+            messages,
+            false,
+            async () => {
+                const provider = providers[0] || await getActiveAiProvider();
+                if (!provider) throw new Error('Нет настроенных провайдеров классификатора');
+                return {
+                    client: getCachedOpenAIClient(provider.base_url, provider.api_key, provider.timeout_ms || settings.classifierTimeoutMs),
+                    model: settings.classifierModel || provider.model_name
+                };
+            },
+            {
+                trace,
+                userId,
+                kind: 'INITIATIVE_STATE_CLASSIFIER',
+                mode: 'ROUTER',
+                userText: '',
+                temperature: 0,
+                maxTokens: 3,
+                timeoutMs: settings.classifierTimeoutMs,
+                providers,
+                modelOverride: settings.classifierModel || null
+            }
+        );
+        return { state: normalizeInitiativeState(result.rawText), rawText: result.rawText || '', usage: result.usage || {} };
+    } catch (error) {
+        return { state: 'CLOSED', rawText: '', error: error.message };
+    }
+}
+
 export async function classifyIntent({ userId = 0, userText = '', history = [], trace = true } = {}) {
     const settings = await getRoutingSettings();
     if (!settings.enabled) {
