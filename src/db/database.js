@@ -94,6 +94,7 @@ export async function initDatabaseTables() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
+        await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_history_cleared_at TIMESTAMPTZ');
 
         const userColumns = [
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(100);",
@@ -624,6 +625,11 @@ export async function getRecentConversationEvents(userId, limit = 20) {
         `SELECT * FROM (
             SELECT * FROM conversation_events
             WHERE user_id = $1 AND status <> 'FAILED'
+              AND occurred_at > COALESCE((
+                    SELECT chat_history_cleared_at
+                    FROM users
+                    WHERE telegram_id = $1
+                ), '-infinity'::timestamptz)
             ORDER BY occurred_at DESC, id DESC LIMIT $2
          ) events
          ORDER BY occurred_at ASC, id ASC`,
@@ -860,8 +866,22 @@ export function formatConversationEvent(event) {
 }
 
 export async function clearConversationEvents(userId) {
-    const result = await query('DELETE FROM conversation_events WHERE user_id = $1', [userId]);
+    const result = await query(
+        `WITH reset_user AS (
+            UPDATE users SET chat_history_cleared_at = NOW() WHERE telegram_id = $1
+         )
+         DELETE FROM conversation_events WHERE user_id = $1`,
+        [userId]
+    );
     return result.rowCount;
+}
+
+export async function getChatHistoryClearedAt(userId) {
+    const result = await query(
+        'SELECT chat_history_cleared_at FROM users WHERE telegram_id = $1',
+        [userId]
+    );
+    return result.rows[0]?.chat_history_cleared_at || null;
 }
 
 export async function getActiveMute(userId) {
@@ -2000,6 +2020,7 @@ export async function getAllRecentConversationEvents(limit = 50) {
 }
 
 export async function clearAllChatHistory() {
+    await query('UPDATE users SET chat_history_cleared_at = NOW()');
     const resEvents = await query('DELETE FROM conversation_events');
     return resEvents.rowCount || 0;
 }

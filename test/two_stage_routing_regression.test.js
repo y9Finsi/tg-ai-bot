@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { evaluateLeraReply, getQualityFallback, requiresReplyRetry } from '../src/ai/response_quality.js';
 import { ContextBuilder } from '../src/ai/context_builder.js';
-import { normalizeIntent } from '../src/ai/intent_router.js';
+import { normalizeIntent, isExplicitJokeRequest } from '../src/ai/intent_router.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -92,6 +92,12 @@ test('intent router accepts Cyrillic lookalikes in an intent label', () => {
     assert.equal(normalizeIntent('EROТIC'), 'EROTIC');
 });
 
+test('JOKE requires an explicit joke request in the current user message', () => {
+    assert.equal(isExplicitJokeRequest('расскажи анекдот'), true);
+    assert.equal(isExplicitJokeRequest('ну другое тогда чтонибудь'), false);
+    assert.equal(isExplicitJokeRequest('давай'), false);
+});
+
 test('an empty reply after media parsing is retried instead of falling back immediately', () => {
     const quality = evaluateLeraReply('', 'ну другое тогда чтонибудь', null, { mode: 'JOKE' });
 
@@ -104,4 +110,30 @@ test('production media instruction forbids tag-only or unrelated image responses
 
     assert.match(engine, /Не присылай несвязанное фото сама по себе/);
     assert.match(engine, /никогда не отвечай одним тегом \[IMAGE/);
+});
+
+test('a valid media-only reply is not rejected after the IMAGE tag is parsed', () => {
+    const engine = fs.readFileSync(path.join(root, 'src', 'ai.js'), 'utf8');
+
+    assert.match(engine, /const isMediaOnlyReply = Boolean\(photo\) && !text/);
+    assert.match(engine, /Boolean\(userText\) && !isMediaOnlyReply/);
+    assert.match(engine, /!\(photo && !text\) && !finalQuality\.passed/);
+});
+
+test('a photo is recorded only after Telegram accepts it', () => {
+    const engine = fs.readFileSync(path.join(root, 'src', 'ai.js'), 'utf8');
+    const queue = fs.readFileSync(path.join(root, 'src', 'queue.js'), 'utf8');
+
+    assert.doesNotMatch(engine, /recordPhotoSent/);
+    assert.match(queue, /await bot\.telegram\.sendPhoto\(chatId, response\.photo\);[\s\S]{0,300}recordPhotoSent\(userId, response\.photoRecordId\)/);
+});
+
+test('clearing history invalidates stale queued responses and excludes older events', () => {
+    const db = fs.readFileSync(path.join(root, 'src', 'db', 'database.js'), 'utf8');
+    const queue = fs.readFileSync(path.join(root, 'src', 'queue.js'), 'utf8');
+
+    assert.match(db, /chat_history_cleared_at TIMESTAMPTZ/);
+    assert.match(db, /occurred_at > COALESCE\(\(/);
+    assert.match(queue, /historyClearedAtBeforeGeneration/);
+    assert.match(queue, /historyClearedAtAfterGeneration/);
 });

@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import {
     getUser, addApiCost,
     getActiveAiProvider, getUserMemories, getMemorySettings,
-    getLeraPhotoCandidates, getSentPhotos, recordPhotoSent,
+    getLeraPhotoCandidates, getSentPhotos,
     getRecentConversationEvents, formatConversationEvent, getRecentSimulationReflections,
     savePromptLog, applyUserRelationshipEvent, getInitiativeDailyCounts,
     getActiveDialogueEvents, getContentCandidates
@@ -195,20 +195,14 @@ ${photoOptionsText}
     return null;
 }
 
-async function generatePhotoForPrompt(userId, user, imagePrompt, preselectedPhoto = null) {
+async function generatePhotoForPrompt(user, imagePrompt, preselectedPhoto = null) {
     if (preselectedPhoto) {
-        if (user && preselectedPhoto.id) {
-            await recordPhotoSent(user, preselectedPhoto.id || preselectedPhoto.file_id);
-        }
         return preselectedPhoto;
     }
 
     // Исключительно подбираем готовое фото Леры из базы данных
     const dbPhoto = await getFreeLocalPhotoStream(user, imagePrompt);
     if (dbPhoto) {
-        if (user && dbPhoto.id) {
-            await recordPhotoSent(user, dbPhoto.id || dbPhoto.file_id);
-        }
         return dbPhoto;
     }
 
@@ -394,18 +388,20 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
     }
 
     let photoSendPayload = null;
+    let photoRecordId = null;
     let photoCaption = null;
     let showBuyButton = false;
     let finalAiText = cleanResponseText(workingText);
 
     if (imagePrompt) {
-        const photoObj = await generatePhotoForPrompt(userId, user, imagePrompt, preselectedPhoto);
+        const photoObj = await generatePhotoForPrompt(user, imagePrompt, preselectedPhoto);
 
         if (photoObj) {
             if (typeof photoObj === 'string') {
                 photoSendPayload = photoObj;
             } else if (photoObj && photoObj.file_id) {
                 photoSendPayload = photoObj.file_id;
+                photoRecordId = photoObj.id || photoObj.file_id;
                 photoCaption = photoObj.caption;
             } else if (photoObj && photoObj.source) {
                 photoSendPayload = photoObj;
@@ -416,6 +412,7 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
     return {
         text: finalAiText,
         photo: photoSendPayload,
+        photoRecordId,
         photoCaption,
         recommendationPost: existingRecommendationPost,
         showBuyButton,
@@ -493,7 +490,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     }
 
     // 3. Чистка текста и генерация/выборка фото
-    let { text, photo, photoCaption, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates);
+    let { text, photo, photoRecordId, photoCaption, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates);
     const generationTrace = [{
         step: 'first',
         response: text,
@@ -505,7 +502,10 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     }];
     const judgeConversation = messages.slice();
     const judgeSettings = routingSettings;
-    const shouldJudge = !isInitiative && Boolean(userText);
+    // A valid media-only reply has no prose for the judge to evaluate. It must
+    // reach Telegram instead of being rejected solely because the IMAGE tag was removed.
+    const isMediaOnlyReply = Boolean(photo) && !text;
+    const shouldJudge = !isInitiative && Boolean(userText) && !isMediaOnlyReply;
     let judgeResult = shouldJudge
         ? await judgeLeraReply({
             userId,
@@ -600,7 +600,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         model = retry.model || model;
         providerName = retry.providerName || providerName;
         latencyMs = retry.latencyMs || latencyMs;
-        ({ text, photo, photoCaption, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(
+        ({ text, photo, photoRecordId, photoCaption, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(
             userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates
         ));
         generationTrace.push({
@@ -614,7 +614,8 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
             latencyMs,
             usage: retry.usage || {}
         });
-        if (shouldJudge && judgeSettings.judgeMode !== 'OFF') {
+        const isRetryMediaOnlyReply = Boolean(photo) && !text;
+        if (shouldJudge && !isRetryMediaOnlyReply && judgeSettings.judgeMode !== 'OFF') {
             const retryJudge = await judgeLeraReply({
                 userId,
                 mode: routingMode,
@@ -656,7 +657,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         mode: routingMode,
         recentReplies: recentReplyTexts
     });
-    if (!isInitiative && userText && !finalQuality.passed) {
+    if (!isInitiative && userText && !(photo && !text) && !finalQuality.passed) {
         text = getQualityFallback(routingMode);
         photo = null;
         photoCaption = null;
@@ -731,6 +732,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     return {
         text: text || "",
         photo,
+        photoRecordId,
         recommendationPost: finalRecPost,
         showBuyButton,
         contentId,

@@ -15,7 +15,7 @@ export const DEFAULT_ROUTING_SETTINGS = {
     enabled: true,
     classifierProviderId: '',
     classifierModel: '',
-    classifierPrompt: 'Ты классификатор стиля ответа Леры. Проанализируй последние сообщения и новую реплику. Верни строго одно слово: CASUAL, EROTIC или JOKE.\n\nCASUAL — обычный разговор, флирт, бытовые вопросы, инициатива и вопросы про жизнь Леры.\nEROTIC — контекстный интимный или горячий диалог, включая продолжение уже начатой сцены.\nJOKE — просьба о шутке, мем, анекдот или ирония. Режим действует на один ответ.\n\nНе объясняй решение и не возвращай JSON.',
+    classifierPrompt: 'Ты классификатор стиля ответа Леры. Проанализируй последние сообщения и новую реплику. Верни строго одно слово: CASUAL, EROTIC или JOKE.\n\nCASUAL — обычный разговор, флирт, бытовые вопросы, инициатива и вопросы про жизнь Леры.\nEROTIC — контекстный интимный или горячий диалог, включая продолжение уже начатой сцены.\nJOKE — только явная просьба в НОВОЙ реплике пользователя о шутке, меме, анекдоте или иронии. Прошлая шутка Леры не делает следующий ответ JOKE: режим действует ровно на один ответ. Не выбирай JOKE для неоднозначного продолжения; если продолжается эротический контекст, выбирай EROTIC.\n\nНе объясняй решение и не возвращай JSON.',
     classifierTimeoutMs: 7000,
     classifierMaxTokens: 3,
     casualTemperature: 0.68,
@@ -277,13 +277,17 @@ function buildClassifierMessages(history = [], userText = '', classifierPrompt =
     return [
         {
             role: 'system',
-            content: classifierPrompt
+            content: `${classifierPrompt}\n\nЖЁСТКОЕ ПРАВИЛО: JOKE допустим только когда текущая новая реплика пользователя прямо просит шутку, мем, анекдот или иронию. История сама по себе никогда не является причиной выбрать JOKE.`
         },
         {
             role: 'user',
             content: `Последние сообщения:\n${recent || 'нет'}\n\nНовая реплика:\n${String(userText || '').slice(0, 2000)}`
         }
     ];
+}
+
+export function isExplicitJokeRequest(userText = '') {
+    return /(?:пошути|шутк[ауие]|анекдот|мем(?:чик)?|прикол|смешн(?:ое|ую)|ироничн|порофли)/iu.test(String(userText));
 }
 
 const INITIATIVE_STATE_PROMPT = `Ты определяешь, можно ли Лере снова написать после последней реплики.
@@ -378,9 +382,14 @@ export async function classifyIntent({ userId = 0, userText = '', history = [], 
                 modelOverride: settings.classifierModel || null
             }
         );
+        const normalizedMode = normalizeIntent(result.rawText);
+        const mode = normalizedMode === 'JOKE' && !isExplicitJokeRequest(userText)
+            ? 'CASUAL'
+            : normalizedMode;
         return {
-            mode: normalizeIntent(result.rawText),
+            mode,
             rawText: result.rawText || '',
+            jokeGuarded: normalizedMode === 'JOKE' && mode !== 'JOKE',
             usage: result.usage || {},
             model: result.model,
             providerName: result.providerName,

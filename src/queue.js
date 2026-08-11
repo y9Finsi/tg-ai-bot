@@ -3,7 +3,7 @@ import { generateResponse, generateAiInitiativeResponse } from './ai.js';
 import {
     decrementFreeRequest, appendConversationEvent, updateConversationEventStatus, refundReservedRequest,
     getUser, getActiveMute, getCompletedEvent, getLatestMeaningfulEvent, getInitiativeDailyCounts,
-    hasInitiativeStage, getLeraContent, wasContentSent
+    hasInitiativeStage, getLeraContent, wasContentSent, recordPhotoSent, getChatHistoryClearedAt
 } from './database.js';
 import { splitResponseMessages } from './utils/response_text.js';
 import { sendCatalogContent } from './content_service.js';
@@ -195,6 +195,7 @@ async function processInitiativeJob(bot, job) {
 
 async function processAiJob(bot, job) {
         const { userId, text, chatId, shouldDecrement, reservedResource = null, tempMsgId, eventIds = [], batchId = null, firstMessageAt = null, preMessageGapSeconds = null } = job.data;
+        const historyClearedAtBeforeGeneration = await getChatHistoryClearedAt(userId);
         let reservationRefunded = false;
         const refundReservation = async () => {
             if (!reservedResource || reservationRefunded) return;
@@ -225,6 +226,12 @@ async function processAiJob(bot, job) {
         };
         try {
             response = await generateResponse(userId, text, { batchId, eventIds, firstMessageAt, preMessageGapSeconds });
+            const historyClearedAtAfterGeneration = await getChatHistoryClearedAt(userId);
+            if (String(historyClearedAtBeforeGeneration || '') !== String(historyClearedAtAfterGeneration || '')) {
+                await refundReservation();
+                if (tempMsgId) await bot.telegram.deleteMessage(chatId, tempMsgId).catch(() => {});
+                return;
+            }
 
             if (!response) {
                 const attempts = Number(job.opts?.attempts || 1);
@@ -278,6 +285,10 @@ async function processAiJob(bot, job) {
 
                     // Отдельное второе сообщение — сама картинка (без подписи)
                     await bot.telegram.sendPhoto(chatId, response.photo);
+                    if (response.photoRecordId) {
+                        await recordPhotoSent(userId, response.photoRecordId)
+                            .catch(error => console.error(`[PHOTO HISTORY ERROR] user ${userId}:`, error.message));
+                    }
                     await saveLeraEvent('', 'PHOTO', { file_id: response.photo });
                 } catch (imgError) {
                     await refundReservation();
