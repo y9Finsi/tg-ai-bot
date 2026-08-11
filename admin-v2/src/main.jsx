@@ -2815,7 +2815,7 @@ function SystemPanel({ readOnly, setReadOnly, toast }) {
             <Card className="diagnostics-broadcast-card">
                 <CardHeader eyebrow="Диагностика" title="Диагностика и Рассылка" description="Проверка работы БД, Redis, Воркера и управление очередью рассылок." />
                 <div className="diagnostic-grid">
-                    {[['DB', diagnostics?.db?.ok], ['Redis', diagnostics?.redis?.ok], ['Worker', diagnostics?.worker?.running]].map(([label, ok]) => (
+                    {[['DB', diagnostics?.db?.ok], ['Redis', diagnostics?.redis?.ok], ['Worker', diagnostics?.worker?.timerActive]].map(([label, ok]) => (
                         <div className="diagnostic-cell" key={label}><span>{label}</span><strong>{ok === undefined ? '—' : ok ? 'OK' : 'Ошибка'}</strong></div>
                     ))}
                 </div>
