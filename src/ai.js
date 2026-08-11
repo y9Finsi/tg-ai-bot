@@ -815,7 +815,8 @@ export async function generateResponse(userId, text, envelope = {}) {
     }
 
     let contentCandidates = [];
-    if (routingMode === 'CASUAL' && !isPhoto) {
+    const isPhotoRequest = PHOTO_INTENT_REGEX.test(text);
+    if (routingMode === 'CASUAL' && !isPhotoRequest) {
         const [counts, dialogue] = await Promise.all([
             getInitiativeDailyCounts(userId).catch(() => ({ content: 3 })),
             getActiveDialogueEvents(userId).catch(() => [])
