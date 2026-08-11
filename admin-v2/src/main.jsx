@@ -824,8 +824,8 @@ function PromptAssemblyMap({ channelForm, onChannelChange }) {
     }
     useEffect(() => { loadDayContext(); }, []);
     const blocks = channel ? [
-        ['01', 'Образ Леры', channelForm.inheritLeraPrompt !== false ? '7 модулей из «Настроек LLM» подключены' : 'Отключён для канала', 'inherit'],
-        ['02', 'Контекст дня', channelForm.includeDayContext !== false ? 'Факты, состояние, погода и планы на сейчас' : 'Отключён для канала', 'day'],
+        ['01', 'Публичный Образ Леры', channelForm.publicProfileEnabled === false ? 'Отключён для канала' : 'Голос, публичный образ и ограничения из единого профиля', 'public-profile'],
+        ['02', 'Факты дня · Контекст дня отключён', channelForm.publicFactsEnabled ? 'Передаются только факты, добавленные редактором' : 'Не используются: только настроение и наблюдения', 'public-facts'],
         ['03', 'Правила канала', 'Тема, последние посты и блоки ниже', 'channel']
     ] : [
         ['01', 'Постоянная личность', '7 редактируемых модулей ниже', 'base'],
@@ -836,20 +836,20 @@ function PromptAssemblyMap({ channelForm, onChannelChange }) {
         <div className="prompt-assembly-head"><div><span className="eyebrow">Как собирается запрос</span><strong>{channel ? 'Публичный prompt канала' : 'Prompt личного ответа'}</strong></div><Badge variant="blue">{channel ? 'перед генерацией' : 'при каждом сообщении'}</Badge></div>
         <div className="prompt-assembly-flow">
             {blocks.map(([number, title, text, kind], index) => <React.Fragment key={title}>
-                <div className={cn('prompt-source-card', `prompt-source-${kind}`, channel && kind === 'inherit' && channelForm.inheritLeraPrompt === false && 'is-disabled', channel && kind === 'day' && channelForm.includeDayContext === false && 'is-disabled')}>
+                <div className={cn('prompt-source-card', `prompt-source-${kind}`)}>
                     <span>{number}</span><div><strong>{title}</strong><small>{text}</small></div>
-                    {channel && kind === 'inherit' && <label className="prompt-source-toggle"><input type="checkbox" checked={channelForm.inheritLeraPrompt !== false} onChange={event => onChannelChange({ ...channelForm, inheritLeraPrompt: event.target.checked })} /> Наследовать</label>}
-                    {channel && kind === 'day' && <label className="prompt-source-toggle"><input type="checkbox" checked={channelForm.includeDayContext !== false} onChange={event => onChannelChange({ ...channelForm, includeDayContext: event.target.checked })} /> Добавлять</label>}
+                    {channel && kind === 'public-profile' && <label className="prompt-source-toggle"><input type="checkbox" checked={channelForm.publicProfileEnabled !== false} onChange={event => onChannelChange({ ...channelForm, publicProfileEnabled: event.target.checked })} /> Использовать</label>}
+                    {channel && kind === 'public-facts' && <label className="prompt-source-toggle"><input type="checkbox" checked={Boolean(channelForm.publicFactsEnabled)} onChange={event => onChannelChange({ ...channelForm, publicFactsEnabled: event.target.checked })} /> Использовать</label>}
                 </div>
                 {index < blocks.length - 1 && <ArrowRight className="prompt-flow-arrow" size={16} />}
             </React.Fragment>)}
         </div>
-        <div className={cn('prompt-day-preview', channel && channelForm.includeDayContext === false && 'is-disabled')}>
+        <div className={cn('prompt-day-preview', channel && 'is-disabled')}>
             <div><span className="eyebrow">Аналитика дня</span><strong>{contextLoading ? 'Собираю аналитику…' : 'Что модель реально получает о дне Леры'}</strong></div>
             <Button size="sm" variant="outline" onClick={loadDayContext} disabled={contextLoading}><RefreshCw size={14} /> Обновить</Button>
-            <pre>{contextLoading ? 'Загружаю подтверждённые факты, состояние, причины и планы…' : dayContext || 'Аналитика дня пока недоступна.'}</pre>
+            <pre>{channel ? 'Для канала day context отключён. Используются только факты, которые редактор явно добавил в «Публичные факты дня».' : (contextLoading ? 'Загружаю подтверждённые факты, состояние, причины и планы…' : dayContext || 'Аналитика дня пока недоступна.')}</pre>
         </div>
-        <p className="prompt-assembly-note">{channel ? 'В канал передаются общий образ Леры и её контекст дня. Память и история личных переписок не передаются: они принадлежат конкретному собеседнику, а не публичному каналу.' : 'Здесь показан общий контекст дня. Личная память и история добавляются только для того пользователя, который написал Лере; точный состав отправленного запроса доступен во вкладке «Диалоги».'}</p>
+        <p className="prompt-assembly-note">{channel ? 'В канал передаётся только публичная проекция единого профиля, явные публичные факты и история постов канала. Старые inheritLeraPrompt/includeDayContext сохранены только для совместимости API и принудительно выключены. Личная память, переписки, relationship-контекст и observer digest не передаются.' : 'Здесь показан общий контекст дня. Личная память и история добавляются только для того пользователя, который написал Лере; точный состав отправленного запроса доступен во вкладке «Диалоги».'}</p>
     </div>;
 }
 
@@ -1127,7 +1127,8 @@ function ProductionPromptModulesPanel({ toast }) {
     useEffect(() => { load(); }, []);
     return <details className="studio-section studio-live-prompts">
         <summary>Живые тексты Production <span>{loading ? 'загрузка…' : '5 модулей'}</span></summary>
-        <div className="studio-section-copy">Эти правила участвуют и в Sandbox, и в новых Production-ответах. Они сохраняются сразу; публикация CASUAL / EROTIC / JOKE их не включает.</div>
+            <div className="studio-section-copy">Эти правила участвуют и в Sandbox, и в новых Production-ответах. Они сохраняются сразу; публикация CASUAL / EROTIC / JOKE их не включает.</div>
+        <LeraProfileEditor toast={toast} />
         <div className="context-template-editor">
             <div className="routing-section-head">
                 <div><span className="eyebrow">Контекст собеседника и дня</span><strong>Шаблон динамического контекста</strong></div>
@@ -1142,6 +1143,101 @@ function ProductionPromptModulesPanel({ toast }) {
         <PromptModulesEditor modules={routingModules} onChange={setRoutingModules} definitions={ROUTING_PROMPT_MODULES} />
         <div className="studio-live-prompts-actions"><Button size="sm" variant="primary" onClick={save} disabled={loading || saving}>{saving ? 'Сохраняю…' : 'Сохранить тексты'}</Button></div>
         <details className="prompt-expert-details"><summary>Экспертный JSON модулей routing</summary><pre>{JSON.stringify(routingModules, null, 2)}</pre></details>
+    </details>;
+}
+
+const PROFILE_FIELDS = [
+    ['age_bio', 'Возраст и биография'],
+    ['character', 'Характер'],
+    ['speech', 'Речь и словарь'],
+    ['flirt', 'Допустимый флирт'],
+    ['public_image', 'Публичный образ'],
+    ['forbidden', 'Запрещённые темы и детали'],
+    ['facts', 'Правила фактов и выдумок']
+];
+
+function LeraProfileEditor({ toast }) {
+    const [profile, setProfile] = useState(null);
+    const [draft, setDraft] = useState({});
+    const [versions, setVersions] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [selectedVersion, setSelectedVersion] = useState(null);
+    const [preview, setPreview] = useState(null);
+    async function load() {
+        setLoading(true);
+        try {
+            const result = await api('/api/admin/lera-profile');
+            setProfile(result.profile);
+            setDraft(result.profile?.profile || {});
+            setVersions(result.versions || []);
+        } catch (error) {
+            toast?.(error.message, 'error');
+        } finally {
+            setLoading(false);
+        }
+    }
+    async function save() {
+        setSaving(true);
+        try {
+            const result = await api('/api/admin/lera-profile', { method: 'POST', body: JSON.stringify({ profile: draft }) });
+            setProfile(result.profile);
+            setDraft(result.profile.profile);
+            setVersions(await api('/api/admin/lera-profile').then(value => value.versions || []));
+            toast?.('Профиль Леры сохранён');
+        } catch (error) {
+            toast?.(error.message, 'error');
+        } finally {
+            setSaving(false);
+        }
+    }
+    async function rollback(id) {
+        try {
+            const result = await api(`/api/admin/lera-profile/rollback/${id}`, { method: 'POST', body: JSON.stringify({}) });
+            setProfile(result.profile);
+            setDraft(result.profile.profile);
+            await load();
+            toast?.('Профиль откатан в новую версию');
+        } catch (error) {
+            toast?.(error.message, 'error');
+        }
+    }
+    async function previewProjection(surface) {
+        try {
+            const result = await api('/api/admin/lera-profile/preview', {
+                method: 'POST',
+                body: JSON.stringify({ profile: draft, surface })
+            });
+            setPreview(result);
+        } catch (error) {
+            toast?.(error.message, 'error');
+        }
+    }
+    useEffect(() => { load(); }, []);
+    return <details className="studio-section studio-live-prompts" open>
+        <summary>Канонический профиль Леры <span>{loading ? 'загрузка…' : `v${profile?.version || '—'}`}</span></summary>
+        <div className="studio-section-copy">Единый редактор для чата, инициативы и канала. Каждое сохранение создаёт новую версию; старые prompt-модули остаются только как режимные правила.</div>
+        <div className="context-template-editor">
+            {PROFILE_FIELDS.map(([key, label]) => <label className="classifier-prompt-editor" key={key}>{label}<textarea value={draft[key] || ''} disabled={loading || saving} onChange={event => setDraft({ ...draft, [key]: event.target.value })} /></label>)}
+        </div>
+        <div className="studio-live-prompts-actions"><Button size="sm" variant="primary" onClick={save} disabled={loading || saving}>{saving ? 'Сохраняю…' : 'Сохранить новую версию'}</Button><Button size="sm" variant="outline" onClick={() => previewProjection('CHAT')}>Preview чата</Button><Button size="sm" variant="outline" onClick={() => previewProjection('INITIATIVE')}>Preview инициативы</Button><Button size="sm" variant="outline" onClick={() => previewProjection('CHANNEL')}>Preview канала</Button></div>
+        {preview && <details className="prompt-expert-details" open><summary>Preview: {preview.surface} · v{preview.version}</summary><pre>{preview.projection}</pre></details>}
+        <details className="prompt-expert-details"><summary>Версии, diff и откат</summary>
+            <div className="studio-section-copy">Активная версия: v{profile?.version || '—'} · автор: {profile?.author || '—'} · изменена: {formatDate(profile?.updated_at || profile?.created_at)}</div>
+            {versions.map(version => <div className="studio-provider-line" key={version.id}>
+                <span>v{version.id} · {version.author} · {formatDate(version.created_at)} {version.is_active ? '· активна' : ''}</span>
+                <span className="inline-controls">
+                    <Button size="sm" variant="outline" onClick={() => setSelectedVersion(selectedVersion === version.id ? null : version.id)}>Diff</Button>
+                    {!version.is_active && <Button size="sm" variant="outline" onClick={() => rollback(version.id)}>Откатить</Button>}
+                </span>
+                {selectedVersion === version.id && <div className="context-template-editor">{PROFILE_FIELDS.map(([key, label]) => {
+                    const current = profile?.profile?.[key] || '';
+                    const selected = version.profile?.[key] || '';
+                    const changed = current !== selected;
+                    return <div className="classifier-prompt-editor" key={key}><strong>{label} {changed ? '· изменено' : '· без изменений'}</strong>{changed && <><small>Текущая версия</small><pre>{current || '—'}</pre><small>v{version.id}</small><pre>{selected || '—'}</pre></>}</div>;
+                })}</div>}
+            </div>)}
+        </details>
     </details>;
 }
 function studioConfigsFromState(state) {
@@ -2157,9 +2253,20 @@ function ContentPanel({ toast }) {
         topics: ['thoughts', 'life'],
         topicWeights: { thoughts: 50, flirt: 0, life: 50, jokes: 0, questions: 0 },
         mediaMode: 'none',
-        temperature: 1.1,
-        inheritLeraPrompt: true,
-        includeDayContext: true,
+        temperature: 0.7,
+        inheritLeraPrompt: false,
+        includeDayContext: false,
+        publicProfileEnabled: true,
+        publicFactsEnabled: false,
+        publicFacts: [],
+        creativity: 0.6,
+        ctaStyle: '',
+        judgeMode: 'ENFORCE',
+        judgeProviderId: '',
+        judgeModel: '',
+        judgePrompt: '',
+        judgeTimeoutMs: 5000,
+        judgeMaxTokens: 120,
         promptBlocks: { voice: '', context: '', restrictions: '', cta: '' }
     });
     const [channelDraft, setChannelDraft] = useState(null);
@@ -2278,9 +2385,20 @@ function ContentPanel({ toast }) {
             topics: selectedTopics,
             topicWeights: tw,
             mediaMode: result.settings?.media_mode || 'none',
-            temperature: result.settings?.temperature ?? 1.1,
-            inheritLeraPrompt: result.settings?.inherit_lera_prompt !== false,
-            includeDayContext: result.settings?.include_day_context !== false,
+            temperature: result.settings?.temperature ?? 0.7,
+            inheritLeraPrompt: false,
+            includeDayContext: false,
+            publicProfileEnabled: result.settings?.public_profile_enabled !== false,
+            publicFactsEnabled: Boolean(result.settings?.public_facts_enabled),
+            publicFacts: result.settings?.public_facts || [],
+            creativity: result.settings?.creativity ?? 0.6,
+            ctaStyle: result.settings?.cta_style || '',
+            judgeMode: result.settings?.judge_mode || 'ENFORCE',
+            judgeProviderId: result.settings?.judge_provider_id || '',
+            judgeModel: result.settings?.judge_model || '',
+            judgePrompt: result.settings?.judge_prompt || '',
+            judgeTimeoutMs: result.settings?.judge_timeout_ms || 5000,
+            judgeMaxTokens: result.settings?.judge_max_tokens || 120,
             promptBlocks: { voice: '', context: '', restrictions: '', cta: '', ...(result.settings?.prompt_blocks || {}) }
         });
     }
@@ -2502,7 +2620,13 @@ function ContentPanel({ toast }) {
                             <label>Сообщений<select value={channelForm.messagesCount} onChange={event => setChannelForm({ ...channelForm, messagesCount: event.target.value })}><option value="1">1 сообщение</option><option value="2">2 сообщения</option><option value="3">3 сообщения</option><option value="random">Случайно (1-3)</option></select></label>
                             <label>Медиа-режим<select value={channelForm.mediaMode} onChange={event => setChannelForm({ ...channelForm, mediaMode: event.target.value })}><option value="none">Без фото (только текст)</option><option value="db_photo">Прикреплять фото из базы</option></select></label>
                             <label>Температура <span>{Number(channelForm.temperature).toFixed(1)}</span><input type="range" min="0" max="2" step="0.1" value={channelForm.temperature} onChange={event => setChannelForm({ ...channelForm, temperature: Number(event.target.value) })} /></label>
+                            <label>Креативность <span>{Number(channelForm.creativity).toFixed(1)}</span><input type="range" min="0" max="1" step="0.1" value={channelForm.creativity} onChange={event => setChannelForm({ ...channelForm, creativity: Number(event.target.value) })} /></label>
+                            <label>Проверка канала<select value={channelForm.judgeMode} onChange={event => setChannelForm({ ...channelForm, judgeMode: event.target.value })}><option value="OFF">OFF</option><option value="OBSERVE">OBSERVE</option><option value="ENFORCE">ENFORCE</option></select></label>
+                            <label>Judge model<input value={channelForm.judgeModel} placeholder="модель по умолчанию" onChange={event => setChannelForm({ ...channelForm, judgeModel: event.target.value })} /></label>
+                            <label>CTA style<input value={channelForm.ctaStyle} placeholder="например: закончить вопросом" onChange={event => setChannelForm({ ...channelForm, ctaStyle: event.target.value })} /></label>
                             <label className="channel-enabled"><input type="checkbox" checked={channelForm.isEnabled} onChange={event => setChannelForm({ ...channelForm, isEnabled: event.target.checked })} /> Автопостинг активен</label>
+                            <label className="channel-enabled"><input type="checkbox" checked={channelForm.publicProfileEnabled} onChange={event => setChannelForm({ ...channelForm, publicProfileEnabled: event.target.checked })} /> Публичная проекция профиля</label>
+                            <label className="channel-enabled"><input type="checkbox" checked={channelForm.publicFactsEnabled} onChange={event => setChannelForm({ ...channelForm, publicFactsEnabled: event.target.checked })} /> Использовать публичные факты</label>
                         </div>
                         <div className="channel-action-bar">
                             <span>Настройки сохраняются отдельно от публикации.</span>
@@ -2512,6 +2636,14 @@ function ContentPanel({ toast }) {
                             <Radio size={17} />
                             <strong>{channel?.settings?.is_enabled ? 'Автопостинг ВКЛЮЧЁН' : 'Автопостинг ВЫКЛЮЧЕН'}</strong>
                             <span>Интервал: {channel?.settings?.frequency_hours || 4} ч · Канал: {channel?.channelUrl || '—'}</span>
+                        </div>
+                        <div className="context-template-editor" style={{ marginTop: 16 }}>
+                            <label className="classifier-prompt-editor">Подтверждённые публичные факты дня
+                                <textarea value={(channelForm.publicFacts || []).map(fact => typeof fact === 'string' ? fact : JSON.stringify(fact)).join('\n')} placeholder="Один факт на строку: событие, дата, разрешённая формулировка, источник" onChange={event => setChannelForm({ ...channelForm, publicFacts: event.target.value.split('\n').map(value => value.trim()).filter(Boolean) })} />
+                            </label>
+                            <label className="classifier-prompt-editor">Правила channel-judge
+                                <textarea value={channelForm.judgePrompt} placeholder="Проверяй публичный пост строго..." onChange={event => setChannelForm({ ...channelForm, judgePrompt: event.target.value })} />
+                            </label>
                         </div>
                     </Card>
 
@@ -2593,6 +2725,10 @@ function ContentPanel({ toast }) {
                                     <p className="channel-post-text">{post.text}</p>
                                     <details className="post-provenance">
                                         <summary>Почему этот пост</summary>
+                                        <span>Статус: {post.status || (post.provenance?.published ? 'PUBLISHED' : 'DRAFT')}</span>
+                                        <span>Judge: {post.provenance?.judge_verdict || 'не запускался'}{post.provenance?.judge_code ? ` · ${post.provenance.judge_code}` : ''}</span>
+                                        <span>Попытка: {post.provenance?.attempt || 1}</span>
+                                        <span>Профиль: v{post.provenance?.profile_version || '—'}</span>
                                         <span>Тема: {TOPIC_LABELS[post.provenance?.topic || post.topic] || post.topic || 'Пост'}</span>
                                         <span>Температура: {post.provenance?.temperature ?? 'по умолчанию'}</span>
                                         <span>Блоки: {post.provenance?.prompt_blocks?.join(', ') || 'стандартный голос Леры'}</span>

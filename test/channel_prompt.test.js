@@ -17,17 +17,18 @@ test('channel prompt can safely inherit Lera and the current day without user-pr
     assert.match(prompt, /ПОСЛЕДНИЕ ПУБЛИЧНЫЕ ПОСТЫ/);
 });
 
-test('channel prompt visibly includes inherited personality and a current-day layer when supplied', () => {
+test('channel prompt ignores legacy full personality and day-context arguments', () => {
     const prompt = buildChannelSystemPrompt({
         topic: 'life',
         leraPrompt: 'Лера говорит живо и иронично.',
         dayContext: '[ЧТО ТОЧНО ПРОИЗОШЛО]\n- Лера закончила работу.'
     });
 
-    assert.match(prompt, /ОБЩИЙ ОБРАЗ ЛЕРЫ/);
-    assert.match(prompt, /Лера говорит живо и иронично/);
-    assert.match(prompt, /КОНТЕКСТ ТЕКУЩЕГО ДНЯ/);
-    assert.match(prompt, /Лера закончила работу/);
+    assert.doesNotMatch(prompt, /ОБЩИЙ ОБРАЗ ЛЕРЫ/);
+    assert.doesNotMatch(prompt, /Лера говорит живо и иронично/);
+    assert.doesNotMatch(prompt, /КОНТЕКСТ ТЕКУЩЕГО ДНЯ/);
+    assert.doesNotMatch(prompt, /Лера закончила работу/);
+    assert.match(prompt, /ПУБЛИЧНЫЕ ПАРАМЕТРЫ/);
 });
 
 test('channel prompt accepts editor blocks but excludes secret-looking values', () => {

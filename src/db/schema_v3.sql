@@ -240,6 +240,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_memories_digests_period ON user_memories_di
 CREATE TABLE IF NOT EXISTS prompt_logs (
     id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL, kind VARCHAR(32) NOT NULL DEFAULT 'CHAT', mode VARCHAR(32), model VARCHAR(160), provider_name VARCHAR(120), user_text TEXT, system_prompt TEXT, radiant_context TEXT, messages JSONB NOT NULL DEFAULT '[]'::jsonb, state_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb, memory_used JSONB NOT NULL DEFAULT '[]'::jsonb, raw_response TEXT, parsed_response TEXT, usage JSONB NOT NULL DEFAULT '{}'::jsonb, generation_trace JSONB NOT NULL DEFAULT '[]'::jsonb, prompt_tokens INT NOT NULL DEFAULT 0, completion_tokens INT NOT NULL DEFAULT 0, total_tokens INT NOT NULL DEFAULT 0, cost_usd NUMERIC(16,8) NOT NULL DEFAULT 0, command_gate_status VARCHAR(32), command_gate_reason TEXT, latency_ms INT NOT NULL DEFAULT 0, is_photo_request BOOLEAN NOT NULL DEFAULT FALSE, error_text TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS surface VARCHAR(24);
+ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS profile_version BIGINT;
+ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS judge_mode VARCHAR(16);
+ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS judge_verdict VARCHAR(32);
+ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS judge_code VARCHAR(64);
 ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS generation_trace JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS prompt_tokens INT NOT NULL DEFAULT 0;
 ALTER TABLE prompt_logs ADD COLUMN IF NOT EXISTS completion_tokens INT NOT NULL DEFAULT 0;

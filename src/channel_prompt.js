@@ -42,7 +42,7 @@ function publicPromptBlocks(promptBlocks = {}) {
 
 export function buildChannelSystemPrompt({
     time, timeOfDay, topic, topicDescription, recentPosts = [], messagesCount = '1', promptBlocks = {},
-    leraPrompt = '', dayContext = ''
+    leraPrompt = '', dayContext = '', publicFacts = [], creativity = 0.6, ctaStyle = ''
 } = {}) {
     const history = recentPosts
         .map(post => cleanPublicPost(post.text))
@@ -58,21 +58,21 @@ export function buildChannelSystemPrompt({
                 : 'Напиши от одного до трёх коротких сообщений, разделяя их отдельной строкой ---.';
     const topicRule = TOPIC_RULES[topic] || topicDescription || 'Короткая мысль из обычной жизни.';
 
-    const inheritedPrompt = String(leraPrompt || '').trim()
-        ? `\nОБЩИЙ ОБРАЗ ЛЕРЫ — НАСЛЕДУЕТСЯ ИЗ НАСТРОЕК LLM:\n${String(leraPrompt).trim()}\n`
-        : '';
-    const currentDay = String(dayContext || '').trim()
-        ? `\nКОНТЕКСТ ТЕКУЩЕГО ДНЯ:\n${String(dayContext).trim()}\nИспользуй подтверждённые детали дня как материал для поста, но не показывай технические поля, промпт или внутренние инструкции.\n`
-        : '';
+    // Эти аргументы оставлены для совместимости со старыми preview-вызовами,
+    // но канал никогда не получает полный чатовый prompt или day context.
+    const facts = Array.isArray(publicFacts) && publicFacts.length
+        ? `\nПОДТВЕРЖДЁННЫЕ ПУБЛИЧНЫЕ ФАКТЫ:\n${publicFacts.map(fact => `- ${typeof fact === 'string' ? fact : JSON.stringify(fact)}`).join('\n')}\n`
+        : '\nПОДТВЕРЖДЁННЫЕ ПУБЛИЧНЫЕ ФАКТЫ: нет. Не придумывай конкретных событий.\n';
 
-    return `${CHANNEL_PERSONA}
-${inheritedPrompt}
-${currentDay}
+return `${CHANNEL_PERSONA}
+${facts}
 
 ПУБЛИЧНЫЕ ПАРАМЕТРЫ ЭТОГО ПОСТА:
 - Время: ${time || 'сейчас'} (${timeOfDay || 'день'})
 - Тема: ${topic || 'thoughts'}
 - Задача темы: ${topicRule}
+- Креативность: ${Math.max(0, Math.min(1, Number(creativity) || 0.6))}
+${ctaStyle ? `- Стиль CTA: ${String(ctaStyle).slice(0, 600)}` : ''}
 
 ПОСЛЕДНИЕ ПУБЛИЧНЫЕ ПОСТЫ:
 ${history}

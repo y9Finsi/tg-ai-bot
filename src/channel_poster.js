@@ -3,14 +3,15 @@ import {
     saveChannelPostLog,
     getChannelPostHistory,
     getRandomLeraPhoto,
-    getOrderedAiProviders
+    getOrderedAiProviders,
+    getLeraProfile,
+    getLeraProfileProjection
 } from './database.js';
 import { getOpenAIClientAndModel } from './ai.js';
 import { getCachedOpenAIClient, logLlmTrace } from './ai/llm_client.js';
 import { selectWeightedTopic } from './channel_topics.js';
 import { buildChannelSystemPrompt } from './channel_prompt.js';
-import { getLeraPrompts } from './prompts.js';
-import { ContextBuilder } from './ai/context_builder.js';
+import { judgeLeraReply } from './ai/response_judge.js';
 
 const TOPIC_DESCRIPTIONS = {
     thoughts: 'Мысли вслух о жизни, парнях и настроении',
@@ -54,16 +55,18 @@ function safeProvenance({ topic, timeOfDay, messagesCount, settings, model }) {
         time_of_day: timeOfDay,
         messages_count: messagesCount,
         media_mode: settings.media_mode || 'none',
-        temperature: Math.max(0, Math.min(2, Number(settings.temperature ?? 1.1))),
+        temperature: Math.max(0, Math.min(2, Number(settings.temperature ?? 0.7))),
         prompt_blocks: promptBlocks,
-        inherited_lera_prompt: settings.inherit_lera_prompt !== false,
-        current_day_context: settings.include_day_context !== false,
+        profile_version: settings.profile_version || null,
+        public_facts: settings.public_facts || [],
+        inherited_lera_prompt: false,
+        current_day_context: false,
         model: model || null,
         generated_at: new Date().toISOString()
     };
 }
 
-async function requestDraftText({ systemPrompt, topicDescription, temperature }) {
+async function requestDraftText({ systemPrompt, topicDescription, temperature, retryReason = '' }) {
     let providers = [];
     try { providers = await getOrderedAiProviders(); } catch (error) { console.warn('[CHANNEL POSTER] Не удалось загрузить провайдеров:', error.message); }
     if (!providers.length) {
@@ -72,7 +75,7 @@ async function requestDraftText({ systemPrompt, topicDescription, temperature })
     }
     const messages = [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Лера, сделай новый пост в свой канал на тему "${topicDescription}".` }
+        { role: 'user', content: `Лера, сделай новый пост в свой канал на тему "${topicDescription}".${retryReason ? ` Предыдущий вариант отклонён: ${retryReason}. Напиши полностью новый вариант.` : ''}` }
     ];
     for (const provider of providers) {
         try {
@@ -97,30 +100,99 @@ async function requestDraftText({ systemPrompt, topicDescription, temperature })
 
 export async function generateChannelPostDraft(overrideSettings = null) {
     const settings = overrideSettings ? { ...(await getChannelPosterSettings()), ...overrideSettings } : await getChannelPosterSettings();
-    const [recentPosts, leraPromptsData, daySnapshot] = await Promise.all([
+    const [recentPosts, profile] = await Promise.all([
         getChannelPostHistory(5),
-        settings.inherit_lera_prompt === false ? Promise.resolve(null) : getLeraPrompts(),
-        settings.include_day_context === false ? Promise.resolve(null) : ContextBuilder.buildTelegramContextDetailed(null)
+        getLeraProfile()
     ]);
     const time = getFormattedTimeMSK();
     const timeOfDay = getTimeOfDayMSK();
     const topic = selectWeightedTopic(settings);
     const topicDescription = TOPIC_DESCRIPTIONS[topic] || 'Мысли вслух и жизненные заметки';
     const messagesCount = settings.messages_count || '1';
+    const publicFacts = settings.public_facts_enabled ? (settings.public_facts || []) : [];
+    const baseProvenance = safeProvenance({
+        topic, timeOfDay, messagesCount,
+        settings: { ...settings, public_facts: publicFacts, profile_version: profile.version },
+        model: null
+    });
     const systemPrompt = buildChannelSystemPrompt({
         time, timeOfDay, topic, topicDescription, recentPosts, messagesCount, promptBlocks: settings.prompt_blocks,
-        leraPrompt: leraPromptsData?.fullPrompt || '',
-        dayContext: daySnapshot?.text || ''
+        leraPrompt: settings.public_profile_enabled === false ? '' : getLeraProfileProjection(profile.profile, 'CHANNEL'),
+        publicFacts,
+        creativity: settings.creativity,
+        ctaStyle: settings.cta_style
     });
-    const generated = await requestDraftText({ systemPrompt, topicDescription, temperature: settings.temperature });
-    const chunks = splitGeneratedPost(generated.text, messagesCount);
-    const text = chunks.join('\n---\n');
-    return {
+    let generated = await requestDraftText({ systemPrompt, topicDescription, temperature: settings.temperature });
+    let chunks = splitGeneratedPost(generated.text, messagesCount);
+    let text = chunks.join('\n---\n');
+    let judge = await judgeChannelText({ text, topic, publicFacts, recentPosts, profile, settings });
+    let attempt = 1;
+    if (judge.passed === false && settings.judge_mode === 'ENFORCE') {
+        generated = await requestDraftText({
+            systemPrompt,
+            topicDescription,
+            temperature: settings.temperature,
+            retryReason: judge.code || 'CHANNEL_REJECTED'
+        });
+        chunks = splitGeneratedPost(generated.text, messagesCount);
+        text = chunks.join('\n---\n');
+        attempt = 2;
+        judge = await judgeChannelText({ text, topic, publicFacts, recentPosts, profile, settings });
+    }
+    const provenance = {
+        ...baseProvenance,
+        model: generated.model || null,
+        attempt,
+        judge_mode: settings.judge_mode,
+        judge_verdict: judge.verdict || null,
+        judge_code: judge.code || null,
+        judge_model: judge.model || null,
+        judge_provider: judge.providerName || null,
+        judge_latency_ms: judge.latencyMs || 0,
+        published: settings.judge_mode !== 'ENFORCE' || judge.passed !== false
+    };
+    const draft = {
         text,
         chunks,
         topic,
-        provenance: safeProvenance({ topic, timeOfDay, messagesCount, settings, model: generated.model })
+        provenance,
+        judge,
+        status: judge.passed === false && settings.judge_mode === 'ENFORCE' ? 'DRAFT_REJECTED' : 'DRAFT'
     };
+    if (judge.passed === false && settings.judge_mode === 'ENFORCE') {
+        draft.log = await saveChannelPostLog({
+            channel_id: String(settings.channel_id || 'draft'),
+            topic,
+            text,
+            media_mode: settings.media_mode,
+            provenance,
+            status: 'DRAFT_REJECTED'
+        });
+    }
+    return draft;
+}
+
+async function judgeChannelText({ text, topic, publicFacts, recentPosts, profile, settings }) {
+    const judgeSettings = {
+        ...settings,
+        channelJudgeMode: settings.judge_mode,
+        judgeProviderId: settings.judge_provider_id,
+        judgeModel: settings.judge_model,
+        judgePrompt: settings.judge_prompt || 'Проверяй публичный пост строго. Если конкретное событие не подтверждено фактами, отклоняй его.',
+        judgeTimeoutMs: settings.judge_timeout_ms,
+        judgeMaxTokens: settings.judge_max_tokens
+    };
+    return judgeLeraReply({
+        userId: 0,
+        surface: 'CHANNEL',
+        mode: 'CHANNEL',
+        reply: text,
+        topic,
+        publicFacts,
+        recentPublicPosts: recentPosts,
+        leraRules: getLeraProfileProjection(profile.profile, 'CHANNEL'),
+        settings: judgeSettings
+    });
 }
 
 export async function publishChannelDraft(bot, { text, topic, provenance = {} } = {}, overrideSettings = null) {
@@ -130,6 +202,29 @@ export async function publishChannelDraft(bot, { text, topic, provenance = {} } 
     if (!channelId) throw new Error('Юзернейм или ID канала не указан в настройках.');
     const chunks = String(text || '').split(/\n---\n/g).map(chunk => chunk.trim()).filter(Boolean).slice(0, 3);
     if (!chunks.length || chunks.join('').length > 12000) throw new Error('Черновик пустой или слишком длинный.');
+    const profile = await getLeraProfile();
+    const recentPosts = await getChannelPostHistory(5);
+    const publicFacts = settings.public_facts_enabled ? (settings.public_facts || []) : [];
+    const judge = await judgeChannelText({ text: chunks.join('\n---\n'), topic, publicFacts, recentPosts, profile, settings });
+    if (judge.passed === false && settings.judge_mode === 'ENFORCE') {
+        const rejectedProvenance = {
+            ...provenance,
+            judge_mode: settings.judge_mode,
+            judge_verdict: judge.verdict,
+            judge_code: judge.code,
+            attempt: Number(provenance.attempt || 1),
+            published: false
+        };
+        const draftLog = await saveChannelPostLog({
+            channel_id: channelId,
+            topic,
+            text: chunks.join('\n---\n'),
+            media_mode: settings.media_mode,
+            provenance: rejectedProvenance,
+            status: 'DRAFT_REJECTED'
+        });
+        return { success: false, published: false, status: 'DRAFT_REJECTED', reason: judge.code, judge, log: draftLog };
+    }
     let photoToSend = null;
     if (settings.media_mode === 'db_photo') {
         const photo = await getRandomLeraPhoto({ access_level: 'free', time_of_day: getTimeOfDayMSK() });
@@ -146,7 +241,8 @@ export async function publishChannelDraft(bot, { text, topic, provenance = {} } 
     const safeTopic = TOPIC_DESCRIPTIONS[topic] ? topic : 'thoughts';
     const log = await saveChannelPostLog({
         channel_id: channelId, topic: safeTopic, text: chunks.join('\n---\n'), photo_url: photoToSend,
-        media_mode: settings.media_mode, provenance: { ...provenance, topic: safeTopic }, telegram_message_ids: telegramMessageIds
+        media_mode: settings.media_mode, provenance: { ...provenance, topic: safeTopic, judge_verdict: judge.verdict, judge_code: judge.code, published: true }, telegram_message_ids: telegramMessageIds,
+        status: 'PUBLISHED'
     });
     return { success: true, count: chunks.length, text: log.text, channel_id: channelId, log };
 }

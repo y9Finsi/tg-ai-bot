@@ -11,7 +11,13 @@ export const JUDGE_CODES = [
     'STALE_CONTEXT',
     'INVENTED_FACT',
     'BROKEN_LOGIC',
-    'FORMAT'
+    'FORMAT',
+    'CHANNEL_INVENTED_FACT',
+    'CHANNEL_PRIVATE_DETAIL',
+    'CHANNEL_OUT_OF_TOPIC',
+    'CHANNEL_REPETITION',
+    'CHANNEL_FORMAT',
+    'CHANNEL_TECHNICAL_MUSING'
 ];
 
 function compactConversation(messages = []) {
@@ -28,29 +34,43 @@ function compactBlock(value, limit = 5000) {
 
 export function buildJudgeMessages({
     mode = 'CASUAL',
+    surface = 'CHAT',
     messages = [],
     userText = '',
     reply = '',
     judgePrompt = '',
     dayContext = '',
-    leraRules = ''
+    leraRules = '',
+    topic = '',
+    publicFacts = [],
+    recentPublicPosts = []
 } = {}) {
-    const relationshipContract = ' Дополнительно верни relationship_event по последней реплике пользователя: тип NEUTRAL, SUPPORT, COMPLIMENT, AFFECTION, INSULT, DISRESPECT или APOLOGY и intensity 0.0–1.0. Для обычного сообщения NEUTRAL с intensity 0. Не меняй verdict из-за relationship_event. Формат результата: JSON {"verdict":"PASS","relationship_event":{"type":"NEUTRAL","intensity":0}}.';
+    const isChannel = String(surface).toUpperCase() === 'CHANNEL';
+    const relationshipContract = isChannel
+        ? ''
+        : ' Дополнительно верни relationship_event по последней реплике пользователя: тип NEUTRAL, SUPPORT, COMPLIMENT, AFFECTION, INSULT, DISRESPECT или APOLOGY и intensity 0.0–1.0. Для обычного сообщения NEUTRAL с intensity 0. Не меняй verdict из-за relationship_event. Формат результата: JSON {"verdict":"PASS","relationship_event":{"type":"NEUTRAL","intensity":0}}.';
+    const channelContract = isChannel
+        ? `\nТы проверяешь публичный пост. Отклоняй любой конкретный факт, которого нет в подтвержденных публичных фактах. Отклоняй личные переписки, пользователей, встречи, приватные детали, техно-слова и служебные теги. Отклоняй уход от темы, повтор последних постов, бессвязность и неверный формат. Для отказа используй только channel-коды. Если факт не доказан, это отказ, а не PASS.`
+        : '';
     return [
         {
             role: 'system',
-            content: `${judgePrompt || ''}${relationshipContract}`
+            content: `${judgePrompt || ''}${relationshipContract}${channelContract}`
         },
         {
             role: 'user',
             content: [
                 `Режим: ${mode}`,
+                `Поверхность: ${surface}`,
+                isChannel ? `Тема поста: ${topic || 'не указана'}` : '',
+                isChannel ? `Подтверждённые публичные факты:\n${publicFacts.map(fact => `- ${typeof fact === 'string' ? fact : JSON.stringify(fact)}`).join('\n') || 'нет фактов'}` : '',
+                isChannel ? `Последние публичные посты:\n${recentPublicPosts.map((post, index) => `${index + 1}. ${String(post?.text || post).slice(0, 500)}`).join('\n') || 'нет постов'}` : '',
                 `Контекст Леры на сегодня:\n${compactBlock(dayContext) || 'не передан'}`,
                 `Как Лера должна говорить и обязательные правила:\n${compactBlock(leraRules) || 'не переданы'}`,
                 `Диалог:\n${compactConversation(messages) || 'нет предыдущих сообщений'}`,
                 `Последняя реплика пользователя:\n${String(userText || '').slice(0, 1200)}`,
                 `Кандидат-ответ Леры:\n${String(reply || '').slice(0, 1600)}`,
-                'Верни только JSON вида {"verdict":"PASS"} или {"verdict":"REJECT:CODE","relationship_event":{"type":"NEUTRAL|SUPPORT|COMPLIMENT|AFFECTION|INSULT|DISRESPECT|APOLOGY","intensity":0.0}}. Relationship event определяй по последней реплике пользователя, а не по ответу Леры. Для обычного сообщения используй NEUTRAL с intensity 0.'
+                `Верни только JSON вида {"verdict":"PASS"} или {"verdict":"REJECT:CODE"${isChannel ? '' : ',"relationship_event":{"type":"NEUTRAL|SUPPORT|COMPLIMENT|AFFECTION|INSULT|DISRESPECT|APOLOGY","intensity":0.0}}'}.`
             ].join('\n\n')
         }
     ];
@@ -83,26 +103,40 @@ export function parseJudgeVerdict(rawText) {
 export async function judgeLeraReply({
     userId = 0,
     mode = 'CASUAL',
+    surface = 'CHAT',
     messages = [],
     userText = '',
     reply = '',
     dayContext = '',
     leraRules = '',
+    topic = '',
+    publicFacts = [],
+    recentPublicPosts = [],
     settings = {}
 } = {}) {
-    if (!['OBSERVE', 'ENFORCE'].includes(settings.judgeMode)) {
+    const surfaceKey = String(surface || 'CHAT').toUpperCase();
+    const configuredMode = surfaceKey === 'CHANNEL'
+        ? settings.channelJudgeMode || settings.judgeMode
+        : surfaceKey === 'INITIATIVE'
+            ? settings.initiativeJudgeMode || settings.judgeMode
+            : settings.judgeMode;
+    if (!['OBSERVE', 'ENFORCE'].includes(configuredMode)) {
         return { skipped: true, verdict: 'SKIPPED', passed: true, code: null };
     }
 
     const providers = await getJudgeProviders(settings);
     const judgeMessages = buildJudgeMessages({
         mode,
+        surface: surfaceKey,
         messages,
         userText,
         reply,
         judgePrompt: settings.judgePrompt,
         dayContext,
-        leraRules
+        leraRules,
+        topic,
+        publicFacts,
+        recentPublicPosts
     });
 
     try {

@@ -68,7 +68,13 @@ import {
     addLeraContent,
     updateLeraContent,
     deleteLeraContent,
-    getLeraContent
+    getLeraContent,
+    getLeraProfile,
+    getLeraProfileProjection,
+    getLeraProfileVersion,
+    listLeraProfileVersions,
+    saveLeraProfileVersion,
+    rollbackLeraProfileVersion
 } from './database.js';
 import { broadcastQueue } from './broadcast.js';
 import { enqueueTestInitiative } from './queue.js';
@@ -1573,6 +1579,66 @@ export function startAdminServer() {
         }
     });
 
+    app.get('/api/admin/lera-profile', async (req, res) => {
+        try {
+            res.json({ success: true, profile: await getLeraProfile(), versions: await listLeraProfileVersions(50) });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.get('/api/admin/lera-profile/versions/:id', async (req, res) => {
+        try {
+            const version = await getLeraProfileVersion(req.params.id);
+            if (!version) return res.status(404).json({ error: 'Версия профиля не найдена' });
+            res.json({ success: true, version });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/lera-profile', async (req, res) => {
+        try {
+            const saved = await saveLeraProfileVersion(req.body?.profile || {}, {
+                author: req.body?.author || req.user?.username || 'admin',
+                source: 'admin'
+            });
+            res.json({ success: true, profile: await getLeraProfile(), saved });
+        } catch (e) {
+            res.status(400).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/lera-profile/rollback/:id', async (req, res) => {
+        try {
+            const saved = await rollbackLeraProfileVersion(req.params.id, {
+                author: req.body?.author || req.user?.username || 'admin'
+            });
+            if (!saved) return res.status(404).json({ error: 'Версия профиля не найдена' });
+            res.json({ success: true, profile: await getLeraProfile(), saved });
+        } catch (e) {
+            res.status(400).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/lera-profile/preview', async (req, res) => {
+        try {
+            const surface = ['CHAT', 'INITIATIVE', 'CHANNEL'].includes(String(req.body?.surface || '').toUpperCase())
+                ? String(req.body.surface).toUpperCase()
+                : 'CHAT';
+            const active = await getLeraProfile();
+            const profile = req.body?.profile || active.profile;
+            res.json({
+                success: true,
+                surface,
+                version: active.version,
+                projection: getLeraProfileProjection(profile, surface)
+            });
+        } catch (e) {
+            res.status(400).json({ error: e.message });
+        }
+    });
+
     // =========================================================================
     // ADVANCED AI SANDBOX — isolated prompt/model experiments only.
     // No route in this block writes production chat history, memories, world
@@ -1814,7 +1880,7 @@ export function startAdminServer() {
 
     app.post('/api/admin/channel/settings', async (req, res) => {
         try {
-            const { channelId, channelUrl, isEnabled, frequencyHours, topics, topicWeights, messagesCount, mediaMode, promptBlocks, temperature, inheritLeraPrompt, includeDayContext } = req.body;
+            const { channelId, channelUrl, isEnabled, frequencyHours, topics, topicWeights, messagesCount, mediaMode, promptBlocks, temperature, inheritLeraPrompt, includeDayContext, publicProfileEnabled, publicFactsEnabled, publicFacts, creativity, ctaStyle, judgeMode, judgeProviderId, judgeModel, judgePrompt, judgeTimeoutMs, judgeMaxTokens } = req.body;
             const allowedTopics = ['thoughts', 'flirt', 'life', 'jokes', 'questions'];
             const safeTopics = Array.isArray(topics) ? topics.filter(topic => allowedTopics.includes(topic)) : [];
             const activeTopics = safeTopics.length ? safeTopics : ['thoughts'];
@@ -1831,9 +1897,20 @@ export function startAdminServer() {
                 setSetting('channel_messages_count', ['1', '2', '3', 'random'].includes(String(messagesCount)) ? String(messagesCount) : '1'),
                 setSetting('channel_media_mode', ['none', 'db_photo'].includes(mediaMode) ? mediaMode : 'none'),
                 setSetting('channel_prompt_blocks', JSON.stringify(Object.fromEntries(['voice', 'context', 'restrictions', 'cta'].map(key => [key, String(promptBlocks?.[key] || '').trim().slice(0, 1200)])))),
-                setSetting('channel_temperature', String(Math.max(0, Math.min(2, Number(temperature ?? 1.1))))),
-                setSetting('channel_inherit_lera_prompt', inheritLeraPrompt === false ? 'false' : 'true'),
-                setSetting('channel_include_day_context', includeDayContext === false ? 'false' : 'true')
+                setSetting('channel_temperature', String(Math.max(0, Math.min(2, Number(temperature ?? 0.7))))),
+                setSetting('channel_inherit_lera_prompt', 'false'),
+                setSetting('channel_include_day_context', 'false'),
+                setSetting('channel_public_profile_enabled', publicProfileEnabled === false ? 'false' : 'true'),
+                setSetting('channel_public_facts_enabled', publicFactsEnabled ? 'true' : 'false'),
+                setSetting('channel_public_facts', JSON.stringify(Array.isArray(publicFacts) ? publicFacts.slice(0, 50) : [])),
+                setSetting('channel_creativity', String(Math.max(0, Math.min(1, Number(creativity ?? 0.6))))),
+                setSetting('channel_cta_style', String(ctaStyle || '').trim().slice(0, 600)),
+                setSetting('channel_judge_mode', ['OFF', 'OBSERVE', 'ENFORCE'].includes(String(judgeMode || '').toUpperCase()) ? String(judgeMode).toUpperCase() : 'ENFORCE'),
+                setSetting('channel_judge_provider_id', String(judgeProviderId || '')),
+                setSetting('channel_judge_model', String(judgeModel || '').trim().slice(0, 240)),
+                setSetting('channel_judge_prompt', String(judgePrompt || '').trim().slice(0, 12000)),
+                setSetting('channel_judge_timeout_ms', String(Math.max(1000, Math.min(60000, Number(judgeTimeoutMs) || 5000)))),
+                setSetting('channel_judge_max_tokens', String(Math.max(40, Math.min(240, Number(judgeMaxTokens) || 120))))
             ]);
             res.json({ success: true, settings: await getChannelPosterSettings() });
         } catch (e) {
@@ -1872,7 +1949,7 @@ export function startAdminServer() {
     app.post('/api/admin/channel/publish-draft', async (req, res) => {
         try {
             const result = await publishChannelDraft(botInstance, req.body || {});
-            res.json({ success: true, result });
+            res.status(result?.success === false ? 409 : 200).json({ success: result?.success !== false, result });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }

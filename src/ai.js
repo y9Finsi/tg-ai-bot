@@ -5,7 +5,8 @@ import {
     getLeraPhotoCandidates, getSentPhotos,
     getRecentConversationEvents, formatConversationEvent, getRecentSimulationReflections,
     savePromptLog, applyUserRelationshipEvent, getInitiativeDailyCounts,
-    getActiveDialogueEvents, getContentCandidates
+    getActiveDialogueEvents, getContentCandidates,
+    getLeraProfile
 } from './database.js';
 import { getRoutedSystemPrompt } from './prompts.js';
 import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX, IMAGE_STYLES } from './constants/intents.js';
@@ -464,6 +465,11 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
                 latencyMs: classifierResult.latencyMs,
                 usage: classifierResult.usage
             } : null,
+            profileVersion: extra.profileVersion,
+            surface: isInitiative ? 'INITIATIVE' : 'CHAT',
+            judgeMode: extra.judgeMode || (isInitiative ? routingSettings?.initiativeJudgeMode : routingSettings?.judgeMode),
+            judgeVerdict: extra.judgeVerdict || null,
+            judgeCode: extra.judgeCode || null,
             ...extra
         }).catch(() => null);
     };
@@ -500,11 +506,14 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     // A valid media-only reply has no prose for the judge to evaluate. It must
     // reach Telegram instead of being rejected solely because the IMAGE tag was removed.
     const isMediaOnlyReply = Boolean(photo) && !text;
-    const shouldJudge = !isInitiative && Boolean(userText) && !isMediaOnlyReply;
-    let judgeResult = shouldJudge
+    const shouldJudge = !isInitiative && Boolean(userText);
+    const shouldJudgeChat = Boolean(userText) && !isMediaOnlyReply;
+    const shouldJudgeSurface = isInitiative || shouldJudgeChat;
+    let judgeResult = shouldJudgeSurface
         ? await judgeLeraReply({
             userId,
             mode: routingMode,
+            surface: isInitiative ? 'INITIATIVE' : 'CHAT',
             messages: judgeConversation,
             userText,
             reply: text,
@@ -539,12 +548,14 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         recentReplies: recentReplyTexts
     }).violations;
     const needsQualityRetry = !isInitiative && requiresReplyRetry(qualityIssues);
-    const judgeNeedsRetry = !isInitiative && judgeSettings.judgeMode === 'ENFORCE' && judgeResult.passed === false;
-    if (!isInitiative && userText && (
+    const activeJudgeMode = isInitiative ? judgeSettings.initiativeJudgeMode : judgeSettings.judgeMode;
+    const judgeNeedsRetry = activeJudgeMode === 'ENFORCE' && judgeResult.passed === false;
+    let blockedByJudge = false;
+    if ((isInitiative && judgeNeedsRetry) || (!isInitiative && userText && (
         (lastLeraText && (normalizeReply(text) === normalizeReply(lastLeraText) || repeatsGreeting) && !looksLikeGreeting)
         || needsQualityRetry
         || judgeNeedsRetry
-    )) {
+    ))) {
         const retryReason = judgeNeedsRetry
             ? `judge_${judgeResult.code || 'rejected'}`
             : needsQualityRetry
@@ -612,10 +623,11 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
             usage: retry.usage || {}
         });
         const isRetryMediaOnlyReply = Boolean(photo) && !text;
-        if (shouldJudge && !isRetryMediaOnlyReply && judgeSettings.judgeMode !== 'OFF') {
+        if (shouldJudgeSurface && !isRetryMediaOnlyReply && activeJudgeMode !== 'OFF') {
             const retryJudge = await judgeLeraReply({
                 userId,
                 mode: routingMode,
+                surface: isInitiative ? 'INITIATIVE' : 'CHAT',
                 messages: judgeConversation,
                 userText,
                 reply: text,
@@ -636,20 +648,28 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
                 judgeMessages: retryJudge.judgeMessages || null,
                 relationshipEvent: retryJudge.relationshipEvent || null
             });
-            if (judgeSettings.judgeMode === 'ENFORCE' && retryJudge.passed === false) {
-                text = getQualityFallback(routingMode, {
-                    userText,
-                    recentReplies: recentReplyTexts,
-                    lastAssistantText: lastLeraText
-                });
-                photo = null;
-                photoCaption = null;
-                finalRecPost = null;
-                generationTrace.push({
-                    step: 'fallback',
-                    reason: [`judge_${retryJudge.code || 'rejected'}`],
-                    response: text
-                });
+            if (activeJudgeMode === 'ENFORCE' && retryJudge.passed === false) {
+                if (isInitiative) {
+                    blockedByJudge = true;
+                    text = '';
+                    photo = null;
+                    photoCaption = null;
+                    finalRecPost = null;
+                } else {
+                    text = getQualityFallback(routingMode, {
+                        userText,
+                        recentReplies: recentReplyTexts,
+                        lastAssistantText: lastLeraText
+                    });
+                    photo = null;
+                    photoCaption = null;
+                    finalRecPost = null;
+                    generationTrace.push({
+                        step: 'fallback',
+                        reason: [`judge_${retryJudge.code || 'rejected'}`],
+                        response: text
+                    });
+                }
             }
         }
         // The final log below must contain the exact retry messages, not the first call.
@@ -716,6 +736,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         .filter(item => item.step === 'fallback')
         .flatMap(item => Array.isArray(item.reason) ? item.reason : [item.reason])
         .filter(Boolean);
+    const activeProfile = await getLeraProfile().catch(() => null);
     writePromptLog({
         kind: (!isInitiative && messages[1]?.content?.startsWith('СТОП: предыдущий ответ')) ? 'RETRY' : (isInitiative ? 'INITIATIVE' : 'CHAT'),
         model,
@@ -725,7 +746,12 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
         parsedResponse: text,
         usage,
         generationTrace,
-        errorText: fallbackReasons.length
+        profileVersion: activeProfile?.version || null,
+        judgeVerdict: generationTrace.filter(item => item.step === 'judge').at(-1)?.verdict || null,
+        judgeCode: generationTrace.filter(item => item.step === 'judge').at(-1)?.code || null,
+        errorText: blockedByJudge
+            ? `Blocked by judge: ${generationTrace.filter(item => item.step === 'judge').at(-1)?.code || 'REJECTED'}`
+            : fallbackReasons.length
             ? `Fallback: ${fallbackReasons.join(', ')}`
             : null
     });
@@ -738,6 +764,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     }
     return {
         text: text || "",
+        blockedByJudge,
         photo,
         photoRecordId,
         recommendationPost: finalRecPost,

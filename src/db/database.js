@@ -191,9 +191,24 @@ export async function initDatabaseTables() {
                 text TEXT NOT NULL,
                 photo_url TEXT,
                 media_mode VARCHAR(32),
+                status VARCHAR(24) NOT NULL DEFAULT 'PUBLISHED',
                 provenance JSONB NOT NULL DEFAULT '{}'::jsonb,
                 telegram_message_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS lera_profile_versions (
+                id BIGSERIAL PRIMARY KEY,
+                profile JSONB NOT NULL DEFAULT '{}'::jsonb,
+                author VARCHAR(160) NOT NULL DEFAULT 'system',
+                source VARCHAR(32) NOT NULL DEFAULT 'admin',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS lera_profile_current (
+                id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                version_id BIGINT NOT NULL REFERENCES lera_profile_versions(id),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
             CREATE TABLE IF NOT EXISTS sent_recommendations (
@@ -398,6 +413,7 @@ export async function initDatabaseTables() {
             ALTER TABLE lera_photos ADD COLUMN IF NOT EXISTS outfit_tags TEXT[] NOT NULL DEFAULT '{}';
             ALTER TABLE channel_post_logs ADD COLUMN IF NOT EXISTS provenance JSONB NOT NULL DEFAULT '{}'::jsonb;
             ALTER TABLE channel_post_logs ADD COLUMN IF NOT EXISTS telegram_message_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+            ALTER TABLE channel_post_logs ADD COLUMN IF NOT EXISTS status VARCHAR(24) NOT NULL DEFAULT 'PUBLISHED';
         `);
 
         // Runs after CREATE TABLE payments above, otherwise these ALTERs fail on a fresh DB.
@@ -1529,7 +1545,7 @@ export async function getOrderedAiProviders() {
 }
 
 export async function getChannelPosterSettings() {
-    const keys = ['channel_poster_enabled', 'channel_id', 'lera_channel_id', 'channel_frequency_hours', 'channel_topics', 'channel_topic_weights', 'channel_messages_count', 'channel_media_mode', 'channel_prompt_blocks', 'channel_temperature', 'channel_inherit_lera_prompt', 'channel_include_day_context'];
+    const keys = ['channel_poster_enabled', 'channel_id', 'lera_channel_id', 'channel_frequency_hours', 'channel_topics', 'channel_topic_weights', 'channel_messages_count', 'channel_media_mode', 'channel_prompt_blocks', 'channel_temperature', 'channel_inherit_lera_prompt', 'channel_include_day_context', 'channel_public_profile_enabled', 'channel_public_facts_enabled', 'channel_public_facts', 'channel_creativity', 'channel_cta_style', 'channel_judge_mode', 'channel_judge_provider_id', 'channel_judge_model', 'channel_judge_prompt', 'channel_judge_timeout_ms', 'channel_judge_max_tokens'];
     const result = await query('SELECT key, value FROM settings WHERE key = ANY($1::text[])', [keys]);
     const values = Object.fromEntries(result.rows.map(row => [row.key, row.value]));
     let topics = ['thoughts', 'life', 'jokes'];
@@ -1548,17 +1564,32 @@ export async function getChannelPosterSettings() {
         messages_count: values.channel_messages_count || '1',
         media_mode: values.channel_media_mode || 'none',
         prompt_blocks,
-        temperature: Math.max(0, Math.min(2, Number(values.channel_temperature ?? 1.1))),
-        inherit_lera_prompt: values.channel_inherit_lera_prompt !== 'false',
-        include_day_context: values.channel_include_day_context !== 'false',
-        last_posted_at: (await query('SELECT created_at FROM channel_post_logs ORDER BY created_at DESC LIMIT 1')).rows[0]?.created_at || null
+        temperature: Math.max(0, Math.min(2, Number(values.channel_temperature ?? 0.7))),
+        inherit_lera_prompt: values.channel_inherit_lera_prompt === 'true',
+        include_day_context: values.channel_include_day_context === 'true',
+        public_facts: (() => {
+            try { return values.channel_public_facts ? JSON.parse(values.channel_public_facts) : []; } catch { return []; }
+        })(),
+        public_profile_enabled: values.channel_public_profile_enabled !== 'false',
+        public_facts_enabled: values.channel_public_facts_enabled === 'true',
+        creativity: Math.max(0, Math.min(1, Number(values.channel_creativity ?? 0.6))),
+        cta_style: values.channel_cta_style || '',
+        judge_mode: ['OFF', 'OBSERVE', 'ENFORCE'].includes(String(values.channel_judge_mode || '').toUpperCase())
+            ? String(values.channel_judge_mode).toUpperCase()
+            : 'ENFORCE',
+        judge_provider_id: values.channel_judge_provider_id || '',
+        judge_model: values.channel_judge_model || '',
+        judge_prompt: values.channel_judge_prompt || '',
+        judge_timeout_ms: Math.max(1000, Math.min(60000, Number(values.channel_judge_timeout_ms || 5000))),
+        judge_max_tokens: Math.max(40, Math.min(240, Number(values.channel_judge_max_tokens || 120))),
+        last_posted_at: (await query(`SELECT created_at FROM channel_post_logs WHERE status = 'PUBLISHED' ORDER BY created_at DESC LIMIT 1`)).rows[0]?.created_at || null
     };
 }
 
-export async function saveChannelPostLog({ channel_id, topic, text, photo_url = null, media_mode = null, provenance = {}, telegram_message_ids = [] }) {
-    const result = await query(`INSERT INTO channel_post_logs (channel_id, topic, text, photo_url, media_mode, provenance, telegram_message_ids)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb) RETURNING *`, [
-        channel_id, topic, text, photo_url, media_mode, JSON.stringify(provenance || {}), JSON.stringify(telegram_message_ids || [])
+export async function saveChannelPostLog({ channel_id, topic, text, photo_url = null, media_mode = null, provenance = {}, telegram_message_ids = [], status = 'PUBLISHED' }) {
+    const result = await query(`INSERT INTO channel_post_logs (channel_id, topic, text, photo_url, media_mode, status, provenance, telegram_message_ids)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb) RETURNING *`, [
+        channel_id, topic, text, photo_url, media_mode, status, JSON.stringify(provenance || {}), JSON.stringify(telegram_message_ids || [])
     ]);
     return result.rows[0];
 }
@@ -1571,6 +1602,127 @@ export async function getChannelPostHistory(limit = 5) {
 export async function deleteChannelPostLog(id) {
     const result = await query('DELETE FROM channel_post_logs WHERE id = $1 RETURNING *', [id]);
     return result.rows[0] || null;
+}
+
+export const DEFAULT_LERA_PROFILE = Object.freeze({
+    age_bio: 'Лере 19 лет. Она из Санкт-Петербурга, учится на 2 курсе СПбГИК и подрабатывает в SMM, хорошо разбирается во frontend и программировании.',
+    character: 'Живая, тёплая, немного рассеянная, иногда вредная и дерзкая. Наблюдательная, с самоиронией.',
+    speech: 'Говорит естественно и коротко: ну, блин, короче, типа, слушай, хз, чето, ща, кароч, жиза, рофл, рил. Без канцелярита и графических эмодзи.',
+    flirt: 'Лёгкий флирт допустим в личном общении и инициативе. В публичном канале — только мягкие общие намёки без адресата.',
+    public_image: 'Публично выглядит как живая петербургская студентка: личные наблюдения, ирония, настроение и вопросы подписчикам.',
+    forbidden: 'Не раскрывать личные переписки, память пользователей, relationship-контекст, координаты, технические идентификаторы, внутренние задачи, приватные детали внешности, квартиры и одежды.',
+    facts: 'Не выдавать выдуманные конкретные события за факты. Если подтверждённого факта нет, использовать обобщённое настроение, наблюдение или вопрос.'
+});
+
+function normalizeLeraProfile(profile = {}) {
+    return Object.fromEntries(Object.keys(DEFAULT_LERA_PROFILE).map(key => [
+        key,
+        String(profile?.[key] ?? DEFAULT_LERA_PROFILE[key]).trim().slice(0, 12000)
+    ]));
+}
+
+async function ensureLeraProfile() {
+    const current = await query('SELECT version_id FROM lera_profile_current WHERE id = 1');
+    if (current.rowCount) return current.rows[0].version_id;
+    const inserted = await query(
+        `INSERT INTO lera_profile_versions (profile, author, source) VALUES ($1::jsonb, $2, $3) RETURNING id`,
+        [JSON.stringify(DEFAULT_LERA_PROFILE), 'system', 'import']
+    );
+    await query(
+        `INSERT INTO lera_profile_current (id, version_id) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET version_id = EXCLUDED.version_id, updated_at = NOW()`,
+        [inserted.rows[0].id]
+    );
+    return inserted.rows[0].id;
+}
+
+export async function getLeraProfile() {
+    const versionId = await ensureLeraProfile();
+    const result = await query(
+        `SELECT v.id, v.profile, v.author, v.source, v.created_at, c.updated_at
+         FROM lera_profile_versions v
+         JOIN lera_profile_current c ON c.version_id = v.id
+         WHERE v.id = $1`,
+        [versionId]
+    );
+    const row = result.rows[0];
+    return {
+        version: row?.id || versionId,
+        profile: normalizeLeraProfile(row?.profile || DEFAULT_LERA_PROFILE),
+        author: row?.author || 'system',
+        source: row?.source || 'import',
+        created_at: row?.created_at || null,
+        updated_at: row?.updated_at || null
+    };
+}
+
+export async function listLeraProfileVersions(limit = 30) {
+    await ensureLeraProfile();
+    const result = await query(
+        `SELECT id, profile, author, source, created_at,
+                (id = (SELECT version_id FROM lera_profile_current WHERE id = 1)) AS is_active
+         FROM lera_profile_versions ORDER BY id DESC LIMIT $1`,
+        [Math.min(100, Math.max(1, Number(limit) || 30))]
+    );
+    return result.rows.map(row => ({ ...row, profile: normalizeLeraProfile(row.profile) }));
+}
+
+export async function getLeraProfileVersion(id) {
+    const result = await query(
+        `SELECT id, profile, author, source, created_at
+         FROM lera_profile_versions WHERE id = $1`,
+        [id]
+    );
+    const row = result.rows[0];
+    return row ? { ...row, profile: normalizeLeraProfile(row.profile) } : null;
+}
+
+export async function saveLeraProfileVersion(profile, { author = 'admin', source = 'admin' } = {}) {
+    const normalized = normalizeLeraProfile(profile);
+    const previous = await getLeraProfile();
+    const inserted = await query(
+        `INSERT INTO lera_profile_versions (profile, author, source) VALUES ($1::jsonb, $2, $3) RETURNING id, created_at`,
+        [JSON.stringify(normalized), String(author || 'admin').slice(0, 160), String(source || 'admin').slice(0, 32)]
+    );
+    await query(
+        `INSERT INTO lera_profile_current (id, version_id) VALUES (1, $1)
+         ON CONFLICT (id) DO UPDATE SET version_id = EXCLUDED.version_id, updated_at = NOW()`,
+        [inserted.rows[0].id]
+    );
+    return {
+        version: inserted.rows[0].id,
+        profile: normalized,
+        previous,
+        author,
+        created_at: inserted.rows[0].created_at
+    };
+}
+
+export async function rollbackLeraProfileVersion(id, { author = 'admin' } = {}) {
+    const version = await getLeraProfileVersion(id);
+    if (!version) return null;
+    return saveLeraProfileVersion(version.profile, { author, source: `rollback:${id}` });
+}
+
+export function getLeraProfileProjection(profile, surface = 'CHAT') {
+    const p = normalizeLeraProfile(profile);
+    const mode = String(surface || 'CHAT').toUpperCase();
+    if (mode === 'CHANNEL') {
+        return [
+            `Публичный образ: ${p.public_image}`,
+            `Голос и речь: ${p.speech}`,
+            `Допустимые темы и флирт: ${p.flirt}`,
+            `Публичные ограничения: ${p.forbidden}`,
+            `Правила фактов: ${p.facts}`
+        ].join('\n');
+    }
+    return [
+        `Канон и биография: ${p.age_bio}`,
+        `Характер: ${p.character}`,
+        `Речь: ${p.speech}`,
+        `Флирт: ${p.flirt}`,
+        `Ограничения: ${p.forbidden}`,
+        `Правила фактов: ${p.facts}`
+    ].join('\n');
 }
 
 export async function getTodayUserChatSummary() {
@@ -2100,16 +2252,22 @@ export async function savePromptLog(entry) {
     try {
         const res = await query(
             `INSERT INTO prompt_logs (
-                user_id, kind, mode, model, provider_name, user_text,
+                user_id, kind, mode, surface, profile_version, judge_mode, judge_verdict, judge_code,
+                model, provider_name, user_text,
                 system_prompt, radiant_context, messages, state_snapshot, memory_used,
                 raw_response, parsed_response, usage, generation_trace, prompt_tokens, completion_tokens, total_tokens, cost_usd,
                 command_gate_status, command_gate_reason, latency_ms, is_photo_request, error_text
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12,$13,$14::jsonb,$15::jsonb,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15::jsonb,$16::jsonb,$17,$18,$19::jsonb,$20::jsonb,$21,$22,$23,$24,$25,$26,$27,$28,$29)
              RETURNING id, created_at`,
             [
                 entry.userId,
                 entry.kind || 'CHAT',
                 entry.mode || null,
+                entry.surface || (entry.kind === 'INITIATIVE' ? 'INITIATIVE' : entry.kind === 'CHANNEL' ? 'CHANNEL' : 'CHAT'),
+                entry.profileVersion || null,
+                entry.judgeMode || null,
+                entry.judgeVerdict || null,
+                entry.judgeCode || null,
                 entry.model || null,
                 entry.providerName || null,
                 entry.userText || null,
@@ -2146,7 +2304,7 @@ export async function savePromptLog(entry) {
  */
 export async function getPromptLogs({ userId = null, limit = 50, offset = 0 } = {}) {
     const res = await query(
-        `SELECT p.id, p.user_id, p.kind, p.mode, p.model, p.provider_name, p.user_text,
+        `SELECT p.id, p.user_id, p.kind, p.mode, p.surface, p.profile_version, p.judge_mode, p.judge_verdict, p.judge_code, p.model, p.provider_name, p.user_text,
                 LEFT(COALESCE(p.parsed_response, p.raw_response, ''), 160) AS preview,
                 p.latency_ms, p.is_photo_request, p.error_text, p.created_at,
                 p.prompt_tokens, p.completion_tokens, p.total_tokens, p.cost_usd,

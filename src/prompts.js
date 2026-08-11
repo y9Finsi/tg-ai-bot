@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getSetting, setSetting } from './db/database.js';
+import { getSetting, setSetting, getLeraProfile, getLeraProfileProjection } from './db/database.js';
 import { ALL_PROMPT_SECTIONS, PROMPT_SECTIONS, ROUTING_PROMPT_SECTIONS } from './prompt_sections.js';
 
 export { ALL_PROMPT_SECTIONS, PROMPT_SECTIONS, ROUTING_PROMPT_SECTIONS };
@@ -24,6 +24,13 @@ const PROMPT_ORDER = [
     'lera_virt_examples',
     'lera_rules'
 ];
+
+function sanitizeLegacyIdentity(text) {
+    return String(text || '')
+        .replace(/Тебе\s+21\s+год[.!]?\s*Ты\s+живёшь\s+в\s+Санкт-Петербурге\.?/giu, 'Тебе 19 лет. Ты живёшь в Санкт-Петербурге.')
+        .replace(/Лере\s+21\s+лет/giu, 'Лере 19 лет')
+        .replace(/Лере\s+21\s+год/giu, 'Лере 19 лет');
+}
 
 const RESPONSE_FORMAT_CONTRACT = `ФОРМАТ ОТВЕТА В TELEGRAM:
 Обычно отвечай одной короткой репликой.
@@ -178,7 +185,7 @@ export async function getRoutingPromptModules() {
         await initPromptsFromDb().catch(() => {});
     }
     return {
-        core: promptsCache.routing_core,
+        core: sanitizeLegacyIdentity(promptsCache.routing_core),
         common: promptsCache.routing_common,
         casual: promptsCache.routing_casual,
         erotic: promptsCache.routing_erotic,
@@ -198,6 +205,12 @@ export async function getRoutedSystemPrompt(mode = 'CASUAL', config = {}) {
     ].filter(Boolean);
     blocks.push(CONVERSATION_CONTINUITY_CONTRACT);
     blocks.push(RESPONSE_FORMAT_CONTRACT);
+    try {
+        const profile = await getLeraProfile();
+        blocks.unshift(`[КАНОНИЧЕСКИЙ ПРОФИЛЬ ЛЕРЫ · ВЕРСИЯ ${profile.version}]\n${getLeraProfileProjection(profile.profile, 'CHAT')}`);
+    } catch {
+        // Runtime keeps the file-based prompt fallback if DB profile is unavailable.
+    }
     if (config.systemOverlay || config.system_overlay) {
         blocks.push(`[SYSTEM PROMPT OVERLAY]\n${String(config.systemOverlay || config.system_overlay).trim()}`);
     }

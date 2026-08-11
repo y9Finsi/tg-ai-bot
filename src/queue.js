@@ -176,6 +176,10 @@ async function processInitiativeJob(bot, job) {
         anchorEventId,
         contentCandidates: candidates
     });
+    if (response?.blockedByJudge) {
+        console.warn(`[INITIATIVE JUDGE] user ${userId}, kind ${initiativeKind}: отправка заблокирована`);
+        return;
+    }
     if (!response?.text) throw new Error('AI returned empty initiative');
     if (initiativeKind === 'content_4h' && !response.contentId) {
         throw new Error('AI did not select content for content_4h initiative');
