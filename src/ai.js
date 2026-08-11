@@ -25,6 +25,17 @@ setInterval(() => rateLimitMap.clear(), 60 * 1000);
 let activeProviderCache = null;
 let openaiClientInstance = null;
 
+function getReactionEmoji(userText = '') {
+    const normalized = String(userText)
+        .toLocaleLowerCase('ru-RU')
+        .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (/^(давай|го|погнали)$/u.test(normalized)) return '🔥';
+    if (/^(понял|пон|ок|окей|ясно|хорошо|ладно|договорились)$/u.test(normalized)) return '👍';
+    return '❤';
+}
+
 function getMoscowHour() {
     return Number(new Intl.DateTimeFormat('en-GB', {
         timeZone: 'Europe/Moscow', hour: '2-digit', hour12: false
@@ -827,6 +838,37 @@ export async function generateResponse(userId, text, envelope = {}) {
     } catch (routingError) {
         console.error('[INTENT ROUTER] fallback to CASUAL:', routingError.message);
         classifierResult = { mode: 'CASUAL', error: routingError.message };
+    }
+
+    if (classifierResult?.mode === 'REACTION' && !PHOTO_INTENT_REGEX.test(text)) {
+        const reactionEmoji = getReactionEmoji(text);
+        savePromptLog({
+            userId,
+            kind: 'CHAT_REACTION',
+            mode: 'REACTION',
+            userText: text,
+            rawResponse: `REACTION:${reactionEmoji}`,
+            parsedResponse: `REACTION:${reactionEmoji}`,
+            classifier: {
+                mode: classifierResult.mode,
+                providerName: classifierResult.providerName,
+                model: classifierResult.model,
+                latencyMs: classifierResult.latencyMs,
+                usage: classifierResult.usage
+            },
+            latencyMs: classifierResult.latencyMs || 0,
+            usage: classifierResult.usage || {}
+        }).catch(() => null);
+        return {
+            text: '',
+            photo: null,
+            reactionEmoji,
+            routingMode: 'REACTION',
+            debugInfo: {
+                rawText: `REACTION:${reactionEmoji}`,
+                usage: classifierResult.usage || {}
+            }
+        };
     }
 
     let contentCandidates = [];

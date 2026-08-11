@@ -210,7 +210,7 @@ async function processTestInitiativeJob(bot, job) {
 }
 
 async function processAiJob(bot, job) {
-        const { userId, text, chatId, shouldDecrement, reservedResource = null, tempMsgId, eventIds = [], batchId = null, firstMessageAt = null, preMessageGapSeconds = null } = job.data;
+        const { userId, text, chatId, shouldDecrement, reservedResource = null, tempMsgId, eventIds = [], batchId = null, firstMessageAt = null, preMessageGapSeconds = null, reactionMessageId = null } = job.data;
         const historyClearedAtBeforeGeneration = await getChatHistoryClearedAt(userId);
         let reservationRefunded = false;
         const refundReservation = async () => {
@@ -260,6 +260,21 @@ async function processAiJob(bot, job) {
                     await bot.telegram.sendMessage(chatId, errMsg, { parse_mode: 'Markdown' });
                 }
                 await markInputEvents('FAILED', 'AI returned empty response');
+                return;
+            }
+
+            if (response.reactionEmoji && reactionMessageId) {
+                await bot.telegram.setMessageReaction(chatId, reactionMessageId, [{
+                    type: 'emoji',
+                    emoji: response.reactionEmoji
+                }]);
+                await refundReservation();
+                await saveLeraEvent(response.reactionEmoji, 'REACTION', {
+                    emoji: response.reactionEmoji,
+                    target_telegram_message_id: reactionMessageId,
+                    routing_mode: 'REACTION'
+                });
+                await markInputEvents('COMPLETED');
                 return;
             }
 

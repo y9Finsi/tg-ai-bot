@@ -1664,8 +1664,8 @@ function LlmSettingsPanel({ toast }) {
 
             <div className="routing-section">
                 <div className="routing-section-head">
-                    <div><span className="eyebrow">Классификатор</span><strong>Определяет один из трёх стилей</strong><small>Вызывается после backend-проверок на каждом сообщении. При ошибке используется CASUAL.</small></div>
-                    <Badge variant="blue">CASUAL · EROTIC · JOKE</Badge>
+                    <div><span className="eyebrow">Классификатор</span><strong>Выбирает стиль или реакцию</strong><small>REACTION ставит реакцию на короткое затухающее сообщение без генерации текста. При ошибке используется CASUAL.</small></div>
+                    <Badge variant="blue">CASUAL · EROTIC · JOKE · REACTION</Badge>
                 </div>
                 <div className="routing-fields-grid">
                     <label>Provider классификатора<select value={routingSettings.classifierProviderId || ''} onChange={event => setRoutingSettings({ ...routingSettings, classifierProviderId: event.target.value })}><option value="">Текущая цепочка + fallback</option>{providers.map(provider => <option value={provider.id} key={provider.id}>{provider.name} · {provider.model_name}</option>)}</select></label>
@@ -1673,7 +1673,7 @@ function LlmSettingsPanel({ toast }) {
                     <label>Timeout, мс<input type="number" min="1000" max="60000" value={routingSettings.classifierTimeoutMs ?? 7000} onChange={event => setRoutingSettings({ ...routingSettings, classifierTimeoutMs: Number(event.target.value) })} /></label>
                     <label>Max tokens<input type="number" min="1" max="8" value={routingSettings.classifierMaxTokens ?? 3} onChange={event => setRoutingSettings({ ...routingSettings, classifierMaxTokens: Number(event.target.value) })} /></label>
                 </div>
-                <label className="classifier-prompt-editor">Prompt классификатора<textarea value={routingSettings.classifierPrompt || ''} placeholder="Верни строго одно слово: CASUAL, EROTIC или JOKE." onChange={event => setRoutingSettings({ ...routingSettings, classifierPrompt: event.target.value })} /></label>
+                <label className="classifier-prompt-editor">Prompt классификатора<textarea value={routingSettings.classifierPrompt || ''} placeholder="Верни строго одно слово: CASUAL, EROTIC, JOKE или REACTION." onChange={event => setRoutingSettings({ ...routingSettings, classifierPrompt: event.target.value })} /></label>
                 <div className="field-hint">Здесь редактируется инструкция именно для микро-вызова классификации, а не prompt ответа Леры.</div>
             </div>
 

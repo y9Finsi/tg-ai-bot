@@ -142,7 +142,8 @@ async function flushUserBuffer(userId) {
             eventIds: buf.eventIds || [],
             batchId: buf.batchId || null,
             firstMessageAt: buf.firstMessageAt || null,
-            preMessageGapSeconds: buf.preMessageGapSeconds
+            preMessageGapSeconds: buf.preMessageGapSeconds,
+            reactionMessageId: buf.reactionMessageId || null
         });
     } catch (e) {
         stopBufferedTyping();
@@ -1573,7 +1574,8 @@ bot.on('text', async (ctx) => {
             lastCtx: ctx,
             firstMsgTime: Date.now(),
             firstMessageAt: ctx.message?.date ? new Date(Number(ctx.message.date) * 1000).toISOString() : new Date().toISOString(),
-            preMessageGapSeconds: null
+            preMessageGapSeconds: null,
+            reactionMessageId: ctx.message?.message_id || null
         };
         if (!PHOTO_INTENT_REGEX.test(text)) {
             startTyping(bot, ctx.chat.id, userDebounceBuffer[userId].batchId);
@@ -1586,6 +1588,7 @@ bot.on('text', async (ctx) => {
 
     userDebounceBuffer[userId].textParts.push(text);
     userDebounceBuffer[userId].lastCtx = ctx;
+    userDebounceBuffer[userId].reactionMessageId = ctx.message?.message_id || userDebounceBuffer[userId].reactionMessageId;
 
     try {
         const event = await appendConversationEvent({

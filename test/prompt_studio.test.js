@@ -6,8 +6,10 @@ import { fileURLToPath } from 'node:url';
 import {
     STUDIO_INTENTS,
     getModeGenerationParams,
+    normalizeIntent,
     normalizeIntentConfig,
-    normalizeIntentConfigMap
+    normalizeIntentConfigMap,
+    isReactionEligible
 } from '../src/ai/intent_router.js';
 import { migratePresetToCurrent } from '../src/ai/sandbox_service.js';
 import { appendSandboxExchange, getSandboxSelectedResult } from '../admin-v2/src/sandbox_chat.js';
@@ -38,6 +40,14 @@ test('Prompt Studio normalizes an independent sampling config for every intent',
     assert.equal(configs.EROTIC.sampling.max_tokens, 260);
     assert.equal(configs.JOKE.sampling.top_p, 0.7);
     assert.equal(configs.JOKE.sampling.max_tokens, 140);
+});
+
+test('Classifier accepts REACTION without turning it into a Prompt Studio mode', () => {
+    assert.equal(normalizeIntent('reaction'), 'REACTION');
+    assert.equal(STUDIO_INTENTS.includes('REACTION'), false);
+    assert.equal(isReactionEligible('понял'), true);
+    assert.equal(isReactionEligible('а почему так?'), false);
+    assert.equal(isReactionEligible('пришли фото'), false);
 });
 
 test('Prompt Studio clamps values and keeps legacy mode settings as fallback', () => {
