@@ -111,18 +111,23 @@ async function flushUserBuffer(userId) {
     }
 
     try {
-        // 1. Отправляем временное сообщение ("заглушку")
-        const placeholderText = isPhoto ? "📸 _Делаю фоточку, подожди секунду..._" : "⏳ _Печатаю ответ..._";
-        const tempMsg = await ctx.reply(placeholderText, { parse_mode: 'Markdown' });
+        // Для текста показываем нативный статус печати, для фото оставляем заглушку.
+        let tempMsgId = null;
+        if (isPhoto) {
+            const tempMsg = await ctx.reply("📸 _Делаю фоточку, подожди секунду..._", { parse_mode: 'Markdown' });
+            tempMsgId = tempMsg.message_id;
+        } else {
+            await ctx.telegram.sendChatAction(ctx.chat.id, 'typing').catch(() => {});
+        }
 
-        // 2. Передаем ID временного сообщения в очередь, чтобы потом его отредактировать
+        // Передаем ID фото-заглушки в очередь, чтобы потом её отредактировать.
         await aiQueue.add('ask-ai', {
             userId,
             text: combinedText,
             chatId: ctx.chat.id,
             shouldDecrement: false,
             reservedResource,
-            tempMsgId: tempMsg.message_id,
+            tempMsgId,
             eventIds: buf.eventIds || [],
             batchId: buf.batchId || null,
             firstMessageAt: buf.firstMessageAt || null,
