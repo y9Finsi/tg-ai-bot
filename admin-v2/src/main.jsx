@@ -1062,18 +1062,28 @@ function SandboxCompareChanges({ variantA, variantB }) {
     return <section className={cn('sandbox-compare', !changes.length && 'is-identical')} aria-live="polite"><div className="sandbox-compare-summary"><strong>A/B-сравнение</strong><span>{changes.length ? `${changes.length} различий перед запуском` : 'Варианты идентичны — второй запрос не даст сравнения'}</span></div>{changes.length > 0 && <details><summary>Посмотреть различия</summary><div>{changes.map(([label, left, right]) => <span key={label}><strong>{label}</strong>{String(left)} → {String(right)}</span>)}</div></details>}</section>;
 }
 function SandboxPromptModules({ config, onChange }) {
-    return <details className="studio-section"><summary>Модули промпта <span>{STUDIO_MODULES.filter(([key]) => config.promptModules[key] !== false).length} / {STUDIO_MODULES.length} включено</span></summary><div className="studio-module-list">{STUDIO_MODULES.map(([key, label, description]) => <label className="studio-module-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><input type="checkbox" checked={config.promptModules[key] !== false} onChange={event => onChange(updateStudioModule(config, key, event.target.checked))} /></label>)}</div></details>;
+    return <section className="studio-module-card">
+        <div className="studio-section-heading"><div><span className="eyebrow">Состав prompt</span><h3>Модули кандидата</h3></div><Badge variant="muted">{STUDIO_MODULES.filter(([key]) => config.promptModules[key] !== false).length} / {STUDIO_MODULES.length}</Badge></div>
+        <p className="studio-section-copy">Меняют только текущий локальный кандидат. Общие Production-правила — в отдельной вкладке.</p>
+        <div className="studio-module-list">{STUDIO_MODULES.map(([key, label, description]) => <label className="studio-module-row" key={key}><span><strong>{label}</strong><small>{description}</small></span><input type="checkbox" checked={config.promptModules[key] !== false} onChange={event => onChange(updateStudioModule(config, key, event.target.checked))} /></label>)}</div>
+    </section>;
 }
-function SandboxSamplingControls({ intent, config, providers, onChange }) {
+function SandboxSamplingControls({ intent, config, productionConfig, providers, onChange }) {
     const sampling = config.sampling;
     const selectedProvider = providers.find(provider => Number(provider.id) === Number(config.model?.provider_id)) || providers.find(provider => provider.is_active) || providers[0];
     const capabilities = selectedProvider?.sampling_capabilities || {};
-    const field = (key, min, max, step = 0.01, withRange = true) => <label className="studio-sampling-field" key={key}><span><b>{STUDIO_SAMPLER_LABELS[key]}</b><input type="number" min={min} max={max} step={step} value={sampling[key] ?? ''} onChange={event => onChange(updateStudioSampling(config, key, event.target.value === '' ? null : Number(event.target.value)))} /></span>{withRange && <input aria-label={STUDIO_SAMPLER_LABELS[key]} type="range" min={min} max={max} step={step} value={sampling[key] ?? 0} onChange={event => onChange(updateStudioSampling(config, key, Number(event.target.value)))} />}</label>;
+    const effects = { temperature: 'Выше — больше вариативности ответа.', top_p: 'Шире выбор слов; обычно не нужно крутить вместе с temperature.', max_tokens: 'Потолок длины ответа, а не желаемый стиль.', presence_penalty: 'Сильнее поощряет новые темы.', frequency_penalty: 'Снижает повтор слов и формулировок.', repetition_penalty: 'Дополнительно сдерживает повторы.', seed: 'Фиксирует случайность, если провайдер его поддерживает.' };
+    const field = (key, min, max, step = 0.01, withRange = true) => {
+        const supported = key === 'max_tokens' || Boolean(capabilities[key]);
+        const productionValue = normalizeStudioConfig(productionConfig).sampling[key];
+        const changed = JSON.stringify(sampling[key]) !== JSON.stringify(productionValue);
+        return <label className="studio-sampling-field" key={key}><span><b>{STUDIO_SAMPLER_LABELS[key]}</b><input type="number" min={min} max={max} step={step} value={sampling[key] ?? ''} onChange={event => onChange(updateStudioSampling(config, key, event.target.value === '' ? null : Number(event.target.value)))} /></span><small>{effects[key]}</small>{withRange && <input aria-label={STUDIO_SAMPLER_LABELS[key]} type="range" min={min} max={max} step={step} value={sampling[key] ?? 0} onChange={event => onChange(updateStudioSampling(config, key, Number(event.target.value)))} />}<em className={cn(!supported && 'is-warning')}>{supported ? (changed ? `Production: ${productionValue ?? '—'}` : 'Как в Production') : 'Не отправится выбранному провайдеру'}</em></label>;
+    };
     return <section className="studio-sampling-card">
-        <div className="studio-section-heading"><div><span className="eyebrow">Параметры генерации</span><h3>Конфигурация {STUDIO_INTENT_LABELS[intent]}</h3></div><Badge variant="muted">Черновик</Badge></div>
+        <div className="studio-section-heading"><div><span className="eyebrow">Параметры генерации</span><h3>Кандидат {STUDIO_INTENT_LABELS[intent]}</h3></div><Badge variant="muted">локально</Badge></div>
         <div className="studio-sampling-grid">{field('temperature', 0, 2)}{field('top_p', 0, 1)}{field('max_tokens', 20, 1200, 10, false)}</div>
         <details className="studio-sampling-advanced"><summary>Дополнительные параметры</summary><div className="studio-sampling-grid">{field('presence_penalty', -2, 2, 0.1)}{field('frequency_penalty', -2, 2, 0.1)}{field('repetition_penalty', 1, 2, 0.05)}{field('seed', -2147483648, 2147483647, 1, false)}</div></details>
-        <div className="studio-provider-line"><span>{selectedProvider?.name || 'Активный провайдер'} · {selectedProvider?.model_name || 'модель по умолчанию'}</span><small>В запрос уйдут: {STUDIO_CAPABILITY_KEYS.filter(key => capabilities[key]).map(key => STUDIO_SAMPLER_LABELS[key]).join(', ') || 'параметры по умолчанию'}.</small></div>
+        <div className="studio-provider-line"><span>{selectedProvider?.name || 'Активный провайдер'} · {selectedProvider?.model_name || 'модель по умолчанию'}</span><small>Параметры со статусом «не отправится» останутся в кандидате, но API провайдера их не получит.</small></div>
     </section>;
 }
 function ProductionPromptModulesPanel({ toast }) {
@@ -1154,324 +1164,121 @@ function SandboxPanel({ toast }) {
     const [studioState, setStudioState] = useState(null);
     const [draftConfigs, setDraftConfigs] = useState(() => Object.fromEntries(STUDIO_INTENTS.map(intent => [intent, cloneSandboxPreset()])));
     const [activeIntent, setActiveIntent] = useState('CASUAL');
+    const [workspaceStep, setWorkspaceStep] = useState('edit');
+    const [comparisonMode, setComparisonMode] = useState('production');
     const [abConfig, setAbConfig] = useState(() => cloneSandboxPreset());
     const [providers, setProviders] = useState([]); const [presets, setPresets] = useState([]);
-    const [history, setHistory] = useState([]); const [draftText, setDraftText] = useState(''); const [draftRole, setDraftRole] = useState('user');
-    const [userText, setUserText] = useState('привет, чем занимаешься?'); const [submittedMessage, setSubmittedMessage] = useState(''); const [abMode, setAbMode] = useState(false); const [selectedVariant, setSelectedVariant] = useState('A'); const [editingVariant, setEditingVariant] = useState('A'); const [mediaPreview, setMediaPreview] = useState(false);
-    const [context, setContext] = useState({ current_time: getMoscowDateTimeLocal(), pre_message_gap_seconds: 0, location_id: 'petrogradka_home', mood: 50, status: { task_type: 'IDLE_HOME_REST' }, outfit_text: '', weather: { text: '', is_raining: false }, daily_facts: [] });
-    const [result, setResult] = useState(null); const [loading, setLoading] = useState(false); const [presetName, setPresetName] = useState(''); const [activePresetId, setActivePresetId] = useState(null);
-    const [editingResponse, setEditingResponse] = useState(null); const [editedResponse, setEditedResponse] = useState('');
+    const [history, setHistory] = useState([]); const [userText, setUserText] = useState('привет, чем занимаешься?'); const [submittedMessage, setSubmittedMessage] = useState('');
+    const [mediaPreview, setMediaPreview] = useState(false); const [result, setResult] = useState(null); const [loading, setLoading] = useState(false);
+    const [presetName, setPresetName] = useState(''); const [activePresetId, setActivePresetId] = useState(null);
     const [userQuery, setUserQuery] = useState(''); const [foundUsers, setFoundUsers] = useState([]); const [selectedContextUser, setSelectedContextUser] = useState(null); const [loadingUserContext, setLoadingUserContext] = useState(false);
+    const [context, setContext] = useState({ current_time: getMoscowDateTimeLocal(), pre_message_gap_seconds: 0, location_id: 'petrogradka_home', mood: 50, status: { task_type: 'IDLE_HOME_REST' }, weather: { text: '', is_raining: false }, daily_facts: [] });
     const run = async (action, success) => { try { const response = await action(); if (success) toast?.(success); return response; } catch (error) { toast?.(error.message === 'AUTH' ? 'Сессия админки истекла. Войдите снова.' : error.message, 'error'); return null; } };
     const activeConfig = draftConfigs[activeIntent] || cloneSandboxPreset();
-    const editingB = abMode && editingVariant === 'B';
-    const editableConfig = editingB ? abConfig : activeConfig;
     const activeState = studioState?.intents?.[activeIntent];
-    const productionConfig = activeState?.production?.config || activeConfig;
+    const productionConfig = normalizeStudioConfig(activeState?.production?.config || activeConfig);
+    const savedDraftConfig = normalizeStudioConfig(activeState?.draft?.config || productionConfig);
     const draftVersion = activeState?.draft?.version || '—';
     const productionVersion = activeState?.production?.version || '—';
-    // draftConfigs changes immediately while studioState is only refreshed after a save.
-    // Compare against Production directly so newly moved sliders are not treated as synced.
-    const isDirty = JSON.stringify(activeConfig) !== JSON.stringify(productionConfig);
+    const hasUnsavedEdits = JSON.stringify(activeConfig) !== JSON.stringify(savedDraftConfig);
+    const draftDiffersFromProduction = JSON.stringify(savedDraftConfig) !== JSON.stringify(productionConfig);
+    const productionChanges = getSandboxConfigChanges(productionConfig, savedDraftConfig);
+    const activeProvider = providers.find(provider => Number(provider.id) === Number(activeConfig.model?.provider_id)) || providers.find(provider => provider.is_active) || providers[0];
+    const normalizedContext = { ...context, current_time: context.current_time ? `${context.current_time}:00+03:00` : undefined };
     const load = async () => {
-        const [studioData, providerData, presetData] = await Promise.all([
-            run(() => api('/api/sandbox/prompt-studio')),
-            run(() => api('/api/admin/providers')),
-            run(() => api('/api/sandbox/presets'))
-        ]);
-        if (studioData) {
-            setStudioState(studioData);
-            const configs = studioConfigsFromState(studioData);
-            setDraftConfigs(configs);
-            setAbConfig(cloneSandboxPreset(configs[activeIntent] || STUDIO_DEFAULT_CONFIG));
-        }
+        const [studioData, providerData, presetData] = await Promise.all([run(() => api('/api/sandbox/prompt-studio')), run(() => api('/api/admin/providers')), run(() => api('/api/sandbox/presets'))]);
+        if (studioData) { const configs = studioConfigsFromState(studioData); setStudioState(studioData); setDraftConfigs(configs); setAbConfig(cloneSandboxPreset(configs.CASUAL || STUDIO_DEFAULT_CONFIG)); }
         if (providerData) setProviders(providerData.providers || []);
         if (presetData) setPresets(presetData.presets || []);
     };
     useEffect(() => { load(); }, []);
-    const normalizedContext = { ...context, current_time: context.current_time ? `${context.current_time}:00+03:00` : undefined };
-    function updateActiveConfig(next) {
-        setDraftConfigs(current => ({ ...current, [activeIntent]: normalizeStudioConfig(next) }));
-    }
-    function selectIntent(intent) {
-        setActiveIntent(intent);
-        setAbConfig(cloneSandboxPreset(draftConfigs[intent] || STUDIO_DEFAULT_CONFIG));
-        setEditingVariant('A');
-        setSelectedVariant('A');
-        setResult(null);
-        setSubmittedMessage('');
-        setEditingResponse(null);
-    }
-    function updateEditableConfig(next) {
-        if (editingB) setAbConfig(normalizeStudioConfig(next));
-        else updateActiveConfig(next);
-    }
-    function continueSandboxChat(selectedResult, label, message = submittedMessage) {
-        const userMessage = String(message || '').trim();
-        const assistantMessage = selectedResult?.response?.trim();
-        if (!userMessage || !assistantMessage || selectedResult?.error) return;
-        setHistory(current => appendSandboxExchange(current, userMessage, assistantMessage));
-        setUserText('');
-        setSubmittedMessage('');
-        setResult(null);
-        setEditingResponse(null);
-        toast?.(label ? `Вариант ${label} добавлен в чат` : 'Ответ добавлен в чат');
-    }
-    function beginResponseEdit(selectedResult) {
-        if (!selectedResult?.response || selectedResult?.error) return;
-        setEditedResponse(selectedResult.response);
-        setEditingResponse(abMode ? selectedVariant : 'A');
-    }
-    function cancelResponseEdit() {
-        setEditingResponse(null);
-        setEditedResponse('');
-    }
-    function saveResponseEdit() {
-        const nextResponse = editedResponse.trim();
-        if (!nextResponse) return toast?.('Ответ не может быть пустым', 'error');
-        const variant = abMode ? selectedVariant : 'A';
-        setResult(current => {
-            if (!current) return current;
-            if (abMode) {
-                return {
-                    ...current,
-                    variants: {
-                        ...current.variants,
-                        [variant]: { ...current.variants?.[variant], response: nextResponse, rawResponse: nextResponse }
-                    }
-                };
-            }
-            return { ...current, response: nextResponse, rawResponse: nextResponse };
-        });
-        setEditingResponse(null);
-        toast?.('Ответ отредактирован только в Sandbox');
-    }
-    async function requestGeneration({ message, requestHistory, commitPendingResult = false }) {
-        setLoading(true);
-        setSubmittedMessage(message);
-        setResult(null);
-        setSelectedVariant('A');
-        setEditingResponse(null);
-        const variantA = studioConfigToSandboxPreset(activeConfig, `Variant A · ${activeIntent}`);
-        const variantB = studioConfigToSandboxPreset(abConfig, `Variant B · ${activeIntent}`);
-        try {
-            const body = { userId: selectedContextUser?.user?.telegram_id || null, history: requestHistory, userText: message, routingMode: activeIntent, mediaPreview, contextOverrides: normalizedContext, preset: variantA, variantA, variantB };
-            if (commitPendingResult) setHistory(requestHistory);
-            const response = await run(() => api(abMode ? '/api/sandbox/ab-test' : '/api/sandbox/generate', { method: 'POST', body: JSON.stringify(body) }));
-            if (response?.error || abMode) setResult(response);
-            else if (response) continueSandboxChat(response, '', message);
-        } finally {
-            setLoading(false);
-        }
-    }
-    async function generate() {
-        const message = userText.trim();
-        if (!message) return toast?.('Введите сообщение для Sandbox', 'error');
-        const selectedResult = getSandboxSelectedResult(result, abMode, selectedVariant);
-        const shouldCommitPendingResult = Boolean(submittedMessage && selectedResult?.response && !selectedResult.error);
-        const nextHistory = shouldCommitPendingResult
-            ? appendSandboxExchange(history, submittedMessage, selectedResult.response)
-            : history;
-        await requestGeneration({ message, requestHistory: nextHistory, commitPendingResult: shouldCommitPendingResult });
-    }
-    async function regenerate() {
-        if (!submittedMessage || loading) return;
-        await requestGeneration({ message: submittedMessage, requestHistory: history });
-    }
+    function updateActiveConfig(next) { setDraftConfigs(current => ({ ...current, [activeIntent]: normalizeStudioConfig(next) })); }
+    function selectIntent(intent) { setActiveIntent(intent); setAbConfig(cloneSandboxPreset(draftConfigs[intent] || STUDIO_DEFAULT_CONFIG)); setResult(null); setSubmittedMessage(''); }
     function applyPreset(config, id = null, name = '') {
         const rawConfigs = config?.intent_configs || config?.intentConfigs;
-        const nextConfigs = rawConfigs
-            ? Object.fromEntries(STUDIO_INTENTS.map(intent => [intent, normalizeStudioConfig(rawConfigs[intent] || draftConfigs[intent] || STUDIO_DEFAULT_CONFIG)]))
-            : { ...draftConfigs, [activeIntent]: normalizeStudioConfig(config) };
-        setDraftConfigs(nextConfigs);
-        setAbConfig(cloneSandboxPreset(nextConfigs[activeIntent] || STUDIO_DEFAULT_CONFIG));
-        setActivePresetId(id);
-        setPresetName(name || config?.name || '');
-        setResult(null);
+        const nextConfigs = rawConfigs ? Object.fromEntries(STUDIO_INTENTS.map(intent => [intent, normalizeStudioConfig(rawConfigs[intent] || draftConfigs[intent] || STUDIO_DEFAULT_CONFIG)])) : { ...draftConfigs, [activeIntent]: normalizeStudioConfig(config) };
+        setDraftConfigs(nextConfigs); setAbConfig(cloneSandboxPreset(nextConfigs[activeIntent])); setActivePresetId(id); setPresetName(name || config?.name || ''); setResult(null);
+        toast?.('Набор применён только локально: он не сохранён и не опубликован');
     }
-    function applyQuickPreset(name, changes) {
-        const next = { ...activeConfig, sampling: { ...activeConfig.sampling, ...(changes || {}) } };
-        updateActiveConfig(next);
-        setAbConfig(cloneSandboxPreset(next));
-        setActivePresetId(null);
-        setPresetName(name);
-        setResult(null);
-    }
+    function applyQuickPreset(name, changes) { updateActiveConfig({ ...activeConfig, sampling: { ...activeConfig.sampling, ...changes } }); setActivePresetId(null); setPresetName(name); }
     async function saveDraft() {
-        const response = await run(() => api('/api/sandbox/prompt-studio/draft', { method: 'POST', body: JSON.stringify({ intent: activeIntent, config: activeConfig }) }), `${activeIntent} draft сохранён`);
-        if (response?.intents) {
-            setStudioState(response);
-            setDraftConfigs(studioConfigsFromState(response));
-        }
+        const response = await run(() => api('/api/sandbox/prompt-studio/draft', { method: 'POST', body: JSON.stringify({ intent: activeIntent, config: activeConfig }) }), `${activeIntent}: черновик сохранён`);
+        if (response?.intents) { setStudioState(response); setDraftConfigs(studioConfigsFromState(response)); }
     }
     async function publishIntent() {
-        const response = await run(() => api('/api/sandbox/prompt-studio/publish', { method: 'POST', body: JSON.stringify({ intent: activeIntent, config: activeConfig }) }), `${activeIntent} опубликован в Production`);
-        if (response?.intents) {
-            setStudioState(response);
-            setDraftConfigs(studioConfigsFromState(response));
-        }
+        if (hasUnsavedEdits) return toast?.('Сначала сохрани локальные изменения в черновик', 'error');
+        const response = await run(() => api('/api/sandbox/prompt-studio/publish', { method: 'POST', body: JSON.stringify({ intent: activeIntent }) }), `${activeIntent} опубликован в Production`);
+        if (response?.intents) { setStudioState(response); setDraftConfigs(studioConfigsFromState(response)); }
         return Boolean(response?.intents);
     }
     async function savePreset() {
-        const name = presetName.trim();
-        if (!name) return toast?.('Введите имя пресета', 'error');
-        const config = studioConfigsToSandboxPreset(draftConfigs, name);
-        const method = activePresetId ? 'PATCH' : 'POST';
-        const path = activePresetId ? `/api/sandbox/presets/${activePresetId}` : '/api/sandbox/presets';
-        const response = await run(() => api(path, { method, body: JSON.stringify({ name, config }) }), activePresetId ? 'Пресет обновлён' : 'Пресет сохранён');
-        if (response?.preset) {
-            setActivePresetId(response.preset.id);
-            setPresetName(response.preset.name || name);
-            await load();
-        }
+        const name = presetName.trim(); if (!name) return toast?.('Введите имя набора', 'error');
+        const method = activePresetId ? 'PATCH' : 'POST'; const path = activePresetId ? `/api/sandbox/presets/${activePresetId}` : '/api/sandbox/presets';
+        const response = await run(() => api(path, { method, body: JSON.stringify({ name, config: studioConfigsToSandboxPreset(draftConfigs, name) }) }), activePresetId ? 'Набор обновлён' : 'Набор сохранён');
+        if (response?.preset) { setActivePresetId(response.preset.id); setPresetName(response.preset.name || name); await load(); }
     }
-    async function deletePreset(id) {
-        const response = await run(() => api(`/api/sandbox/presets/${id}`, { method: 'DELETE' }), 'Пресет удалён');
-        if (response) {
-            if (activePresetId === id) { setActivePresetId(null); setPresetName(''); }
-            await load();
-        }
-    }
-    async function searchSandboxUsers() {
-        const query = userQuery.trim();
-        if (!query) return setFoundUsers([]);
-        const response = await run(() => api(`/api/sandbox/users?q=${encodeURIComponent(query)}`));
-        if (response) setFoundUsers(response.users || []);
-    }
+    async function deletePreset(id) { const response = await run(() => api(`/api/sandbox/presets/${id}`, { method: 'DELETE' }), 'Набор удалён'); if (response) { if (activePresetId === id) { setActivePresetId(null); setPresetName(''); } await load(); } }
+    async function searchSandboxUsers() { const query = userQuery.trim(); if (!query) return setFoundUsers([]); const response = await run(() => api(`/api/sandbox/users?q=${encodeURIComponent(query)}`)); if (response) setFoundUsers(response.users || []); }
     async function loadSandboxUserContext(user) {
         setLoadingUserContext(true);
+        try { const response = await run(() => api(`/api/sandbox/users/${user.telegram_id}/context`)); if (!response) return; setHistory(response.history || []); setSelectedContextUser(response); setFoundUsers([]); setUserQuery(''); setResult(null); toast?.(`Контекст ${response.user.first_name || response.user.telegram_id} подключён только к Sandbox`); } finally { setLoadingUserContext(false); }
+    }
+    async function compare() {
+        const message = userText.trim(); if (!message) return toast?.('Введите сообщение для теста', 'error');
+        const variantA = comparisonMode === 'production' ? studioConfigToSandboxPreset(productionConfig, `Production v${productionVersion} · ${activeIntent}`) : studioConfigToSandboxPreset(activeConfig, `Вариант A · ${activeIntent}`);
+        const variantB = comparisonMode === 'production' ? studioConfigToSandboxPreset(activeConfig, `Кандидат · ${activeIntent}`) : studioConfigToSandboxPreset(abConfig, `Вариант B · ${activeIntent}`);
+        setLoading(true); setSubmittedMessage(message); setResult(null);
         try {
-            const response = await run(() => api(`/api/sandbox/users/${user.telegram_id}/context`));
-            if (!response) return;
-            setHistory(response.history || []);
-            setSelectedContextUser(response);
-            setFoundUsers([]);
-            setUserQuery('');
-            setResult(null);
-            setSubmittedMessage('');
-            toast?.(`Контекст ${response.user.first_name || response.user.telegram_id} загружен только для Sandbox`);
-        } finally {
-            setLoadingUserContext(false);
-        }
+            const body = { userId: selectedContextUser?.user?.telegram_id || null, history, userText: message, routingMode: activeIntent, mediaPreview, contextOverrides: normalizedContext, preset: variantB, variantA, variantB };
+            const response = await run(() => api('/api/sandbox/ab-test', { method: 'POST', body: JSON.stringify(body) }));
+            if (response) setResult(response);
+        } finally { setLoading(false); }
     }
-    function resetSandboxChat() {
-        setHistory([]);
-        setSelectedContextUser(null);
-        setResult(null);
-        setSubmittedMessage('');
-        setFoundUsers([]);
-        setUserQuery('');
-        setEditingResponse(null);
+    function continueSandboxChat(resultItem, label) {
+        if (!submittedMessage || !resultItem?.response || resultItem.error) return;
+        setHistory(current => appendSandboxExchange(current, submittedMessage, resultItem.response)); setSubmittedMessage(''); setResult(null); setUserText(''); toast?.(`${label} добавлен в тестовую историю`);
     }
-    const visibleIncluded = new Set((result?.historyIncluded || history.slice(-10)).map(item => String(item.id)));
-    const selectedChatResult = getSandboxSelectedResult(result, abMode, selectedVariant);
-    const activeProvider = providers.find(provider => Number(provider.id) === Number(activeConfig.model?.provider_id)) || providers.find(provider => provider.is_active) || providers[0];
-    const productionChanges = getSandboxConfigChanges(productionConfig, activeConfig);
-    const contextSummary = [context.location_id && 'локация', context.current_time && 'время', context.status?.task_type && 'занятие', Number.isFinite(context.mood) && 'настроение', context.daily_facts?.length && `события: ${context.daily_facts.length}`, activeConfig.systemOverlay?.trim() && 'system overlay'].filter(Boolean);
-    return <div className="studio-shell sandbox-panel">
-        <div className="studio-topbar">
-            <div><span className="eyebrow">AI Sandbox / Редактор промптов</span><h2>Тестируй ответ как диалог, публикуй как версию</h2><p>Изменения живут в черновике, пока ты явно не сохранишь и не опубликуешь их.</p></div>
-            <div className="studio-topbar-meta"><Badge variant={isDirty ? 'yellow' : 'green'}>{isDirty ? 'Есть изменения' : 'Синхронизировано'}</Badge><span>{STUDIO_INTENT_LABELS[activeIntent]} · черновик v{draftVersion} · production v{productionVersion}</span></div>
-        </div>
-        <div className="studio-status-strip" aria-label="Статус текущей Sandbox-сессии"><Badge variant="blue">{activeProvider?.name || 'Активный провайдер'} · {activeProvider?.model_name || 'модель по умолчанию'}</Badge><Badge>{selectedContextUser ? `Контекст: ${selectedContextUser.user.first_name || selectedContextUser.user.telegram_id}` : 'Контекст пользователя: не подключён'}</Badge><Badge>История: {history.length}</Badge><Badge variant="muted">Тестовый контекст: {contextSummary.join(' · ') || 'без overrides'}</Badge>{abMode && <Badge variant="yellow">A/B включён</Badge>}{mediaPreview && <Badge variant="yellow">Превью медиа</Badge>}</div>
-        <div className="studio-workbench">
-            <aside className="studio-sidebar">
-                <section className="studio-card studio-editor-card">
-                    <div className="studio-section-heading"><div><span className="eyebrow">Что меняем</span><h3>Поведение Леры</h3></div><Badge variant="blue">{activeIntent}</Badge></div>
-                    <p className="studio-section-copy">Выбери тип ответа. Classifier в Telegram сам выбирает один из этих трёх вариантов; AUTO — не отдельная настройка и поэтому здесь не редактируется.</p>
-                    <div className="studio-intent-tabs" role="tablist" aria-label="Поведение Леры">
-                        {STUDIO_EDITABLE_INTENTS.map(intent => <button type="button" role="tab" aria-selected={activeIntent === intent} key={intent} title={STUDIO_INTENT_DESCRIPTIONS[intent]} className={cn('studio-intent-tab', activeIntent === intent && 'is-active')} onClick={() => selectIntent(intent)}>{intent}</button>)}
+    const primaryAction = workspaceStep === 'edit'
+        ? (hasUnsavedEdits ? <Button onClick={saveDraft}><CheckCircle2 size={15} />Сохранить черновик</Button> : <Button onClick={() => setWorkspaceStep('test')} disabled={!draftDiffersFromProduction}><Play size={15} />Сравнить с Production</Button>)
+        : workspaceStep === 'test'
+        ? <Button onClick={compare} disabled={loading}><Play size={15} />{loading ? 'Сравниваю…' : 'Сравнить с Production'}</Button>
+        : workspaceStep === 'publish'
+        ? <ConfirmAction title={`Опубликовать ${activeIntent} v${draftVersion}?`} description={<><span>Изменится только {activeIntent}. Новые ответы всех пользователей этого intent получат сохранённый черновик.</span><span className="dialog-review">История диалогов не переписывается. Несохранённые правки не войдут в публикацию.</span></>} confirmText="Опубликовать в Production" variant="primary" disabled={hasUnsavedEdits || !draftDiffersFromProduction} onConfirm={publishIntent}>Опубликовать v{draftVersion}</ConfirmAction>
+        : null;
+    return <div className="studio-shell studio-workspace">
+        <header className="studio-workspace-header">
+            <div><span className="eyebrow">AI Sandbox / Prompt Studio</span><h2>Черновик — тест — публикация</h2><p>Редактируешь только выбранный intent. AUTO — это маршрутизация Telegram, его не редактируем.</p></div>
+            <div className="studio-header-actions"><Badge variant={hasUnsavedEdits ? 'yellow' : draftDiffersFromProduction ? 'blue' : 'green'}>{hasUnsavedEdits ? 'Локальные изменения' : draftDiffersFromProduction ? 'Черновик сохранён' : 'В Production'}</Badge>{primaryAction}</div>
+        </header>
+        <section className="studio-control-bar">
+            <div className="studio-intent-tabs" role="tablist" aria-label="Выбранный intent">{STUDIO_EDITABLE_INTENTS.map(intent => <button type="button" role="tab" aria-selected={activeIntent === intent} key={intent} className={cn('studio-intent-tab', activeIntent === intent && 'is-active')} onClick={() => selectIntent(intent)}>{intent}</button>)}</div>
+            <span className="studio-auto-note">AUTO → classifier выбирает CASUAL, EROTIC или JOKE</span>
+            <div className="studio-version-summary"><span>Production <b>v{productionVersion}</b></span><span>Черновик <b>v{draftVersion}</b></span></div>
+        </section>
+        <Tabs.Root value={workspaceStep} onValueChange={setWorkspaceStep} className="studio-workspace-tabs">
+            <Tabs.List aria-label="Шаги работы с prompt"><Tabs.Trigger value="edit">1. Редактирование</Tabs.Trigger><Tabs.Trigger value="test">2. Тест и сравнение</Tabs.Trigger><Tabs.Trigger value="publish">3. Проверка и публикация</Tabs.Trigger><Tabs.Trigger value="live">Общие правила Production</Tabs.Trigger></Tabs.List>
+            <Tabs.Content value="edit" className="studio-workspace-content">
+                <section className="studio-editor-layout">
+                    <div className="studio-editor-main">
+                        <section className="studio-candidate-card"><div className="studio-section-heading"><div><span className="eyebrow">Локальный кандидат</span><h3>{activeIntent}: что изменится в ответе</h3></div><Badge variant={hasUnsavedEdits ? 'yellow' : 'muted'}>{hasUnsavedEdits ? 'не сохранён' : `черновик v${draftVersion}`}</Badge></div><p className="studio-section-copy">{STUDIO_INTENT_DESCRIPTIONS[activeIntent]} Локальные изменения не видят пользователи, пока ты не сохранишь и не опубликуешь черновик.</p><label className="studio-textarea-field">System overlay<textarea value={activeConfig.systemOverlay} placeholder="Опциональная добавка только для этого intent" onChange={event => updateActiveConfig({ ...activeConfig, systemOverlay: event.target.value })} /></label></section>
+                        <SandboxPromptModules config={activeConfig} onChange={updateActiveConfig} />
                     </div>
-                    <div className="studio-impact-note"><strong>{activeIntent} влияет на:</strong><span>{STUDIO_INTENT_DESCRIPTIONS[activeIntent]}</span><small>Sandbox проверяет этот черновик. После публикации новые ответы всех пользователей с этим intent получат настройки; старые сообщения не меняются.</small></div>
-                    <div className="studio-version-grid"><div><span>Черновик</span><strong>v{draftVersion}</strong></div><div><span>Production</span><strong>v{productionVersion}</strong></div></div>
-                    {isDirty && <div className="studio-publish-review"><strong>К публикации: {productionChanges.length ? `${productionChanges.length} изменений` : 'конфигурация синхронизирована'}</strong>{productionChanges.length > 0 && <span>{productionChanges.slice(0, 3).map(([label]) => label).join(' · ')}{productionChanges.length > 3 ? ` и ещё ${productionChanges.length - 3}` : ''}</span>}</div>}
-                    <div className="studio-action-row"><Button variant="outline" onClick={saveDraft}><CheckCircle2 size={14} />Сохранить черновик</Button><Button variant="outline" onClick={() => document.getElementById('sandbox-preset-name')?.focus()}><Tag size={14} />Сохранить как пресет</Button><ConfirmAction title={`Опубликовать ${activeIntent} в Production?`} description={<><span>Черновик v{draftVersion} станет Production-версией выбранного intent. Остальные intent не изменятся.</span>{productionChanges.length > 0 && <span className="dialog-review">Изменения: {productionChanges.map(([label]) => label).join(', ')}.</span>}</>} confirmText="Опубликовать" variant="primary" disabled={!isDirty} onConfirm={publishIntent}>Опубликовать</ConfirmAction></div>
-                    <div className="studio-editor-divider" />
-                    <div className="studio-variant-panel-heading"><div><span className="eyebrow">Варианты Sandbox</span><h3>{editingB ? 'Конфигурация варианта B' : 'Конфигурация варианта A'}</h3></div><label className="studio-ab-switch"><input type="checkbox" checked={abMode} onChange={event => { setAbMode(event.target.checked); if (!event.target.checked) { setEditingVariant('A'); setSelectedVariant('A'); } }} aria-label="Сравнивать ответы A/B" /><span className="studio-ab-switch-track" aria-hidden="true"><span className="studio-ab-switch-thumb" /></span><span>A/B-тест</span></label></div>
-                    <div className="studio-variant-tabs" role="tablist" aria-label="Редактируемый вариант">
-                        <button type="button" role="tab" aria-selected={editingVariant === 'A'} className={cn('studio-variant-tab', editingVariant === 'A' && 'is-active')} onClick={() => setEditingVariant('A')}>Вариант A</button>
-                        {abMode && <button type="button" role="tab" aria-selected={editingVariant === 'B'} className={cn('studio-variant-tab', editingVariant === 'B' && 'is-active')} onClick={() => setEditingVariant('B')}>Вариант B</button>}
-                    </div>
-                    <p className="studio-section-copy">A и B получают одинаковые сообщение, историю, контекст и intent. Включай только когда хочешь сравнить две конфигурации.</p>
-                    {abMode && <SandboxCompareChanges variantA={activeConfig} variantB={abConfig} />}
-                    <SandboxSamplingControls intent={activeIntent} config={editableConfig} providers={providers} onChange={updateEditableConfig} />
+                    <SandboxSamplingControls intent={activeIntent} config={activeConfig} productionConfig={productionConfig} providers={providers} onChange={updateActiveConfig} />
                 </section>
-                <SandboxPromptModules config={editableConfig} onChange={updateEditableConfig} />
-                <details className="studio-section">
-                    <summary>Переопределения контекста <span>{context.location_id ? 'заданы' : 'не заданы'}</span></summary>
-                    <div className="studio-section-copy">Смысловые значения для текущего теста. Production и Telegram не меняются.</div>
-                    <div className="studio-context-grid">
-                        <label>Время<input type="datetime-local" value={context.current_time} onChange={event => setContext({ ...context, current_time: event.target.value })} /></label>
-                        <label>Пауза, сек.<input type="number" min="0" value={context.pre_message_gap_seconds} onChange={event => setContext({ ...context, pre_message_gap_seconds: Number(event.target.value) })} /></label>
-                        <label>Настроение<input type="number" min="0" max="100" value={context.mood} onChange={event => setContext({ ...context, mood: Number(event.target.value) })} /></label>
-                        <label>Локация<select value={context.location_id} onChange={event => setContext({ ...context, location_id: event.target.value })}><option value="petrogradka_home">Квартира на Петроградке</option><option value="cafe_sloy">Кофейня «Слой»</option><option value="showroom_work">Шоурум Макса</option><option value="vkusvill_lenina">ВкусВилл</option><option value="bar_rubinsteina">Бар на Рубинштейна</option></select></label>
-                        <label>Занятие<select value={context.status.task_type} onChange={event => setContext({ ...context, status: { task_type: event.target.value } })}><option value="SLEEP_NIGHT">Спит</option><option value="WORK_LAPTOP">Работает</option><option value="IDLE_HOME_REST">Свободна дома</option></select></label>
-                        <label>Погода<input value={context.weather.text} placeholder="например, дождь" onChange={event => setContext({ ...context, weather: { ...context.weather, text: event.target.value } })} /></label>
-                    </div>
-                    <label className="studio-textarea-field">События дня<textarea value={context.daily_facts.join('\n')} placeholder="По одному событию на строку" onChange={event => setContext({ ...context, daily_facts: event.target.value.split('\n').map(value => value.trim()).filter(Boolean) })} /></label>
-                </details>
-                <details className="studio-section">
-                    <summary>Контекст пользователя <span>{selectedContextUser ? 'загружен' : 'необязательно'}</span></summary>
-                    <div className="studio-section-copy">Подключает историю и память конкретного пользователя только к этому Sandbox-чату.</div>
-                    <div className="sandbox-user-search"><input value={userQuery} placeholder="ID, @username или имя" onChange={event => setUserQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') searchSandboxUsers(); }} /><Button size="sm" variant="outline" onClick={searchSandboxUsers}>Найти</Button></div>
-                    {foundUsers.length > 0 && <div className="sandbox-user-results">{foundUsers.map(user => <button key={user.telegram_id} disabled={loadingUserContext} onClick={() => loadSandboxUserContext(user)}><strong>{user.first_name || 'Без имени'}</strong><span>@{user.username || '—'} · {user.telegram_id}</span></button>)}</div>}
-                </details>
-                <details className="studio-section">
-                    <summary>Пресеты <span>{presets.length + STUDIO_QUICK_PRESETS.length} доступно</span></summary>
-                    <div className="studio-quick-presets">{STUDIO_QUICK_PRESETS.map(([name, changes]) => <button key={name} className={cn('studio-preset-button', presetName === name && 'is-active')} onClick={() => applyQuickPreset(name, changes)}><strong>{name}</strong><span>Быстрый пресет</span></button>)}</div>
-                    {presets.length > 0 && <div className="studio-saved-presets">{presets.map(item => <div className={cn('studio-saved-preset', activePresetId === item.id && 'is-active')} key={item.id}><button onClick={() => applyPreset(item.config, item.id, item.name)}><strong>{item.name}</strong><span>{item.config?.intent_configs ? '4 intent' : 'старый формат'}</span></button><button aria-label={`Удалить пресет ${item.name}`} onClick={() => deletePreset(item.id)}><X size={14} /></button></div>)}</div>}
-                    <div className="studio-preset-save"><input id="sandbox-preset-name" aria-label="Имя пресета" value={presetName} placeholder="Имя нового пресета" onChange={event => { setPresetName(event.target.value); if (activePresetId) setActivePresetId(null); }} /><Button size="sm" onClick={savePreset}>{activePresetId ? 'Обновить' : 'Сохранить'}</Button></div>
-                </details>
-                <details className="studio-section studio-advanced">
-                    <summary>Дополнительно <span>провайдер, добавка, медиа</span></summary>
-                    <label className="studio-textarea-field">Системная добавка<textarea value={activeConfig.systemOverlay} placeholder="Опциональная добавка к system prompt" onChange={event => updateActiveConfig({ ...activeConfig, systemOverlay: event.target.value })} /></label>
-                    <label>Превью медиа<input type="checkbox" checked={mediaPreview} onChange={event => setMediaPreview(event.target.checked)} /></label>
-                    <div className="studio-section-copy">Возможности провайдера подсвечены в параметрах генерации. Неподдержанные параметры будут показаны в «Почему такой ответ?».</div>
-                </details>
-                <ProductionPromptModulesPanel toast={toast} />
-            </aside>
-            <main className="studio-chat-column">
-                <Card className="studio-chat-card">
-                    <CardHeader eyebrow="Проверка черновика" title="Живой диалог, а не лог" description={`${activeIntent} в этом чате использует текущий черновик. Telegram и реальные пользователи не меняются, пока не нажмёшь «Опубликовать».`} action={<Button size="sm" variant="outline" onClick={resetSandboxChat}>Новый чат</Button>} />
-                    {selectedContextUser && <div className="sandbox-context-chip"><Users size={14} /><span>Контекст: <strong>{selectedContextUser.user.first_name || selectedContextUser.user.telegram_id}</strong> · {selectedContextUser.history.length} сообщений · {selectedContextUser.activeMemoryCount} фактов</span><Button size="icon" variant="outline" aria-label="Отключить контекст пользователя" onClick={() => { setSelectedContextUser(null); setHistory([]); }}><X size={14} /></Button></div>}
-                    <div className="sandbox-history sandbox-chat-history">
-                        {!history.length && !submittedMessage && <div className="sandbox-chat-empty">Напиши Лере первое сообщение — начнём чистую Sandbox-сессию.</div>}
-                        {history.length > 0 && <div className="sandbox-history-window">Окно истории: {visibleIncluded.size} / {history.length} сообщений</div>}
-                        {history.map(item => <div key={item.id} className={cn('sandbox-history-row', item.role === 'assistant' ? 'sandbox-history-assistant' : 'sandbox-history-user', !visibleIncluded.has(String(item.id)) && 'sandbox-history-excluded')}><div className="sandbox-history-bubble"><strong>{item.role === 'assistant' ? 'Лера' : selectedContextUser?.user?.first_name || 'Богдан'}</strong><span>{item.content}</span><small>{visibleIncluded.has(String(item.id)) ? 'В окне истории' : 'Вне окна истории'}</small></div></div>)}
-                        {submittedMessage && <>
-                            <div className="sandbox-current-message"><div className="sandbox-current-message-bubble"><strong>{selectedContextUser?.user?.first_name || 'Богдан'}</strong><span>{submittedMessage}</span></div></div>
-                            {result?.classifier && <div className="sandbox-classifier-note"><Badge variant="green">Определён intent: {result.resolvedIntent}</Badge>{activeIntent === 'AUTO' && <span>Classifier выполнен один раз для обоих вариантов.</span>}</div>}
-                            {loading && <div className="sandbox-typing-bubble">Лера печатает…</div>}
-                            {!loading && result && <>
-                                <div className="sandbox-result-toolbar">
-                                    {abMode && <div className="sandbox-result-tabs" role="tablist" aria-label="Ответы A/B">
-                                        <button type="button" role="tab" aria-selected={selectedVariant === 'A'} className={cn('sandbox-result-tab', selectedVariant === 'A' && 'is-active')} onClick={() => setSelectedVariant('A')}>Вариант A</button>
-                                        <button type="button" role="tab" aria-selected={selectedVariant === 'B'} className={cn('sandbox-result-tab', selectedVariant === 'B' && 'is-active')} onClick={() => setSelectedVariant('B')}>Вариант B</button>
-                                    </div>}
-                                    <Button size="sm" variant="outline" className="sandbox-regenerate-button" aria-label="Перегенерировать ответ" title="Перегенерировать ответ" onClick={regenerate} disabled={loading}><RefreshCw size={14} />Перегенерировать</Button>
-                                </div>
-                                <div className="sandbox-chat-answers">
-                                    <SandboxResultCard
-                                        label={abMode ? selectedVariant : 'A'}
-                                        result={selectedChatResult}
-                                        sharedIntent={result.resolvedIntent || '—'}
-                                        isEditing={editingResponse === (abMode ? selectedVariant : 'A')}
-                                        draftResponse={editedResponse}
-                                        onDraftChange={setEditedResponse}
-                                        onEdit={() => beginResponseEdit(selectedChatResult)}
-                                        onCancelEdit={cancelResponseEdit}
-                                        onSaveEdit={saveResponseEdit}
-                                        onChoose={() => continueSandboxChat(selectedChatResult, abMode ? selectedVariant : '')}
-                                    />
-                                </div>
-                            </>}
-                        </>}
-                    </div>
-                    <div className="sandbox-send-row studio-composer"><input aria-label="Сообщение для Леры" value={userText} placeholder="Напишите Лере…" onChange={event => setUserText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') generate(); }} /><span className="studio-composer-intent">{activeIntent}</span><Button className="sandbox-send-button" onClick={generate} disabled={loading}><Play size={14} />{loading ? 'Генерирую…' : 'Сгенерировать'}</Button></div>
-                    <details className="sandbox-history-editor studio-history-editor"><summary>Редактор истории <span>{history.length} сообщений</span></summary><div className="sandbox-history-edit-list">{history.map((item, index) => <div key={item.id} className="sandbox-history-edit-row"><select value={item.role} onChange={event => setHistory(history.map((entry, itemIndex) => itemIndex === index ? { ...entry, role: event.target.value } : entry))}><option value="user">Пользователь</option><option value="assistant">Лера</option></select><input value={item.content} onChange={event => setHistory(history.map((entry, itemIndex) => itemIndex === index ? { ...entry, content: event.target.value } : entry))} /><Button size="icon" variant="outline" aria-label="Удалить сообщение" onClick={() => setHistory(history.filter((_, itemIndex) => itemIndex !== index))}><X size={14} /></Button></div>)}</div><div className="sandbox-compose-row"><select value={draftRole} onChange={event => setDraftRole(event.target.value)}><option value="user">Пользователь</option><option value="assistant">Лера</option></select><input value={draftText} placeholder="Добавить прошлое сообщение" onChange={event => setDraftText(event.target.value)} /><Button size="sm" variant="outline" onClick={() => { if (draftText.trim()) { setHistory([...history, { id: `local-${Date.now()}`, role: draftRole, content: draftText.trim() }]); setDraftText(''); } }}>Добавить</Button></div></details>
-                </Card>
-            </main>
-        </div>
+                <section className="studio-presets-library"><div className="studio-section-heading"><div><span className="eyebrow">Наборы для старта</span><h3>Пресеты — снимки всех intent</h3></div><Badge variant="muted">{presets.length + STUDIO_QUICK_PRESETS.length} наборов</Badge></div><p>Применение меняет локальные кандидаты; оно не сохраняет и не публикует. Полный набор затронет AUTO, CASUAL, EROTIC и JOKE.</p><div className="studio-preset-grid">{STUDIO_QUICK_PRESETS.map(([name, changes]) => <button key={name} className="studio-preset-button" onClick={() => applyQuickPreset(name, changes)}><strong>{name}</strong><span>Меняет текущий intent локально</span><em>Применить</em></button>)}{presets.map(item => <article className={cn('studio-saved-preset', activePresetId === item.id && 'is-active')} key={item.id}><button onClick={() => applyPreset(item.config, item.id, item.name)}><strong>{item.name}</strong><span>{formatDate(item.updated_at || item.created_at)} · AUTO / CASUAL / EROTIC / JOKE</span><em>{activePresetId === item.id ? 'Выбран' : 'Применить'}</em></button><button aria-label={`Удалить набор ${item.name}`} onClick={() => deletePreset(item.id)}><X size={15} /></button></article>)}</div><div className="studio-preset-save"><input id="sandbox-preset-name" aria-label="Имя набора" value={presetName} placeholder="Название нового набора" onChange={event => { setPresetName(event.target.value); if (activePresetId) setActivePresetId(null); }} /><Button size="sm" variant="outline" onClick={savePreset}>{activePresetId ? 'Обновить' : 'Сохранить как новый'}</Button></div></section>
+            </Tabs.Content>
+            <Tabs.Content value="test" className="studio-workspace-content">
+                <section className="studio-compare-intro"><div><span className="eyebrow">Один замороженный тест</span><h3>{comparisonMode === 'production' ? 'Production ↔ Черновик' : 'Свободный A/B'}</h3><p>Оба ответа получают одинаковые intent, сообщение, историю и контекст.</p></div><Button variant="outline" onClick={() => { setHistory([]); setResult(null); setSubmittedMessage(''); }}>Новый тест</Button></section>
+                <SandboxCompareChanges variantA={comparisonMode === 'production' ? productionConfig : activeConfig} variantB={comparisonMode === 'production' ? activeConfig : abConfig} />
+                <details className="studio-test-conditions"><summary>Тестовые условия <span>только Sandbox</span></summary><div className="studio-context-grid"><label>Время<input type="datetime-local" value={context.current_time} onChange={event => setContext({ ...context, current_time: event.target.value })} /></label><label>Пауза, сек.<input type="number" min="0" value={context.pre_message_gap_seconds} onChange={event => setContext({ ...context, pre_message_gap_seconds: Number(event.target.value) })} /></label><label>Настроение<input type="number" min="0" max="100" value={context.mood} onChange={event => setContext({ ...context, mood: Number(event.target.value) })} /></label><label>Локация<select value={context.location_id} onChange={event => setContext({ ...context, location_id: event.target.value })}><option value="petrogradka_home">Квартира на Петроградке</option><option value="cafe_sloy">Кофейня «Слой»</option><option value="showroom_work">Шоурум Макса</option><option value="vkusvill_lenina">ВкусВилл</option></select></label></div><div className="sandbox-user-search"><input value={userQuery} placeholder="ID, @username или имя пользователя" onChange={event => setUserQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') searchSandboxUsers(); }} /><Button size="sm" variant="outline" onClick={searchSandboxUsers}>Подключить контекст</Button></div>{foundUsers.map(user => <button className="studio-user-result" key={user.telegram_id} disabled={loadingUserContext} onClick={() => loadSandboxUserContext(user)}>{user.first_name || 'Без имени'} · @{user.username || '—'}</button>)}<label className="studio-toggle-row">Превью медиа<input type="checkbox" checked={mediaPreview} onChange={event => setMediaPreview(event.target.checked)} /></label></details>
+                <details className="studio-expert-panel"><summary>Экспертный режим: свободный A/B</summary><p>Вместо Production во втором тесте используется отдельный локальный вариант. На публикацию это не влияет.</p><label className="studio-textarea-field">System overlay варианта B<textarea value={abConfig.systemOverlay} onChange={event => setAbConfig({ ...abConfig, systemOverlay: event.target.value })} /></label><Button size="sm" variant="outline" onClick={() => setComparisonMode(current => current === 'production' ? 'ab' : 'production')}>{comparisonMode === 'production' ? 'Включить свободный A/B' : 'Вернуть Production ↔ Черновик'}</Button></details>
+                <section className="studio-test-chat"><div className="studio-test-history">{history.map(item => <div key={item.id} className={cn('sandbox-history-row', item.role === 'assistant' ? 'sandbox-history-assistant' : 'sandbox-history-user')}><div className="sandbox-history-bubble"><strong>{item.role === 'assistant' ? 'Лера' : 'Пользователь'}</strong><span>{item.content}</span></div></div>)}{submittedMessage && <div className="sandbox-current-message"><div className="sandbox-current-message-bubble"><strong>Пользователь</strong><span>{submittedMessage}</span></div></div>}</div><div className="sandbox-send-row studio-composer"><input aria-label="Сообщение для Леры" value={userText} placeholder="Напишите сообщение для сравнения…" onChange={event => setUserText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') compare(); }} /><span className="studio-composer-intent">{activeIntent}</span><Button className="sandbox-send-button" onClick={compare} disabled={loading}><Play size={14} />{loading ? 'Сравниваю…' : 'Сравнить'}</Button></div></section>
+                {result && <section className="studio-result-comparison"><div className="studio-result-toolbar"><span>{comparisonMode === 'production' ? `Production v${productionVersion} ↔ Кандидат` : 'Вариант A ↔ Вариант B'}</span><Button size="sm" variant="outline" className="sandbox-regenerate-button" onClick={compare}><RefreshCw size={14} />Повторить тест</Button></div><div className="studio-result-columns"><SandboxResultCard label={comparisonMode === 'production' ? `Production v${productionVersion}` : 'A'} result={result.variants?.A} sharedIntent={result.resolvedIntent || activeIntent} onChoose={() => continueSandboxChat(result.variants?.A, 'Production')} /><SandboxResultCard label={comparisonMode === 'production' ? 'Черновик' : 'B'} result={result.variants?.B} sharedIntent={result.resolvedIntent || activeIntent} onChoose={() => continueSandboxChat(result.variants?.B, 'Черновик')} /></div></section>}
+            </Tabs.Content>
+            <Tabs.Content value="publish" className="studio-workspace-content"><section className="studio-publish-page"><div className="studio-section-heading"><div><span className="eyebrow">Проверка перед публикацией</span><h3>{activeIntent}: Production v{productionVersion} → Черновик v{draftVersion}</h3></div><Badge variant={hasUnsavedEdits ? 'yellow' : draftDiffersFromProduction ? 'blue' : 'green'}>{hasUnsavedEdits ? 'сначала сохранить' : draftDiffersFromProduction ? 'готово к публикации' : 'без изменений'}</Badge></div><p>Изменится только {activeIntent}. Все новые ответы пользователей, для которых classifier выберет этот intent, получат новую версию. История и уже отправленные сообщения не переписываются.</p>{hasUnsavedEdits && <div className="studio-warning-note">Есть локальные правки. Публикация всегда берёт сохранённый черновик, поэтому сначала «Сохранить черновик».</div>}<div className="studio-diff-list">{productionChanges.length ? productionChanges.map(([label, before, after]) => <div key={label}><strong>{label}</strong><span>{String(before)} → {String(after)}</span></div>) : <span>Сохранённый черновик совпадает с Production.</span>}</div><div className="studio-publish-footer">{hasUnsavedEdits ? <Button onClick={saveDraft}><CheckCircle2 size={15} />Сохранить черновик</Button> : primaryAction}</div></section></Tabs.Content>
+            <Tabs.Content value="live" className="studio-workspace-content"><section className="studio-live-page"><div><span className="eyebrow">Общие правила Production</span><h3>Сохраняются сразу и влияют на будущие ответы всех пользователей</h3><p>Это не часть черновика intent и не ждёт публикации CASUAL, EROTIC или JOKE.</p></div><ProductionPromptModulesPanel toast={toast} /></section></Tabs.Content>
+        </Tabs.Root>
+        <footer className="studio-workspace-footer"><span>{activeProvider?.name || 'Активный провайдер'} · {activeProvider?.model_name || 'модель по умолчанию'}</span><span>{selectedContextUser ? `Контекст: ${selectedContextUser.user.first_name || selectedContextUser.user.telegram_id}` : 'Контекст пользователя не подключён'} · история {history.length}</span></footer>
     </div>;
 }
 function AiSandboxPromptStudio({ toast }) {

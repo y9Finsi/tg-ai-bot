@@ -110,18 +110,19 @@ test('Draft and publish routes expose explicit intent-scoped version workflow', 
     assert.match(router, /production\[intent\] = \{/);
     assert.match(router, /const nextConfig = config === undefined/);
     assert.match(router, /config: nextConfig/);
-    assert.match(ui, /Draft/);
-    assert.match(ui, /Production/);
-    assert.match(ui, /Сохранить как пресет/);
-    assert.match(ui, /Опубликовать/);
-    assert.match(ui, /JSON\.stringify\(\{ intent: activeIntent, config: activeConfig \}\)/);
+    assert.match(ui, /Черновик — тест — публикация/);
+    assert.match(ui, /Сохранить как новый/);
+    assert.match(ui, /JSON\.stringify\(\{ intent: activeIntent \}\)/);
+    assert.doesNotMatch(ui, /prompt-studio\/publish'.{0,160}config: activeConfig/);
 });
 
-test('Fresh local Sandbox edits enable publishing instead of relying on stale server dirty state', () => {
+test('Sandbox separates unsaved local candidate from saved draft and Production', () => {
     const ui = read('admin-v2/src/main.jsx');
 
-    assert.match(ui, /const isDirty = JSON\.stringify\(activeConfig\) !== JSON\.stringify\(productionConfig\);/);
-    assert.doesNotMatch(ui, /const isDirty = activeState\?\.dirty \?\? JSON\.stringify\(activeConfig\)/);
+    assert.match(ui, /const savedDraftConfig = normalizeStudioConfig\(activeState\?\.draft\?\.config \|\| productionConfig\);/);
+    assert.match(ui, /const hasUnsavedEdits = JSON\.stringify\(activeConfig\) !== JSON\.stringify\(savedDraftConfig\);/);
+    assert.match(ui, /const draftDiffersFromProduction = JSON\.stringify\(savedDraftConfig\) !== JSON\.stringify\(productionConfig\);/);
+    assert.match(ui, /Сначала сохрани локальные изменения в черновик/);
 });
 
 test('Sandbox edits only production intents and explains publication scope', () => {
@@ -129,8 +130,8 @@ test('Sandbox edits only production intents and explains publication scope', () 
 
     assert.match(ui, /const STUDIO_EDITABLE_INTENTS = \['CASUAL', 'EROTIC', 'JOKE'\]/);
     assert.match(ui, /STUDIO_EDITABLE_INTENTS\.map\(intent/);
-    assert.match(ui, /AUTO — не отдельная настройка и поэтому здесь не редактируется/);
-    assert.match(ui, /После публикации новые ответы всех пользователей с этим intent получат настройки/);
+    assert.match(ui, /AUTO — это маршрутизация Telegram, его не редактируем/);
+    assert.match(ui, /Новые ответы всех пользователей этого intent получат сохранённый черновик/);
     assert.match(ui, /Тест ответов и публикация/);
     assert.match(ui, /Система: провайдеры и правила/);
 });
@@ -165,7 +166,7 @@ test('Sandbox chat commits the selected exchange as a valid user-assistant pair'
     assert.equal(appendSandboxExchange(history, 'сообщение', ' '), history);
 });
 
-test('Sandbox chat uses the active A/B tab as the source for the next request', () => {
+test('Sandbox comparison keeps generic A/B selection helper compatible', () => {
     const result = {
         variants: {
             A: { response: 'ответ A' },
@@ -178,47 +179,34 @@ test('Sandbox chat uses the active A/B tab as the source for the next request', 
     assert.equal(getSandboxSelectedResult({ response: 'обычный ответ' }, false, 'B').response, 'обычный ответ');
 });
 
-test('Sandbox generation commits a pending selected result into the outgoing history synchronously', () => {
+test('Sandbox defaults to frozen Production versus local candidate comparison', () => {
     const source = read('admin-v2/src/main.jsx');
 
-    assert.match(source, /const selectedResult = getSandboxSelectedResult\(result, abMode, selectedVariant\)/);
-    assert.match(source, /const nextHistory = shouldCommitPendingResult\s*\? appendSandboxExchange\(history, submittedMessage, selectedResult\.response\)\s*: history/s);
-    assert.match(source, /requestGeneration\(\{ message, requestHistory: nextHistory, commitPendingResult: shouldCommitPendingResult \}\)/);
-    assert.match(source, /history: requestHistory/);
-    assert.match(source, /if \(commitPendingResult\) setHistory\(requestHistory\)/);
+    assert.match(source, /const \[comparisonMode, setComparisonMode\] = useState\('production'\)/);
+    assert.match(source, /studioConfigToSandboxPreset\(productionConfig, `Production v\$\{productionVersion\} · \$\{activeIntent\}`\)/);
+    assert.match(source, /studioConfigToSandboxPreset\(activeConfig, `Кандидат · \$\{activeIntent\}`\)/);
+    assert.match(source, /api\('\/api\/sandbox\/ab-test'/);
+    assert.match(source, /Production ↔ Черновик/);
+    assert.match(source, /одинаковые intent, сообщение, историю и контекст/);
 });
 
-test('Sandbox regeneration repeats the visible request without committing a pending answer', () => {
+test('Sandbox keeps free A/B behind an expert disclosure and declares preset scope', () => {
     const source = read('admin-v2/src/main.jsx');
 
-    assert.match(source, /async function regenerate\(\) \{/);
-    assert.match(source, /if \(!submittedMessage \|\| loading\) return;/);
-    assert.match(source, /requestGeneration\(\{ message: submittedMessage, requestHistory: history \}\)/);
-    assert.match(source, /className="sandbox-regenerate-button" aria-label="Перегенерировать ответ"/);
-    assert.match(source, /<RefreshCw size=\{14\} \/>Перегенерировать/);
+    assert.match(source, /Экспертный режим: свободный A\/B/);
+    assert.match(source, /Наборы для старта/);
+    assert.match(source, /Применение меняет локальные кандидаты; оно не сохраняет и не публикует/);
+    assert.match(source, /AUTO, CASUAL, EROTIC и JOKE/);
 });
 
-test('Sandbox lets the user edit a selected response before continuing the chat', () => {
-    const source = read('admin-v2/src/main.jsx');
-
-    assert.match(source, /function beginResponseEdit\(selectedResult\)/);
-    assert.match(source, /function saveResponseEdit\(\)/);
-    assert.match(source, /setHistory\(current => appendSandboxExchange\(current, userMessage, assistantMessage\)\)/);
-    assert.match(source, /aria-label=\{`Отредактировать ответ варианта \$\{label\}`\}/);
-    assert.match(source, /onEdit=\{\(\) => beginResponseEdit\(selectedChatResult\)\}/);
-    assert.match(source, /onSaveEdit=\{saveResponseEdit\}/);
-});
-
-test('Sandbox keeps the history editor inside the chat card and the composer compact', () => {
+test('Sandbox makes global Production rules a separate immediate-save surface', () => {
     const source = read('admin-v2/src/main.jsx');
     const css = read('admin-v2/src/styles.css');
 
-    const chatCardStart = source.indexOf('<Card className="studio-chat-card">');
-    const chatCardEnd = source.indexOf('</Card>', chatCardStart);
-    const historyEditor = source.indexOf('className="sandbox-history-editor studio-history-editor"');
-
-    assert.ok(historyEditor > chatCardStart && historyEditor < chatCardEnd);
-    assert.match(css, /\.studio-chat-card \{ min-height: 0; \}/);
-    assert.match(css, /\.studio-chat-history \{ flex: 0 1 auto; min-height: 160px;/);
-    assert.match(css, /\.studio-composer \{ position: static; width: 100%; grid-template-columns: minmax\(0, 1fr\) auto auto; \}/);
+    assert.match(source, /Общие правила Production/);
+    assert.match(source, /Сохраняются сразу и влияют на будущие ответы всех пользователей/);
+    assert.match(source, /function ProductionPromptModulesPanel/);
+    assert.match(css, /\.studio-editor-layout \{ display: grid; grid-template-columns:/);
+    assert.match(css, /\.studio-result-columns \{ display: grid; grid-template-columns: repeat\(2,/);
+    assert.match(css, /@media \(max-width: 900px\)/);
 });
