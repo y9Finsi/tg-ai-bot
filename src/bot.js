@@ -140,6 +140,7 @@ async function flushUserBuffer(userId) {
             shouldDecrement: false,
             reservedResource,
             tempMsgId,
+            photoUrls: buf.photoUrls || [],
             eventIds: buf.eventIds || [],
             batchId: buf.batchId || null,
             firstMessageAt: buf.firstMessageAt || null,
@@ -1294,28 +1295,80 @@ bot.on(['photo', 'video', 'voice', 'document', 'animation'], async (ctx) => {
     }
     try {
         let eventType = 'PHOTO';
+        let photoUrl = null;
         const media = ctx.message.photo?.at(-1) || ctx.message.video || ctx.message.voice || ctx.message.document || ctx.message.animation;
         if (ctx.message.video) eventType = 'VIDEO';
         if (ctx.message.voice) eventType = 'VOICE';
         if (ctx.message.animation) eventType = 'VIDEO';
+        if (ctx.message.photo && media?.file_id) {
+            try {
+                const link = await ctx.telegram.getFileLink(media.file_id);
+                photoUrl = typeof link === 'string' ? link : link.href;
+            } catch (linkErr) {
+                console.warn('[VISION LINK ERROR]:', linkErr.message);
+            }
+        }
         const user = await getUser(userId);
         if (!user) await createUser(userId);
+        const captionText = ctx.message.caption || '';
+        const userMsgText = captionText.trim() || 'Посмотри на фото';
+
         await appendConversationEvent({
             userId,
             eventType,
             role: 'user',
-            content: ctx.message.caption || '',
+            content: captionText,
             occurredAt: ctx.message?.date ? new Date(Number(ctx.message.date) * 1000) : new Date(),
             telegramMessageId: ctx.message?.message_id || null,
             metadata: {
                 file_id: media?.file_id || null,
-                caption: ctx.message.caption || '',
+                photo_url: photoUrl || null,
+                caption: captionText,
                 width: media?.width || null,
                 height: media?.height || null,
                 duration: media?.duration || null
             },
             status: 'COMPLETED'
         });
+
+        // Если это личный диалог и пользователь прислал фото — ставим задачу в очередь генерации ответа Леры
+        if (eventType === 'PHOTO' && (!ctx.chat || ctx.chat.type === 'private')) {
+            if (!userDebounceBuffer[userId]) {
+                userDebounceBuffer[userId] = {
+                    textParts: [],
+                    photoUrls: [],
+                    eventIds: [],
+                    batchId: randomUUID(),
+                    chatId: ctx.chat.id,
+                    timer: null,
+                    lastCtx: ctx,
+                    firstMsgTime: Date.now(),
+                    firstMessageAt: ctx.message?.date ? new Date(Number(ctx.message.date) * 1000).toISOString() : new Date().toISOString(),
+                    preMessageGapSeconds: null,
+                    reactionMessageId: ctx.message?.message_id || null
+                };
+                startTyping(bot, ctx.chat.id, userDebounceBuffer[userId].batchId);
+            } else {
+                if (userDebounceBuffer[userId].timer) {
+                    clearTimeout(userDebounceBuffer[userId].timer);
+                }
+            }
+
+            userDebounceBuffer[userId].textParts.push(userMsgText);
+            if (photoUrl) {
+                userDebounceBuffer[userId].photoUrls.push(photoUrl);
+            }
+            userDebounceBuffer[userId].lastCtx = ctx;
+
+            const timeAccumulated = Date.now() - userDebounceBuffer[userId].firstMsgTime;
+            if (timeAccumulated >= MAX_DEBOUNCE_WAIT_MS) {
+                await flushUserBuffer(userId);
+            } else {
+                userDebounceBuffer[userId].timer = setTimeout(() => {
+                    flushUserBuffer(userId);
+                }, DEBOUNCE_DELAY_MS);
+            }
+        }
     } catch (eventError) {
         console.error(`[MEDIA EVENT ERROR] user ${userId}:`, eventError.message);
     }

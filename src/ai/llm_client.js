@@ -82,6 +82,28 @@ export function buildLlmRequestParams({ model, messages, calculatedMaxTokens, ll
     return requestParams;
 }
 
+export function hasMultimodalMessages(messages = []) {
+    return Array.isArray(messages) && messages.some(msg => Array.isArray(msg?.content) && msg.content.some(part => part?.type === 'image_url'));
+}
+
+export function stripImageUrlsFromMessages(messages = []) {
+    return (messages || []).map(msg => {
+        if (Array.isArray(msg?.content)) {
+            const textParts = msg.content
+                .filter(part => part?.type === 'text')
+                .map(part => part.text)
+                .join(' ')
+                .trim();
+            const hasImage = msg.content.some(part => part?.type === 'image_url');
+            return {
+                ...msg,
+                content: textParts || (hasImage ? '[Пользователь прислал фото]' : '')
+            };
+        }
+        return msg;
+    });
+}
+
 export async function requestLlmCompletion(user, messages, isPhotoRequest, getOpenAIClientAndModelFn, traceContext = {}) {
     const modeKey = user.roleplay_mode || 'flirt';
     let calculatedMaxTokens = user.max_tokens || ((modeKey === 'flirt' || modeKey === 'flirthot') ? 200 : 400);
@@ -123,7 +145,21 @@ export async function requestLlmCompletion(user, messages, isPhotoRequest, getOp
 
         try {
             const startedAt = Date.now();
-            const completion = await tempClient.chat.completions.create(requestParams);
+            let completion;
+            try {
+                completion = await tempClient.chat.completions.create(requestParams);
+            } catch (createErr) {
+                if (hasMultimodalMessages(requestParams.messages)) {
+                    console.warn(`⚠️ [VISION FALLBACK] Модель "${prov.model_name}" не поддерживает Vision (${createErr.message}). Повторяем запрос в текстовом режиме...`);
+                    const fallbackParams = {
+                        ...requestParams,
+                        messages: stripImageUrlsFromMessages(requestParams.messages)
+                    };
+                    completion = await tempClient.chat.completions.create(fallbackParams);
+                } else {
+                    throw createErr;
+                }
+            }
             if (completion.choices && completion.choices.length > 0) {
                 if (i > 0) {
                     console.log(`✅ [FALLBACK SUCCESS] Успешный ответ от провайдера #${i + 1} (${prov.name}) после сбоя предыдущих!`);

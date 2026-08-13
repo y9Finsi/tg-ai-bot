@@ -212,7 +212,7 @@ async function generatePhotoForPrompt(user, imagePrompt, preselectedPhoto = null
 
 // --- 3. ПАЙПЛАЙН AI ДВИЖКА ---
 
-async function buildMessagePayload(user, userId, { userText, isInitiative, routingMode = 'CASUAL', initiativeReason = null, initiativeKind = null, contentCandidates = [], batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null }) {
+async function buildMessagePayload(user, userId, { userText, photoUrls = [], isInitiative, routingMode = 'CASUAL', initiativeReason = null, initiativeKind = null, contentCandidates = [], batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null }) {
     const productionRoutingSettings = await getRoutingSettings();
     const productionIntentConfig = getModeIntentConfig(routingMode, productionRoutingSettings);
     const [baseSystemPromptText, conversationEvents, memories] = await Promise.all([
@@ -361,11 +361,21 @@ async function buildMessagePayload(user, userId, { userText, isInitiative, routi
     const systemPrompt = baseSystemPromptText + mediaLogInstruction + tamagotchiInstruction + modeInstruction + historyInstruction;
     const messages = [{ role: 'system', content: systemPrompt }];
 
-    // Передаем последнее текущее сообщение пользователя
+    // Передаем последнее текущее сообщение пользователя (с поддержкой Vision)
     if (!isInitiative && userText) {
         const lastMsg = messages.at(-1);
         if (!lastMsg || lastMsg.role !== 'user' || lastMsg.content !== userText) {
-            messages.push({ role: 'user', content: userText });
+            if (Array.isArray(photoUrls) && photoUrls.length > 0) {
+                messages.push({
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: userText || 'Посмотри на фото' },
+                        ...photoUrls.map(url => ({ type: 'image_url', image_url: { url } }))
+                    ]
+                });
+            } else {
+                messages.push({ role: 'user', content: userText });
+            }
         }
     }
 
@@ -455,7 +465,7 @@ async function recordAiTransaction(userId, usage) {
 
 // --- 4. ДЕКЛАРАТИВНЫЙ ЕДИНЫЙ ДВИЖОК ---
 
-async function runAiEngine(userId, { userText = null, isInitiative = false, routingMode = 'CASUAL', classifierResult = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null } = {}) {
+async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', classifierResult = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null } = {}) {
     const user = await getUser(userId);
     if (!user) return null;
 
@@ -463,7 +473,7 @@ async function runAiEngine(userId, { userText = null, isInitiative = false, rout
     const {
         messages, isPhotoRequest, recommendationPost, preselectedPhoto, lastLeraText,
         recentReplyTexts, memories, leraState, systemPrompt, radiantContext, judgeLeraRules
-    } = await buildMessagePayload(user, userId, { userText, isInitiative, routingMode, initiativeReason, initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds, firstMessageAt });
+    } = await buildMessagePayload(user, userId, { userText, photoUrls, isInitiative, routingMode, initiativeReason, initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds, firstMessageAt });
     const routingSettings = await getRoutingSettings();
     const generationParams = getModeGenerationParams(routingMode, routingSettings);
 
@@ -926,6 +936,7 @@ export async function generateResponse(userId, text, envelope = {}) {
 
     return await runAiEngine(userId, {
         userText: text,
+        photoUrls: envelope.photoUrls || [],
         isInitiative: false,
         routingMode,
         classifierResult,

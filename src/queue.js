@@ -254,7 +254,7 @@ async function processAiJob(bot, job) {
             }).catch(error => console.error(`[CONVERSATION OUT EVENT ERROR] user ${userId}:`, error.message));
         };
         try {
-            response = await generateResponse(userId, text, { batchId, eventIds, firstMessageAt, preMessageGapSeconds });
+            response = await generateResponse(userId, text, { batchId, eventIds, firstMessageAt, preMessageGapSeconds, photoUrls: job.data.photoUrls || [] });
             const historyClearedAtAfterGeneration = await getChatHistoryClearedAt(userId);
             if (String(historyClearedAtBeforeGeneration || '') !== String(historyClearedAtAfterGeneration || '')) {
                 await refundReservation();
