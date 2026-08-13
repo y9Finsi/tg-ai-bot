@@ -1882,7 +1882,7 @@ export function startAdminServer() {
 
     app.post('/api/admin/channel/settings', async (req, res) => {
         try {
-            const { channelId, channelUrl, isEnabled, frequencyHours, topics, topicWeights, messagesCount, mediaMode, promptBlocks, temperature, inheritLeraPrompt, includeDayContext, publicProfileEnabled, publicFactsEnabled, publicFacts, creativity, ctaStyle, judgeMode, judgeProviderId, judgeModel, judgePrompt, judgeTimeoutMs, judgeMaxTokens, commentsEnabled, reactionChance, commentChance, recognizeUsers } = req.body;
+            const { channelId, channelUrl, isEnabled, frequencyHours, topics, topicWeights, messagesCount, mediaMode, promptBlocks, temperature, inheritLeraPrompt, includeDayContext, publicProfileEnabled, publicFactsEnabled, publicFacts, creativity, ctaStyle, judgeMode, judgeProviderId, judgeModel, judgePrompt, judgeTimeoutMs, judgeMaxTokens, commentsEnabled, reactionChance, commentChance, recognizeUsers, commentsPrompt } = req.body;
             const allowedTopics = ['thoughts', 'flirt', 'life', 'jokes', 'questions', 'meme', 'repost'];
             const safeTopics = Array.isArray(topics) ? topics.filter(topic => allowedTopics.includes(topic)) : [];
             const activeTopics = safeTopics.length ? safeTopics : ['thoughts'];
@@ -1916,7 +1916,8 @@ export function startAdminServer() {
                 setSetting('channel_comments_enabled', commentsEnabled !== false ? 'true' : 'false'),
                 setSetting('channel_reaction_chance', String(Math.max(0, Math.min(100, Number(reactionChance ?? 40))))),
                 setSetting('channel_comment_chance', String(Math.max(0, Math.min(100, Number(commentChance ?? 15))))),
-                setSetting('channel_recognize_users', recognizeUsers !== false ? 'true' : 'false')
+                setSetting('channel_recognize_users', recognizeUsers !== false ? 'true' : 'false'),
+                setSetting('channel_comments_prompt', String(commentsPrompt || '').trim().slice(0, 4000))
             ]);
             res.json({ success: true, settings: await getChannelPosterSettings() });
         } catch (e) {

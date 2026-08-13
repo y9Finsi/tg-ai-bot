@@ -1519,8 +1519,42 @@ function CommentsPromptStudioPanel({ toast }) {
     const [isKnown, setIsKnown] = useState(true);
     const [userName, setUserName] = useState('Богдан');
     const [isDirectMention, setIsDirectMention] = useState(true);
+    const [commentsPrompt, setCommentsPrompt] = useState('');
     const [decisionResult, setDecisionResult] = useState(null);
     const [testing, setTesting] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        api('/api/admin/channel/settings').then(res => {
+            if (res?.settings?.comments_prompt !== undefined) {
+                setCommentsPrompt(res.settings.comments_prompt || '');
+            }
+        }).catch(() => {});
+    }, []);
+
+    async function saveCommentsPrompt() {
+        setSaving(true);
+        try {
+            const current = await api('/api/admin/channel/settings');
+            const body = {
+                ...(current?.settings || {}),
+                channelId: current?.channelId || '',
+                channelUrl: current?.channelUrl || '',
+                isEnabled: current?.settings?.is_enabled,
+                frequencyHours: current?.settings?.frequency_hours,
+                commentsPrompt
+            };
+            await api('/api/admin/channel/settings', {
+                method: 'POST',
+                body: JSON.stringify(body)
+            });
+            toast?.('Инструкции комментариев сохранены');
+        } catch (err) {
+            toast?.(err.message, 'error');
+        } finally {
+            setSaving(false);
+        }
+    }
 
     async function testCommentDecision() {
         setTesting(true);
@@ -1557,6 +1591,20 @@ function CommentsPromptStudioPanel({ toast }) {
                     <p>• <strong>Формат ответа:</strong> 1–2 коротких предложения, строчными буквами, без лишних смайликов внутри текста.</p>
                     <p>• <strong>Узнавание друзей:</strong> если юзер есть в личке бота — Лера знает его имя и воспоминания, может по-дружески подколоть.</p>
                     <p>• <strong>Сверхстрогая безопасность:</strong> СТРОЖАЙШЕ ЗАПРЕЩЕНО раскрывать приватные интимные подробности, фото или секреты из ЛС в публичном чате.</p>
+                </div>
+                <div className="context-template-editor" style={{ marginTop: 16 }}>
+                    <label className="classifier-prompt-editor">Дополнительные инструкции для комментариев
+                        <textarea
+                            value={commentsPrompt}
+                            placeholder="Например: чаще подкалывай за питерскую погоду, будь чуть более ироничной к хейтерам..."
+                            onChange={e => setCommentsPrompt(e.target.value)}
+                        />
+                    </label>
+                    <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button onClick={saveCommentsPrompt} disabled={saving} variant="primary">
+                            <CheckCircle2 size={15} /> {saving ? 'Сохраняю…' : 'Сохранить инструкции'}
+                        </Button>
+                    </div>
                 </div>
             </Card>
 
@@ -2636,6 +2684,7 @@ function ContentPanel({ toast }) {
             reactionChance: result.settings?.reaction_chance ?? 40,
             commentChance: result.settings?.comment_chance ?? 15,
             recognizeUsers: result.settings?.recognize_users !== false,
+            commentsPrompt: result.settings?.comments_prompt || '',
             promptBlocks: { voice: '', context: '', restrictions: '', cta: '', ...(result.settings?.prompt_blocks || {}) }
         });
     }
@@ -2909,6 +2958,15 @@ function ContentPanel({ toast }) {
                             </label>
                             <label>Шанс случайного комментария в тред: <span>{channelForm.commentChance}%</span>
                                 <input type="range" min="0" max="100" step="5" value={channelForm.commentChance} onChange={event => setChannelForm({ ...channelForm, commentChance: Number(event.target.value) })} />
+                            </label>
+                        </div>
+                        <div className="context-template-editor" style={{ marginTop: 16 }}>
+                            <label className="classifier-prompt-editor">Дополнительные инструкции для комментариев
+                                <textarea
+                                    value={channelForm.commentsPrompt}
+                                    placeholder="Например: чаще подкалывай за питерскую погоду, будь чуть более ироничной к хейтерам..."
+                                    onChange={event => setChannelForm({ ...channelForm, commentsPrompt: event.target.value })}
+                                />
                             </label>
                         </div>
                         <div className="channel-action-bar">

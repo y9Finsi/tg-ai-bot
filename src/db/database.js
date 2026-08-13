@@ -1563,7 +1563,7 @@ export async function getOrderedAiProviders() {
 }
 
 export async function getChannelPosterSettings() {
-    const keys = ['channel_poster_enabled', 'channel_id', 'lera_channel_id', 'channel_frequency_hours', 'channel_topics', 'channel_topic_weights', 'channel_messages_count', 'channel_media_mode', 'channel_prompt_blocks', 'channel_temperature', 'channel_inherit_lera_prompt', 'channel_include_day_context', 'channel_public_profile_enabled', 'channel_public_facts_enabled', 'channel_public_facts', 'channel_creativity', 'channel_cta_style', 'channel_judge_mode', 'channel_judge_provider_id', 'channel_judge_model', 'channel_judge_prompt', 'channel_judge_timeout_ms', 'channel_judge_max_tokens', 'channel_comments_enabled', 'channel_reaction_chance', 'channel_comment_chance', 'channel_recognize_users'];
+    const keys = ['channel_poster_enabled', 'channel_id', 'lera_channel_id', 'channel_frequency_hours', 'channel_topics', 'channel_topic_weights', 'channel_messages_count', 'channel_media_mode', 'channel_prompt_blocks', 'channel_temperature', 'channel_inherit_lera_prompt', 'channel_include_day_context', 'channel_public_profile_enabled', 'channel_public_facts_enabled', 'channel_public_facts', 'channel_creativity', 'channel_cta_style', 'channel_judge_mode', 'channel_judge_provider_id', 'channel_judge_model', 'channel_judge_prompt', 'channel_judge_timeout_ms', 'channel_judge_max_tokens', 'channel_comments_enabled', 'channel_reaction_chance', 'channel_comment_chance', 'channel_recognize_users', 'channel_comments_prompt'];
     const result = await query('SELECT key, value FROM settings WHERE key = ANY($1::text[])', [keys]);
     const values = Object.fromEntries(result.rows.map(row => [row.key, row.value]));
     let topics = ['thoughts', 'life', 'jokes'];
@@ -1604,6 +1604,7 @@ export async function getChannelPosterSettings() {
         reaction_chance: Math.max(0, Math.min(100, Number(values.channel_reaction_chance ?? 40))),
         comment_chance: Math.max(0, Math.min(100, Number(values.channel_comment_chance ?? 15))),
         recognize_users: values.channel_recognize_users !== 'false',
+        comments_prompt: String(values.channel_comments_prompt || '').trim(),
         last_posted_at: (await query(`SELECT created_at FROM channel_post_logs WHERE status = 'PUBLISHED' ORDER BY created_at DESC LIMIT 1`)).rows[0]?.created_at || null
     };
 }

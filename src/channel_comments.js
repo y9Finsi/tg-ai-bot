@@ -3,6 +3,7 @@ import {
     getUserMemories,
     getUserRelationship,
     getChannelPosterSettings,
+    getChannelPostLogs,
     getOrderedAiProviders,
     getLeraProfile,
     getLeraProfileProjection
@@ -10,6 +11,8 @@ import {
 import { getOpenAIClientAndModel } from './ai.js';
 import { getCachedOpenAIClient, logLlmTrace } from './ai/llm_client.js';
 import { parseLlmJson } from './utils/robust_json.js';
+import { getRoutingSettings, getModeGenerationParams } from './ai/intent_router.js';
+import { getRoutedSystemPrompt } from './prompts.js';
 
 // Valid Telegram emoji reactions
 const ALLOWED_REACTIONS = new Set([
@@ -22,6 +25,11 @@ const ALLOWED_REACTIONS = new Set([
     '🆒', '💘', '🙉', '🦄', '😘', '💊', '🙊', '😎', '👾', '🤷‍♂️',
     '🤷', '🤷‍♀️', '😡'
 ]);
+
+// In-memory caches for thread awareness
+const rootPosts = new Map();
+const threadHistory = new Map();
+const postReplyCounts = new Map();
 
 export async function getCommenterContext(userId) {
     if (!userId) return { isKnown: false };
@@ -59,13 +67,14 @@ export async function getCommenterContext(userId) {
 
 export async function generateCommentDecision({
     postText = '',
+    threadContext = [],
     commentText = '',
     commenter = { isKnown: false },
     isDirectMention = false,
     channelSettings = {}
 } = {}) {
-    const profile = await getLeraProfile();
-    const leraPersona = getLeraProfileProjection(profile.profile, 'CHANNEL_COMMENT');
+    // 1. Inherit CASUAL prompt modules (Core, Common, Casual rules + Profile)
+    const casualPromptBase = await getRoutedSystemPrompt('CASUAL');
 
     let commenterContext = 'Собеседник: обычный подписчик канала. Отвечай дружелюбно, дерзко, с юмором и на «ты».';
     if (commenter.isKnown && channelSettings.recognize_users !== false) {
@@ -85,13 +94,22 @@ export async function generateCommentDecision({
         ? 'Подписчик обратился напрямую к тебе (@упоминание или ответ на твой пост/сообщение). Текстовый ответ обязателен. При желании можешь также поставить реакцию-эмодзи.'
         : 'Это фоновый комментарий в обсуждении. Реши, хочешь ли ты поставить реакцию-эмодзи, написать короткий ответ или оставить без ответа.';
 
-    const systemPrompt = `${leraPersona}
+    const customRules = channelSettings.comments_prompt
+        ? `\nДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ ДЛЯ КОММЕНТАРИЕВ:\n${channelSettings.comments_prompt}\n`
+        : '';
 
-Ты находишься в комментариях под постом в своём Telegram-канале.
+    const historySection = Array.isArray(threadContext) && threadContext.length
+        ? `\nПоследние сообщения в этой ветке комментариев:\n${threadContext.map(m => `${m.sender}: "${m.text}"`).join('\n')}\n`
+        : '';
+
+    const systemPrompt = `${casualPromptBase}
+
+[РЕЖИМ: ПУБЛИЧНЫЕ КОММЕНТАРИИ ПОД ПОСТОМ КАНАЛА]
 Исходный пост канала: "${postText || 'без текста'}"
-
+${historySection}
 ${commenterContext}
 
+${customRules}
 ${taskInstruction}
 
 Формат ответа — строго валидный JSON:
@@ -105,6 +123,11 @@ ${taskInstruction}
 - Живой разговорный стиль студентки из СПб (жиза, рил, блин, кароч).
 - Без смайликов и эмодзи внутри текста.
 - Не начинай с тире.`;
+
+    // 2. Inherit sampling parameters from CASUAL mode
+    let routingSettings = {};
+    try { routingSettings = await getRoutingSettings(); } catch { /* default */ }
+    const casualParams = getModeGenerationParams('CASUAL', routingSettings);
 
     let providers = [];
     try { providers = await getOrderedAiProviders(); } catch { /* ignore */ }
@@ -124,8 +147,11 @@ ${taskInstruction}
             const result = await client.chat.completions.create({
                 model: provider.model_name,
                 messages,
-                max_tokens: 180,
-                temperature: 0.7
+                max_tokens: casualParams.maxTokens || 180,
+                temperature: casualParams.temperature ?? 0.7,
+                top_p: casualParams.top_p,
+                frequency_penalty: casualParams.frequency_penalty,
+                presence_penalty: casualParams.presence_penalty
             });
             const rawResponse = result.choices[0]?.message?.content?.trim() || '';
             if (rawResponse) {
@@ -144,7 +170,6 @@ ${taskInstruction}
                 const parsed = parseLlmJson(rawResponse) || {};
                 let cleanReaction = typeof parsed.reaction === 'string' ? parsed.reaction.trim() : null;
                 if (cleanReaction && !ALLOWED_REACTIONS.has(cleanReaction)) {
-                    // Normalize or fallback if model returned extra characters
                     const match = cleanReaction.match(/[\p{Extended_Pictographic}]/u);
                     cleanReaction = match && ALLOWED_REACTIONS.has(match[0]) ? match[0] : null;
                 }
@@ -171,9 +196,6 @@ ${taskInstruction}
     return { reaction: null, reply: null, reason: 'error' };
 }
 
-// Track recently commented posts to avoid spam
-const postReplyCounts = new Map();
-
 export async function handleChannelDiscussionMessage(bot, ctx) {
     const msg = ctx.message;
     if (!msg || !msg.text || !ctx.chat || ctx.chat.type !== 'supergroup') return false;
@@ -181,21 +203,40 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
     const settings = await getChannelPosterSettings();
     if (!settings.comments_enabled) return false;
 
-    // Check if this is a comment under a channel post or discussion thread
+    const rootMessageId = msg.message_thread_id || msg.reply_to_message?.message_id || msg.message_id;
+
+    // 1. If this message or reply is an automatic channel forward, save post text
+    const isChannelForward = Boolean(msg.reply_to_message?.is_automatic_forward || msg.reply_to_message?.forward_from_chat);
+    if (isChannelForward && msg.reply_to_message) {
+        const text = msg.reply_to_message.text || msg.reply_to_message.caption || '';
+        if (text) {
+            rootPosts.set(rootMessageId, text);
+            rootPosts.set(msg.reply_to_message.message_id, text);
+        }
+    }
+
+    // 2. Resolve original post text: cache -> reply -> DB fallback
+    let postText = rootPosts.get(rootMessageId) || rootPosts.get(msg.reply_to_message?.message_id) || '';
+    if (!postText && isChannelForward) {
+        postText = msg.reply_to_message.text || msg.reply_to_message.caption || '';
+    }
+    if (!postText) {
+        try {
+            const recentLogs = await getChannelPostLogs(1);
+            if (recentLogs?.[0]?.text) {
+                postText = recentLogs[0].text;
+                rootPosts.set(rootMessageId, postText);
+            }
+        } catch { /* ignore fallback error */ }
+    }
+
     const isReply = Boolean(msg.reply_to_message);
-    const isChannelForward = msg.reply_to_message?.is_automatic_forward;
     const isBotTagged = msg.text.includes(`@${ctx.botInfo?.username}`);
     const isReplyToBot = msg.reply_to_message?.from?.id === ctx.botInfo?.id;
 
     if (!isReply && !isBotTagged && !isChannelForward) return false;
 
-    const postText = isChannelForward
-        ? (msg.reply_to_message.text || msg.reply_to_message.caption || '')
-        : (msg.reply_to_message?.text || '');
-
-    const rootMessageId = msg.message_thread_id || msg.reply_to_message?.message_id || msg.message_id;
     const currentRepliesOnPost = postReplyCounts.get(rootMessageId) || 0;
-
     const isDirectMention = isBotTagged || isReplyToBot;
 
     // For background comments, respect configured chances
@@ -206,22 +247,31 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
         if (roll > maxChance) return false;
     }
 
+    // Get current thread context
+    const currentThread = threadHistory.get(rootMessageId) || [];
+
     try {
         const commenter = await getCommenterContext(msg.from?.id);
         const decision = await generateCommentDecision({
             postText,
+            threadContext: currentThread.slice(-5),
             commentText: msg.text,
             commenter,
             isDirectMention,
             channelSettings: settings
         });
 
+        // Record incoming user comment in thread
+        currentThread.push({ sender: commenter.name || 'Подписчик', text: msg.text });
+        if (currentThread.length > 10) currentThread.shift();
+        threadHistory.set(rootMessageId, currentThread);
+
         // 1. Emoji reaction if chosen
         if (decision.reaction) {
             try {
                 await ctx.telegram.setMessageReaction(ctx.chat.id, msg.message_id, [{ type: 'emoji', emoji: decision.reaction }]);
-            } catch (err) {
-                // Ignore reaction API permission errors
+            } catch {
+                // Ignore reaction API errors
             }
         }
 
@@ -229,6 +279,12 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
         if (decision.reply) {
             await ctx.reply(decision.reply, { reply_to_message_id: msg.message_id });
             postReplyCounts.set(rootMessageId, currentRepliesOnPost + 1);
+
+            // Record bot reply in thread
+            currentThread.push({ sender: 'Лера', text: decision.reply });
+            if (currentThread.length > 10) currentThread.shift();
+            threadHistory.set(rootMessageId, currentThread);
+
             return true;
         }
     } catch (error) {
