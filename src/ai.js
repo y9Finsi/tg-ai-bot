@@ -363,14 +363,25 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
 
     // Передаем последнее текущее сообщение пользователя (с поддержкой Vision)
     if (!isInitiative && userText) {
+        let activePhotoUrls = Array.isArray(photoUrls) && photoUrls.length > 0 ? photoUrls : [];
+        if (!activePhotoUrls.length) {
+            const isPhotoContextQuestion = /фото|фотк|картинк|вид|смотр|глянь|что там|кто это|как тебе|селфи|лицо/i.test(userText);
+            if (isPhotoContextQuestion) {
+                const recentPhotoEvent = priorEvents.slice(-4).reverse().find(e => (e.event_type === 'PHOTO' || e.eventType === 'PHOTO') && e.metadata?.photo_url);
+                if (recentPhotoEvent?.metadata?.photo_url) {
+                    activePhotoUrls = [recentPhotoEvent.metadata.photo_url];
+                }
+            }
+        }
+
         const lastMsg = messages.at(-1);
         if (!lastMsg || lastMsg.role !== 'user' || lastMsg.content !== userText) {
-            if (Array.isArray(photoUrls) && photoUrls.length > 0) {
+            if (activePhotoUrls.length > 0) {
                 messages.push({
                     role: 'user',
                     content: [
                         { type: 'text', text: userText || 'Посмотри на фото' },
-                        ...photoUrls.map(url => ({ type: 'image_url', image_url: { url } }))
+                        ...activePhotoUrls.map(url => ({ type: 'image_url', image_url: { url } }))
                     ]
                 });
             } else {

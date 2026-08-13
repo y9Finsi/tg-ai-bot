@@ -1303,9 +1303,17 @@ bot.on(['photo', 'video', 'voice', 'document', 'animation'], async (ctx) => {
         if (ctx.message.photo && media?.file_id) {
             try {
                 const link = await ctx.telegram.getFileLink(media.file_id);
-                photoUrl = typeof link === 'string' ? link : link.href;
+                const fileUrl = typeof link === 'string' ? link : link.href;
+                const imgRes = await fetch(fileUrl);
+                if (imgRes.ok) {
+                    const arrayBuf = await imgRes.arrayBuffer();
+                    const base64Data = Buffer.from(arrayBuf).toString('base64');
+                    photoUrl = `data:image/jpeg;base64,${base64Data}`;
+                } else {
+                    photoUrl = fileUrl;
+                }
             } catch (linkErr) {
-                console.warn('[VISION LINK ERROR]:', linkErr.message);
+                console.warn('[VISION LINK/BASE64 ERROR]:', linkErr.message);
             }
         }
         const user = await getUser(userId);
