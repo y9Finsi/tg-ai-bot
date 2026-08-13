@@ -247,7 +247,7 @@ export async function publishChannelDraft(bot, { text, topic, provenance = {}, m
         contentMedia = await getLeraContent(contentId).catch(() => null);
     }
     if (!contentMedia && settings.media_mode === 'db_photo') {
-        const photo = await getRandomLeraPhoto({ access_level: 'free', time_of_day: getTimeOfDayMSK() });
+        const photo = await getRandomLeraPhoto({ access_level: 'free', time_of_day: getTimeOfDayMSK(), excludeChannelUsed: true });
         photoToSend = photo?.file_id || null;
     }
     const telegramMessageIds = [];

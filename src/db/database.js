@@ -830,13 +830,54 @@ export async function updateLeraContent(id, fields = {}) {
     return result.rows[0] || null;
 }
 
-export async function getRandomChannelContent({ type = null } = {}) {
+export async function getRandomChannelContent({ type = null, excludeRecent = true } = {}) {
     const params = [];
     let filter = 'WHERE enabled = TRUE AND allow_channel = TRUE';
     if (type) {
         params.push(type);
         filter += ` AND telegram_type = $${params.length}`;
     }
+
+    if (excludeRecent) {
+        try {
+            // 1. Приоритет: контент, который еще ни разу не публиковался в ТГК
+            const unpostedResult = await query(
+                `SELECT c.* FROM lera_content c
+                 ${filter}
+                 AND NOT EXISTS (
+                     SELECT 1 FROM channel_post_logs l
+                     WHERE (l.provenance->>'media_content_id')::text = c.id::text
+                        OR (l.provenance->>'content_id')::text = c.id::text
+                 )
+                 ORDER BY RANDOM() LIMIT 1`,
+                params
+            );
+            if (unpostedResult.rows.length > 0) {
+                return unpostedResult.rows[0];
+            }
+
+            // 2. Если весь контент уже был опубликован: берем тот, который публиковался давнее всего (LRU)
+            const lruResult = await query(
+                `SELECT c.*, MAX(l.created_at) as last_posted
+                 FROM lera_content c
+                 LEFT JOIN channel_post_logs l ON (
+                     (l.provenance->>'media_content_id')::text = c.id::text
+                     OR (l.provenance->>'content_id')::text = c.id::text
+                 )
+                 ${filter}
+                 GROUP BY c.id
+                 ORDER BY last_posted ASC NULLS FIRST, RANDOM()
+                 LIMIT 1`,
+                params
+            );
+            if (lruResult.rows.length > 0) {
+                return lruResult.rows[0];
+            }
+        } catch {
+            // Fallback при любых проблемах с логами
+        }
+    }
+
     const result = await query(
         `SELECT * FROM lera_content ${filter} ORDER BY RANDOM() LIMIT 1`,
         params
@@ -1475,7 +1516,7 @@ export async function canUserReceiveRecommendation(userId) {
     return diffHours >= 4;
 }
 
-export async function getRandomLeraPhoto({ access_level = null, time_of_day = null } = {}) {
+export async function getRandomLeraPhoto({ access_level = null, time_of_day = null, excludeChannelUsed = false } = {}) {
     let sql = 'SELECT * FROM lera_photos WHERE TRUE';
     const params = [];
     if (access_level) {
@@ -1486,6 +1527,19 @@ export async function getRandomLeraPhoto({ access_level = null, time_of_day = nu
         params.push(time_of_day);
         sql += ` AND (time_of_day = $${params.length} OR time_of_day = 'any' OR time_of_day IS NULL)`;
     }
+
+    if (excludeChannelUsed) {
+        try {
+            const unposted = await query(
+                `${sql} AND NOT EXISTS (SELECT 1 FROM channel_post_logs l WHERE l.photo_url = lera_photos.file_id) ORDER BY RANDOM() LIMIT 1`,
+                params
+            );
+            if (unposted.rows.length > 0) return unposted.rows[0];
+        } catch {
+            // fallback
+        }
+    }
+
     sql += ' ORDER BY RANDOM() LIMIT 1';
     const res = await query(sql, params);
     return res.rows[0] || null;

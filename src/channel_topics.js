@@ -1,4 +1,4 @@
-export const CHANNEL_TOPICS = ['thoughts', 'flirt', 'life', 'jokes', 'questions'];
+export const CHANNEL_TOPICS = ['thoughts', 'flirt', 'life', 'jokes', 'questions', 'meme', 'repost'];
 
 export function normalizeTopicDistribution(topics, rawWeights = {}) {
     const available = Array.isArray(topics)

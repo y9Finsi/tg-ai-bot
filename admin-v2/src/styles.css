@@ -2949,14 +2949,7 @@
   justify-content: space-between;
 }
 
-/* Channel Topic Weights */
-.topic-weights-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin-top: 12px;
-}
-
+/* Channel Topic Cards & Priorities */
 .topic-distribution-summary,
 .topic-prompt-explainer {
   background: rgba(56, 189, 248, 0.07);
@@ -2986,44 +2979,118 @@
 }
 
 .topic-prompt-explainer {
-  margin-top: 12px;
   background: rgba(255, 255, 255, 0.025);
   border-color: rgba(255, 255, 255, 0.1);
 }
 
-.topic-weight-row {
+.topic-presets-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.topic-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.topic-card-item {
   background: #141519;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  transition: all 0.15s ease;
+}
+
+.topic-card-item.is-active {
+  border-color: rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.03);
+}
+
+.topic-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 
-.topic-weight-header {
+.topic-card-check {
   display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-}
-
-.topic-weight-header strong {
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
   color: #f4f4f5;
+  user-select: none;
 }
 
-.topic-weight-header span {
+.topic-card-check input[type="checkbox"] {
+  accent-color: #38bdf8;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.topic-card-rule {
+  font-size: 11.5px;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.topic-card-priority-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.topic-priority-label {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.topic-priority-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.topic-priority-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.topic-priority-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f1f5f9;
+}
+
+.topic-priority-btn.is-selected {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.45);
   color: #38bdf8;
   font-weight: 600;
 }
 
-.topic-weight-row input[type="range"] {
-  accent-color: #38bdf8;
-  cursor: pointer;
-}
-
-.topic-weight-row input[type="range"]:disabled {
+.topic-priority-btn:disabled {
+  opacity: 0.3;
   cursor: not-allowed;
-  opacity: 0.35;
 }
 
 /* Channel Feed Cards */

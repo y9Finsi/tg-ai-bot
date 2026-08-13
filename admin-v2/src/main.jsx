@@ -69,12 +69,12 @@ function isoDate(value) { const parts = mskDateParts(value); return `${parts.yea
 function taskName(value) { return TASK_NAMES[value] || String(value || 'Событие').replaceAll('_', ' ').toLowerCase(); }
 function eventName(value) { return EVENT_NAMES[value] || String(value || 'Событие').replaceAll('_', ' ').toLowerCase(); }
 function cn(...values) { return values.filter(Boolean).join(' '); }
-const CHANNEL_TOPIC_KEYS = ['thoughts', 'flirt', 'life', 'jokes', 'questions'];
+const CHANNEL_TOPIC_KEYS = ['thoughts', 'flirt', 'life', 'jokes', 'questions', 'meme', 'repost'];
 function normalizeTopicShares(topics, rawWeights = {}) {
     const active = [...new Set((topics || []).filter(topic => CHANNEL_TOPIC_KEYS.includes(topic)))];
     const safeTopics = active.length ? active : ['thoughts'];
     const shares = Object.fromEntries(CHANNEL_TOPIC_KEYS.map(topic => [topic, 0]));
-    const entries = safeTopics.map(topic => ({ topic, weight: Math.max(0, Number(rawWeights[topic]) || 0) }));
+    const entries = safeTopics.map(topic => ({ topic, weight: Math.max(1, Number(rawWeights[topic]) || 1) }));
     const total = entries.reduce((sum, item) => sum + item.weight, 0);
     if (total <= 0) {
         const base = Math.floor(100 / safeTopics.length);
@@ -102,13 +102,7 @@ function redistributeTopicShare(topics, weights, changedTopic, requestedValue) {
     if (!active.includes(changedTopic)) return normalizeTopicShares(active, weights);
     if (active.length === 1) return normalizeTopicShares(active, { [changedTopic]: 100 });
     const nextValue = Math.max(0, Math.min(100, Number(requestedValue) || 0));
-    const otherTopics = active.filter(topic => topic !== changedTopic);
-    const remaining = 100 - nextValue;
-    const otherTotal = otherTopics.reduce((sum, topic) => sum + Math.max(0, Number(weights[topic]) || 0), 0);
-    const source = Object.fromEntries(otherTopics.map(topic => [topic, otherTotal > 0
-        ? (Math.max(0, Number(weights[topic]) || 0) / otherTotal) * remaining
-        : remaining / otherTopics.length]));
-    return normalizeTopicShares(active, { ...source, [changedTopic]: nextValue });
+    return normalizeTopicShares(active, { ...weights, [changedTopic]: nextValue });
 }
 function formatCountdown(minutes) { const value = Math.max(0, Math.round(Number(minutes) || 0)); if (value < 1) return 'меньше минуты'; const hours = Math.floor(value / 60); const rest = value % 60; return hours ? `${hours} ч ${rest ? `${rest} мин` : ''}`.trim() : `${rest} мин`; }
 function rowTaskType(row) { return row.taskType || row.task_type || row.payload?.taskType; }
@@ -4040,45 +4034,92 @@ function ContentPanel({ toast }) {
                                 <strong>Что увидит ИИ</strong>
                                 <span>«Тема: выбранная тема» и короткая задача для неё. Личность Леры, контекст дня и правила берутся из конструктора ниже.</span>
                             </div>
-                            <Badge variant="blue">Итого: {Object.values(normalizeTopicShares(channelForm.topics, channelForm.topicWeights)).reduce((sum, value) => sum + value, 0)}%</Badge>
+                            <div className="topic-presets-actions">
+                                <Button size="xs" variant="outline" onClick={() => {
+                                    setChannelForm({
+                                        ...channelForm,
+                                        topics: ['thoughts', 'flirt', 'life', 'jokes', 'questions', 'meme', 'repost'],
+                                        topicWeights: { thoughts: 2, flirt: 2, life: 2, jokes: 2, questions: 2, meme: 2, repost: 2 }
+                                    });
+                                }}>Все темы</Button>
+                                <Button size="xs" variant="outline" onClick={() => {
+                                    setChannelForm({
+                                        ...channelForm,
+                                        topics: ['thoughts', 'life', 'jokes'],
+                                        topicWeights: { thoughts: 2, life: 2, jokes: 2, flirt: 2, questions: 2, meme: 2, repost: 2 }
+                                    });
+                                }}>Мысли и жизнь</Button>
+                                <Badge variant="blue">Итого: {Object.values(normalizeTopicShares(channelForm.topics, channelForm.topicWeights)).reduce((sum, value) => sum + value, 0)}%</Badge>
+                            </div>
                         </div>
-                        <div className="topic-weights-grid">
-                            {Object.entries(TOPIC_LABELS).map(([topicKey, topicName]) => (
-                                <div className="topic-weight-row" key={topicKey}>
-                                    <div className="topic-weight-header">
-                                        <label className="topic-enabled"><input type="checkbox" checked={channelForm.topics.includes(topicKey)} onChange={event => {
-                                            const enabled = event.target.checked;
-                                            const nextTopics = enabled
-                                                ? [...channelForm.topics, topicKey]
-                                                : channelForm.topics.filter(topic => topic !== topicKey);
-                                            const safeTopics = nextTopics.length ? nextTopics : [topicKey];
-                                            const nextWeights = enabled
-                                                ? redistributeTopicShare(safeTopics, channelForm.topicWeights, topicKey, Math.max(10, Math.round(100 / safeTopics.length)))
-                                                : normalizeTopicShares(safeTopics, channelForm.topicWeights);
-                                            setChannelForm({ ...channelForm, topics: safeTopics, topicWeights: nextWeights });
-                                        }} /><strong>{topicName}</strong></label>
-                                        <span>{channelForm.topics.includes(topicKey) ? `${channelForm.topicWeights?.[topicKey] ?? 0}%` : 'выключена'}</span>
+                        <div className="topic-weights-grid topic-cards-grid">
+                            {Object.entries(TOPIC_LABELS).map(([topicKey, topicName]) => {
+                                const isEnabled = channelForm.topics.includes(topicKey);
+                                const shares = normalizeTopicShares(channelForm.topics, channelForm.topicWeights);
+                                const currentShare = shares[topicKey] ?? 0;
+                                const currentWeight = channelForm.topicWeights?.[topicKey] ?? 2;
+                                return (
+                                    <div className={cn('topic-card-item', isEnabled && 'is-active')} key={topicKey}>
+                                        <div className="topic-card-header">
+                                            <label className="topic-card-check">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isEnabled}
+                                                    onChange={event => {
+                                                        const checked = event.target.checked;
+                                                        let nextTopics = checked
+                                                            ? [...channelForm.topics, topicKey]
+                                                            : channelForm.topics.filter(t => t !== topicKey);
+                                                        if (!nextTopics.length) nextTopics = [topicKey];
+                                                        const nextWeights = { ...channelForm.topicWeights, [topicKey]: channelForm.topicWeights?.[topicKey] || 2 };
+                                                        setChannelForm({ ...channelForm, topics: nextTopics, topicWeights: nextWeights });
+                                                    }}
+                                                />
+                                                <strong>{topicName}</strong>
+                                            </label>
+                                            <Badge variant={isEnabled ? 'blue' : 'muted'}>
+                                                {isEnabled ? `${currentShare}%` : 'выключена'}
+                                            </Badge>
+                                        </div>
+                                        <div className="topic-card-rule">{TOPIC_PROMPT_RULES[topicKey]}</div>
+                                        <div className="topic-card-priority-row">
+                                            <span className="topic-priority-label">Частота:</span>
+                                            <div className="topic-priority-buttons">
+                                                {[
+                                                    { label: 'Редко', val: 1 },
+                                                    { label: 'Обычно', val: 2 },
+                                                    { label: 'Часто', val: 4 }
+                                                ].map(p => (
+                                                    <button
+                                                        key={p.val}
+                                                        type="button"
+                                                        disabled={!isEnabled}
+                                                        className={cn('topic-priority-btn', isEnabled && currentWeight === p.val && 'is-selected')}
+                                                        onClick={() => {
+                                                            setChannelForm({
+                                                                ...channelForm,
+                                                                topicWeights: { ...channelForm.topicWeights, [topicKey]: p.val }
+                                                            });
+                                                        }}
+                                                    >
+                                                        {p.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        disabled={!channelForm.topics.includes(topicKey)}
-                                        value={channelForm.topicWeights?.[topicKey] ?? 0}
-                                        onChange={event => setChannelForm({
-                                            ...channelForm,
-                                            topicWeights: redistributeTopicShare(channelForm.topics, channelForm.topicWeights, topicKey, event.target.value)
-                                        })}
-                                    />
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                         <div className="topic-prompt-explainer">
                             <span className="eyebrow">Как это работает</span>
                             <strong>Для выбранной темы в промпт попадёт задача:</strong>
                             <p>«{Object.entries(TOPIC_LABELS).filter(([key]) => channelForm.topics.includes(key)).map(([key, label]) => `${label} — ${TOPIC_PROMPT_RULES[key]}`).join('» · «')}»</p>
                         </div>
-                        <div className="channel-action-bar"><span>Выключенная тема не участвует в выборе. При изменении одной доли остальные автоматически перераспределяются.</span><Button onClick={saveChannel}>Сохранить распределение</Button></div>
+                        <div className="channel-action-bar">
+                            <span>Выключенная тема не участвует в посте. Проценты вероятности вычисляются автоматически по выбранной частоте.</span>
+                            <Button onClick={saveChannel}>Сохранить распределение</Button>
+                        </div>
                     </Card>
 
                     <Card>
