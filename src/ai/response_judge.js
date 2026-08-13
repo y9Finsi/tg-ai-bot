@@ -23,13 +23,30 @@ export const JUDGE_CODES = [
 function compactConversation(messages = []) {
     return messages
         .filter(item => item?.role !== 'system' && item?.content)
-        .slice(-6)
-        .map(item => `${item.role === 'assistant' || item.role === 'lera' ? 'Лера' : 'Пользователь'}: ${String(item.content).slice(0, 700)}`)
+        .slice(-4)
+        .map(item => `${item.role === 'assistant' || item.role === 'lera' ? 'Лера' : 'Пользователь'}: ${String(item.content).slice(0, 300)}`)
         .join('\n');
 }
 
-function compactBlock(value, limit = 5000) {
-    return String(value || '').trim().slice(0, limit);
+function compactDayContext(dayContext = '') {
+    if (!dayContext) return '';
+    const text = String(dayContext).trim();
+    const stateMatch = text.match(/\[СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ\][\s\S]*?(?=\n\n\[|\n\n##|$)/);
+    if (stateMatch) {
+        return stateMatch[0].trim();
+    }
+    return text.slice(0, 500);
+}
+
+function compactLeraRules(leraRules = '') {
+    if (!leraRules) return '';
+    const text = String(leraRules).trim();
+    const cleaned = text
+        .replace(/ПРИМЕРЫ ДИАЛОГОВ[\s\S]*?(?=\n\n###|\n\n##|$)/gi, '')
+        .replace(/### ПРИМЕРЫ ДИАЛОГОВ ДЛЯ ВИРТА[\s\S]*?(?=\n\n###|\n\n##|$)/gi, '')
+        .replace(/\[ДОСТУПНЫЙ КОНТЕНТ\][\s\S]*?(?=\n\n\[|\n\n##|$)/gi, '')
+        .trim();
+    return cleaned.slice(0, 600);
 }
 
 export function buildJudgeMessages({
@@ -64,14 +81,14 @@ export function buildJudgeMessages({
                 `Поверхность: ${surface}`,
                 isChannel ? `Тема поста: ${topic || 'не указана'}` : '',
                 isChannel ? `Подтверждённые публичные факты:\n${publicFacts.map(fact => `- ${typeof fact === 'string' ? fact : JSON.stringify(fact)}`).join('\n') || 'нет фактов'}` : '',
-                isChannel ? `Последние публичные посты:\n${recentPublicPosts.map((post, index) => `${index + 1}. ${String(post?.text || post).slice(0, 500)}`).join('\n') || 'нет постов'}` : '',
-                `Контекст Леры на сегодня:\n${compactBlock(dayContext) || 'не передан'}`,
-                `Как Лера должна говорить и обязательные правила:\n${compactBlock(leraRules) || 'не переданы'}`,
+                isChannel ? `Последние публичные посты:\n${recentPublicPosts.map((post, index) => `${index + 1}. ${String(post?.text || post).slice(0, 300)}`).join('\n') || 'нет постов'}` : '',
+                `Контекст Леры на сегодня:\n${compactDayContext(dayContext) || 'не передан'}`,
+                `Как Лера должна говорить и обязательные правила:\n${compactLeraRules(leraRules) || 'не переданы'}`,
                 `Диалог:\n${compactConversation(messages) || 'нет предыдущих сообщений'}`,
-                `Последняя реплика пользователя:\n${String(userText || '').slice(0, 1200)}`,
-                `Кандидат-ответ Леры:\n${String(reply || '').slice(0, 1600)}`,
+                `Последняя реплика пользователя:\n${String(userText || '').slice(0, 600)}`,
+                `Кандидат-ответ Леры:\n${String(reply || '').slice(0, 800)}`,
                 `Верни только JSON вида {"verdict":"PASS"} или {"verdict":"REJECT:CODE"${isChannel ? '' : ',"relationship_event":{"type":"NEUTRAL|SUPPORT|COMPLIMENT|AFFECTION|INSULT|DISRESPECT|APOLOGY","intensity":0.0}}'}.`
-            ].join('\n\n')
+            ].filter(Boolean).join('\n\n')
         }
     ];
 }
