@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const DEFAULT_LLM_PARAMS = {
-    temperature: 0.7,
+    temperature: 0.66,
     presence_penalty: 0.1,
     frequency_penalty: 0.1
 };
@@ -116,11 +116,11 @@ export async function initPromptsFromDb() {
 }
 
 // Фоновая асинхронная инициализация при старте
-initPromptsFromDb().catch(() => {});
+initPromptsFromDb().catch(() => { });
 
 export async function getLlmParams() {
     if (!isDbInitialized) {
-        await initPromptsFromDb().catch(() => {});
+        await initPromptsFromDb().catch(() => { });
     }
     return { ...llmParamsCache };
 }
@@ -159,7 +159,7 @@ export function getCompiledFlirtHotPrompt() {
 
 export async function getLeraPrompts() {
     if (!isDbInitialized) {
-        await initPromptsFromDb().catch(() => {});
+        await initPromptsFromDb().catch(() => { });
     }
     return {
         prompts: { ...promptsCache },
@@ -182,7 +182,7 @@ export async function updateLeraPrompts(promptsObj) {
 
 export async function getRoutingPromptModules() {
     if (!isDbInitialized) {
-        await initPromptsFromDb().catch(() => {});
+        await initPromptsFromDb().catch(() => { });
     }
     return {
         core: sanitizeLegacyIdentity(promptsCache.routing_core),

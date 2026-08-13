@@ -298,13 +298,18 @@ async function processAiJob(bot, job) {
                         routing_mode: 'REACTION'
                     });
                     await markInputEvents('COMPLETED');
+                    return;
                 } catch (reactionError) {
-                    await refundReservation();
-                    if (tempMsgId) await bot.telegram.deleteMessage(chatId, tempMsgId).catch(() => {});
-                    await markInputEvents('FAILED', `Telegram reaction failed: ${reactionError.message}`);
-                    console.error(`[REACTION ERROR] user ${userId}:`, reactionError.message);
+                    console.warn(`[REACTION FALLBACK] user ${userId}: Telegram reaction "${response.reactionEmoji}" failed (${reactionError.message}). Fallback to text...`);
+                    response = await generateResponse(userId, text, {
+                        batchId,
+                        eventIds,
+                        firstMessageAt,
+                        preMessageGapSeconds,
+                        photoUrls: job.data.photoUrls || [],
+                        forceText: true
+                    });
                 }
-                return;
             }
 
             if (reservedResource === 'image' && !response.photo) {

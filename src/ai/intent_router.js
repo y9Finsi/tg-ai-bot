@@ -307,6 +307,17 @@ export function normalizeIntent(rawText) {
     return found || 'CASUAL';
 }
 
+export const ALLOWED_TELEGRAM_REACTIONS = new Set([
+    '👍', '👎', '❤️', '🔥', '🥰', '👏', '😁', '🤔', '🤯', '😱',
+    '🤬', '😢', '🎉', '🤩', '🤮', '💩', '🙏', '👌', '🕊', '🤡',
+    '🥱', '🥴', '😍', '🐳', '❤️‍🔥', '🌚', '🌭', '💯', '🤣', '⚡',
+    '🍌', '🏆', '💔', '🤨', '😐', '🍓', '🍾', '💋', '🖕', '😈',
+    '😴', '😭', '🤓', '👻', '👀', '🎃', '🙈', '😇', '😨',
+    '🤝', '✍', '🤗', '🫡', '💅', '🤪', '🗿',
+    '🆒', '💘', '🙉', '🦄', '😘', '🙊', '😎', '👾',
+    '🤷', '😡'
+]);
+
 export function extractReactionEmoji(rawText) {
     const suffix = String(rawText || '').match(/\bREACTION\b([\s\S]*)/iu)?.[1] || '';
     const segments = typeof Intl?.Segmenter === 'function'

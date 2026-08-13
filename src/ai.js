@@ -899,7 +899,8 @@ export async function generateResponse(userId, text, envelope = {}) {
         classifierResult = { mode: 'CASUAL', error: routingError.message };
     }
 
-    if (classifierResult?.mode === 'REACTION') {
+    const hasIncomingPhoto = Array.isArray(envelope.photoUrls) && envelope.photoUrls.length > 0;
+    if (classifierResult?.mode === 'REACTION' && !hasIncomingPhoto && !envelope.forceText) {
         const reactionEmoji = classifierResult.reactionEmoji;
         savePromptLog({
             userId,
