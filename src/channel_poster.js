@@ -47,6 +47,7 @@ function cleanGeneratedPost(rawText) {
         .replace(/\[RECOMMEND\]/gi, '')
         .replace(/---/g, '\n')
         .replace(/^[\s\-–—]+/gm, '')
+        .replace(/^знаете что[,\s]*(?:я\s+)?(?:сделала|заметила|бесит)?[,:\s]*/iu, '')
         .trim();
 }
 
