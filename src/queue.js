@@ -150,13 +150,16 @@ async function processInitiativeJob(bot, job) {
     if (initiativeKind === 'open' && (anchorAgeSeconds < 300 || anchorAgeSeconds > 3600)) return;
     if (initiativeKind === 'ignore_1' && (anchorAgeSeconds < 300 || anchorAgeSeconds > 3600)) return;
     if (initiativeKind === 'ignore_2' && (anchorAgeSeconds < 7200 || anchorAgeSeconds >= 10800)) return;
-    if (initiativeKind === 'content_4h' && anchorAgeSeconds < 14400) return;
+    if (['content_4h', 'idle_4h'].includes(initiativeKind)) {
+        if (anchorAgeSeconds < 14400) return;
+        if (hourMsk < 11 || hourMsk >= 21) return;
+    }
     if (['ignore_1', 'ignore_2'].includes(initiativeKind)) {
         if (anchorAgeSeconds >= 10800) return;
     }
 
     let candidates = [];
-    if (!['ignore_1', 'ignore_2', 'new_day'].includes(initiativeKind) && counts.content < 3) {
+    if (!['ignore_1', 'ignore_2', 'new_day', 'idle_4h'].includes(initiativeKind) && counts.content < 3) {
         const rows = await Promise.all(contentCandidateIds.map(id => getLeraContent(id)));
         candidates = rows.filter(item => item?.enabled && item.allow_initiative);
         const sentFlags = await Promise.all(candidates.map(item => wasContentSent(userId, item.id)));
@@ -170,6 +173,8 @@ async function processInitiativeJob(bot, job) {
             ? 'наступил новый день, а вы сегодня ещё не общались'
         : initiativeKind === 'content_4h'
             ? 'после паузы самой поделиться контентом'
+        : initiativeKind === 'idle_4h'
+            ? 'после дневной паузы поинтересоваться как дела, связав со своим днем и прошлым разговором'
             : 'пользователь не ответил на реплику Леры';
     const response = await generateAiInitiativeResponse(userId, reason, {
         initiativeKind,

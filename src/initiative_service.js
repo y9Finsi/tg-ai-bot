@@ -59,10 +59,12 @@ export function chooseInitiativeKind({ ageSeconds, state, latestEvent, counts, d
     }
     if (ageSeconds >= 14400
         && latestEvent?.event_type !== 'CONTENT'
-        && counts.content < CONTENT_LIMIT
-        && contentAvailable
-        && !stageKinds.includes('content_4h')) {
-        return 'content_4h';
+        && !stageKinds.includes('content_4h')
+        && !stageKinds.includes('idle_4h')) {
+        if (counts.content < CONTENT_LIMIT && contentAvailable) {
+            return 'content_4h';
+        }
+        return 'idle_4h';
     }
     return null;
 }
@@ -127,6 +129,8 @@ export async function enqueuePersonalInitiatives(queue) {
                 initiativeLimit
             });
             if (!kind) continue;
+            const hourMsk = Number(clock.hour);
+            if (['content_4h', 'idle_4h'].includes(kind) && (hourMsk < 11 || hourMsk >= 21)) continue;
             const candidates = kind === 'content_4h'
                 || (kind === 'open' && !dialogue.some(event => event.event_type === 'CONTENT') && counts.content < CONTENT_LIMIT)
                 ? contentCandidates

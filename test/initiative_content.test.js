@@ -65,18 +65,30 @@ test('ignore chain follows the original anchor and closes after three hours', ()
     }), null);
 });
 
-test('four-hour content initiative consumes both capacity only when content exists', () => {
+test('four-hour hybrid initiative falls back to text idle_4h when content is missing or full', () => {
     assert.equal(chooseInitiativeKind({
         ageSeconds: 14400, state: 'CLOSED', latestEvent: latestText,
         counts: available, contentAvailable: true
     }), 'content_4h');
     assert.equal(chooseInitiativeKind({
         ageSeconds: 14400, state: 'CLOSED', latestEvent: latestText,
+        counts: available, contentAvailable: false
+    }), 'idle_4h');
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 14400, state: 'CLOSED', latestEvent: latestText,
+        counts: { initiatives: 0, content: 3 }, contentAvailable: true
+    }), 'idle_4h');
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 14400, state: 'CLOSED', latestEvent: latestText,
         counts: { initiatives: 3, content: 0 }, contentAvailable: true
     }), null);
     assert.equal(chooseInitiativeKind({
         ageSeconds: 14400, state: 'CLOSED', latestEvent: latestText,
-        counts: { initiatives: 0, content: 3 }, contentAvailable: true
+        counts: available, contentAvailable: true, stageKinds: ['content_4h']
+    }), null);
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 14400, state: 'CLOSED', latestEvent: latestText,
+        counts: available, contentAvailable: false, stageKinds: ['idle_4h']
     }), null);
     assert.equal(chooseInitiativeKind({
         ageSeconds: 14400, state: 'CLOSED', latestEvent: { event_type: 'CONTENT' },
