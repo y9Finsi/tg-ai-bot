@@ -318,22 +318,50 @@ async function buildMessagePayload(user, userId, { userText, isInitiative, routi
         console.error("⚠️ Ошибка формирования контекста Леры:", tamagotchiErr.message);
     }
 
-    const systemPrompt = baseSystemPromptText + mediaLogInstruction + tamagotchiInstruction + modeInstruction;
-    const messages = [{ role: 'system', content: systemPrompt }];
-
-    // Добавляем историю прошлых сообщений в массив сообщений для LLM
+    // Формируем компактный текстовый блок истории сообщений с таймстампами и паузами
     const chatHistoryEvents = priorEvents.filter(ev =>
         ev.content && (ev.event_type === 'MESSAGE' || ev.event_type === 'INITIATIVE')
     ).slice(-10);
 
+    let historyInstruction = "";
     if (productionIntentConfig?.promptModules?.history !== false) {
-        chatHistoryEvents.forEach(ev => {
-            const role = (ev.role === 'lera' || ev.role === 'assistant') ? 'assistant' : 'user';
-            messages.push({ role, content: ev.content });
-        });
+        if (chatHistoryEvents.length > 0) {
+            let prevTime = null;
+            const formattedLines = [];
+            chatHistoryEvents.forEach(ev => {
+                const isLera = ev.role === 'lera' || ev.role === 'assistant';
+                const roleLabel = isLera ? 'Лера' : 'Собеседник';
+                const initLabel = ev.event_type === 'INITIATIVE' ? ' (написала первой)' : '';
+                const timestamp = ev.occurred_at || ev.created_at;
+                let timeStr = '';
+                let gapNote = '';
+                if (timestamp) {
+                    const date = new Date(timestamp);
+                    if (!isNaN(date.getTime())) {
+                        const hours = String(date.getHours()).padStart(2, '0');
+                        const mins = String(date.getMinutes()).padStart(2, '0');
+                        timeStr = `${hours}:${mins}`;
+                        if (prevTime) {
+                            const diffMin = Math.floor((date.getTime() - prevTime.getTime()) / 60000);
+                            if (diffMin >= 15) {
+                                const gapText = diffMin < 60 ? `${diffMin} мин` : `${Math.floor(diffMin / 60)} ч`;
+                                gapNote = ` [пауза ${gapText}]`;
+                            }
+                        }
+                        prevTime = date;
+                    }
+                }
+                const prefix = timeStr ? `${timeStr}${gapNote} ` : '';
+                formattedLines.push(`• ${prefix}${roleLabel}${initLabel}: ${ev.content}`);
+            });
+            historyInstruction = `\n\n=== 💬 ПОСЛЕДНИЕ СООБЩЕНИЯ ДИАЛОГА (КОНТЕКСТ) ===\n${formattedLines.join('\n')}\n(История выше дана только для понимания контекста разговора и пауз. В новом ответе не копируй этот формат и пиши только обычную реплику Леры).`;
+        }
     }
 
-    // Передаем последнее текущее сообщение пользователя, если оно ещё не было занесено
+    const systemPrompt = baseSystemPromptText + mediaLogInstruction + tamagotchiInstruction + modeInstruction + historyInstruction;
+    const messages = [{ role: 'system', content: systemPrompt }];
+
+    // Передаем последнее текущее сообщение пользователя
     if (!isInitiative && userText) {
         const lastMsg = messages.at(-1);
         if (!lastMsg || lastMsg.role !== 'user' || lastMsg.content !== userText) {
