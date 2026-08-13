@@ -1098,7 +1098,7 @@ function ErrorsAuditTab({ logs = [], onSelectLog }) {
         return logs.filter(log => {
             const hasError = Boolean(log.error_text);
             const gateRefused = log.command_gate_status === 'COMMAND_REFUSED';
-            const qualityFailed = log.judge_verdict && log.judge_verdict !== 'OK' && log.judge_verdict !== 'ACCEPT';
+            const qualityFailed = log.judge_verdict && !['PASS', 'OK', 'ACCEPT'].includes(log.judge_verdict);
             return hasError || gateRefused || qualityFailed;
         });
     }, [logs]);
@@ -1110,7 +1110,7 @@ function ErrorsAuditTab({ logs = [], onSelectLog }) {
         failedLogs.forEach(log => {
             if (log.error_text) llmErrors++;
             if (log.command_gate_status === 'COMMAND_REFUSED') gateRefusals++;
-            if (log.judge_verdict && log.judge_verdict !== 'OK' && log.judge_verdict !== 'ACCEPT') qualityViolations++;
+            if (log.judge_verdict && !['PASS', 'OK', 'ACCEPT'].includes(log.judge_verdict)) qualityViolations++;
         });
         return { total: failedLogs.length, llmErrors, gateRefusals, qualityViolations };
     }, [failedLogs]);
@@ -1118,7 +1118,7 @@ function ErrorsAuditTab({ logs = [], onSelectLog }) {
     const filtered = failedLogs.filter(log => {
         if (activeKind === 'GATE' && log.command_gate_status !== 'COMMAND_REFUSED') return false;
         if (activeKind === 'LLM' && !log.error_text) return false;
-        if (activeKind === 'QUALITY' && (!log.judge_verdict || log.judge_verdict === 'OK' || log.judge_verdict === 'ACCEPT')) return false;
+        if (activeKind === 'QUALITY' && (!log.judge_verdict || ['PASS', 'OK', 'ACCEPT'].includes(log.judge_verdict))) return false;
         return true;
     });
 
@@ -1421,7 +1421,7 @@ function LogsPanel({ toast }) {
             } else if (kindFilter === 'ERRORS') {
                 const hasError = Boolean(log.error_text);
                 const gateRefused = log.command_gate_status === 'COMMAND_REFUSED';
-                const qualityFailed = log.judge_verdict && log.judge_verdict !== 'OK' && log.judge_verdict !== 'ACCEPT';
+                const qualityFailed = log.judge_verdict && !['PASS', 'OK', 'ACCEPT'].includes(log.judge_verdict);
                 if (!hasError && !gateRefused && !qualityFailed) return false;
             }
 
