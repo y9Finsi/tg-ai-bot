@@ -776,7 +776,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         .filter(Boolean);
     const activeProfile = await getLeraProfile().catch(() => null);
     writePromptLog({
-        kind: (!isInitiative && messages[1]?.content?.startsWith('СТОП: предыдущий ответ')) ? 'RETRY' : (isInitiative ? 'INITIATIVE' : 'CHAT'),
+        kind: (!isInitiative && typeof messages[1]?.content === 'string' && messages[1]?.content?.startsWith('СТОП: предыдущий ответ')) ? 'RETRY' : (isInitiative ? 'INITIATIVE' : 'CHAT'),
         model,
         providerName,
         latencyMs,
