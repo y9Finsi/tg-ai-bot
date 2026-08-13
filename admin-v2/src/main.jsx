@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Command } from 'lucide-react';
+import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Command, Search, Copy, Check, Pause, Trash2, Clock, Coins, Cpu, Layers, AlertTriangle, XCircle, Filter, Activity, ChevronRight, ChevronDown, User, SlidersHorizontal } from 'lucide-react';
 import './styles.css';
 import { Button } from './components/ui/button.jsx';
 import { Badge } from './components/ui/badge.jsx';
@@ -853,12 +853,538 @@ function PromptAssemblyMap({ channelForm, onChannelChange }) {
     </div>;
 }
 
-function LlmPanel({ toast }) {
-    const [logs, setLogs] = useState([]); const [selected, setSelected] = useState(null); const [loading, setLoading] = useState(false);
+function formatRelativeTime(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHours = Math.floor(diffMin / 60);
+    const diffDays = Math.floor(diffHours / 24);
 
-    async function loadLogs() { setLoading(true); try { const data = await api('/api/admin/prompt-logs?limit=30'); setLogs(data.logs || []); } finally { setLoading(false); } }
-    async function choose(id) { const data = await api(`/api/admin/prompt-logs/${id}`); setSelected(data); }
-    async function judge() { if (!selected) return; const result = await api(`/api/admin/prompt-logs/${selected.log.id}/judge`, { method: 'POST' }); setSelected({ ...selected, quality: result.judge.quality }); }
+    if (diffSec < 30) return 'только что';
+    if (diffMin < 60) return `${diffMin} мин назад`;
+    if (diffHours < 24) return `${diffHours} ч назад`;
+    if (diffDays === 1) return `вчера ${formatTime(value)}`;
+    return formatDate(value);
+}
+
+function copyToClipboard(text, onSuccess) {
+    if (!text) return;
+    const value = typeof text === 'object' ? JSON.stringify(text, null, 2) : String(text);
+    if (navigator?.clipboard?.writeText) {
+        navigator.clipboard.writeText(value).then(() => onSuccess && onSuccess()).catch(() => {});
+    }
+}
+
+function downloadTextFile(filename, content) {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+}
+
+function getKindBadgeVariant(kind = '') {
+    const k = String(kind).toUpperCase();
+    if (k.includes('EROTIC')) return 'red';
+    if (k.includes('CASUAL') || k.includes('CHAT')) return 'blue';
+    if (k.includes('JOKE')) return 'yellow';
+    if (k.includes('MEMORY')) return 'purple';
+    if (k.includes('CHANNEL') || k.includes('OBSERVER')) return 'green';
+    return 'default';
+}
+
+function LiveServerLogsTab({ toast }) {
+    const [streamLogs, setStreamLogs] = useState([]);
+    const [status, setStatus] = useState('connecting');
+    const [levelFilter, setLevelFilter] = useState('ALL');
+    const [search, setSearch] = useState('');
+    const [autoScroll, setAutoScroll] = useState(true);
+    const [isPaused, setIsPaused] = useState(false);
+    const terminalBodyRef = useRef(null);
+    const eventSourceRef = useRef(null);
+    const pausedLogsRef = useRef([]);
+
+    async function loadInitialLogs() {
+        try {
+            const data = await api('/api/admin/logs?level=');
+            if (data?.logs) {
+                setStreamLogs(data.logs);
+            }
+        } catch {
+            // Ignore initial load failure
+        }
+    }
+
+    useEffect(() => {
+        loadInitialLogs();
+
+        let es = null;
+        try {
+            es = new EventSource('/api/admin/logs/stream', { withCredentials: true });
+            eventSourceRef.current = es;
+
+            es.onopen = () => {
+                setStatus('connected');
+            };
+
+            es.onmessage = (event) => {
+                if (!event.data) return;
+                try {
+                    const item = JSON.parse(event.data);
+                    if (item.timestamp) {
+                        if (isPaused) {
+                            pausedLogsRef.current.push(item);
+                            if (pausedLogsRef.current.length > 500) pausedLogsRef.current.shift();
+                        } else {
+                            setStreamLogs(prev => {
+                                const next = [...prev, item];
+                                if (next.length > 600) next.shift();
+                                return next;
+                            });
+                        }
+                    }
+                } catch {
+                    // Ignore non-json lines or heartbeats
+                }
+            };
+
+            es.onerror = () => {
+                setStatus('disconnected');
+            };
+        } catch {
+            setStatus('disconnected');
+        }
+
+        return () => {
+            if (es) es.close();
+        };
+    }, [isPaused]);
+
+    useEffect(() => {
+        if (autoScroll && terminalBodyRef.current) {
+            terminalBodyRef.current.scrollTop = terminalBodyRef.current.scrollHeight;
+        }
+    }, [streamLogs, autoScroll]);
+
+    function togglePause() {
+        if (isPaused) {
+            if (pausedLogsRef.current.length) {
+                setStreamLogs(prev => [...prev, ...pausedLogsRef.current].slice(-600));
+                pausedLogsRef.current = [];
+            }
+            setIsPaused(false);
+            if (toast) toast('Стрим логов возобновлён');
+        } else {
+            setIsPaused(true);
+            if (toast) toast('Стрим логов на паузе');
+        }
+    }
+
+    function clearTerminal() {
+        setStreamLogs([]);
+        pausedLogsRef.current = [];
+        if (toast) toast('Консоль очищена');
+    }
+
+    function downloadLogs() {
+        const text = streamLogs.map(l => `[${l.timestamp}] [${l.type}] ${l.message}`).join('\n');
+        downloadTextFile(`lera-server-${isoDate(new Date())}.log`, text);
+        if (toast) toast('Логи выгружены в файл');
+    }
+
+    const filteredLogs = streamLogs.filter(item => {
+        if (levelFilter !== 'ALL' && item.type !== levelFilter) return false;
+        if (search && !String(item.message || '').toLowerCase().includes(search.toLowerCase()) && !String(item.type || '').toLowerCase().includes(search.toLowerCase())) return false;
+        return true;
+    });
+
+    return (
+        <Card className="server-terminal-card">
+            <CardHeader
+                eyebrow="Real-time Server Stream"
+                title="Живая консоль сервера"
+                description="Поток событий Node.js, Telegram Bot, PostgreSQL, Redis, BullMQ и AI вызовов."
+                action={
+                    <div className="terminal-actions-bar">
+                        <div className={cn('live-stream-badge', status === 'connected' ? (isPaused ? 'is-paused' : 'is-live') : 'is-offline')}>
+                            <span className="live-pulse-dot" />
+                            <span>{status === 'connected' ? (isPaused ? 'ПАУЗА' : 'LIVE STREAM') : 'ОФФЛАЙН'}</span>
+                        </div>
+                        <Button size="sm" variant={isPaused ? 'warning' : 'outline'} onClick={togglePause}>
+                            {isPaused ? <><Play size={13} /> Возобновить</> : <><Pause size={13} /> Пауза</>}
+                        </Button>
+                        <Button size="sm" variant={autoScroll ? 'primary' : 'outline'} onClick={() => setAutoScroll(!autoScroll)}>
+                            {autoScroll ? 'Автоскролл: ВКЛ' : 'Автоскролл: ВЫКЛ'}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={clearTerminal}>
+                            <Trash2 size={13} /> Очистить
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={downloadLogs}>
+                            <Download size={13} /> Скачать
+                        </Button>
+                    </div>
+                }
+            />
+
+            <div className="terminal-filter-toolbar">
+                <div className="terminal-level-tabs">
+                    {['ALL', 'INFO', 'WARN', 'ERROR'].map(lvl => (
+                        <button
+                            key={lvl}
+                            className={cn('terminal-filter-btn', levelFilter === lvl && 'is-active', `lvl-${lvl.toLowerCase()}`)}
+                            onClick={() => setLevelFilter(lvl)}
+                        >
+                            {lvl === 'ALL' ? 'Все уровни' : lvl}
+                            <span className="count-pill">
+                                {lvl === 'ALL' ? streamLogs.length : streamLogs.filter(l => l.type === lvl).length}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+
+                <div className="terminal-search-box">
+                    <Search size={14} className="search-icon" />
+                    <input
+                        type="text"
+                        placeholder="Поиск по тексту лога..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                    />
+                    {search && (
+                        <button className="clear-search-btn" onClick={() => setSearch('')}>
+                            <X size={13} />
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            <div className="server-terminal-screen" ref={terminalBodyRef}>
+                {filteredLogs.length === 0 ? (
+                    <div className="terminal-empty">
+                        <Terminal size={26} />
+                        <span>{search || levelFilter !== 'ALL' ? 'Нет логов по заданному фильтру' : 'Ожидание новых событий от сервера...'}</span>
+                    </div>
+                ) : (
+                    <div className="terminal-lines-container">
+                        {filteredLogs.map((item, idx) => (
+                            <div key={item.id || idx} className={cn('terminal-log-line', `line-${(item.type || 'info').toLowerCase()}`)}>
+                                <span className="line-num">{idx + 1}</span>
+                                <time className="line-time">{item.timestamp ? formatTime(item.timestamp) : '—'}</time>
+                                <span className={cn('line-level-badge', `badge-${(item.type || 'info').toLowerCase()}`)}>
+                                    {item.type || 'INFO'}
+                                </span>
+                                <span className="line-message">{item.message}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+            <div className="terminal-footer-info">
+                <span>Буфер: {filteredLogs.length} / {streamLogs.length} событий</span>
+                <span>Статус SSE: {status}</span>
+            </div>
+        </Card>
+    );
+}
+
+function ErrorsAuditTab({ logs = [], onSelectLog }) {
+    const [activeKind, setActiveKind] = useState('ALL');
+
+    const failedLogs = useMemo(() => {
+        return logs.filter(log => {
+            const hasError = Boolean(log.error_text);
+            const gateRefused = log.command_gate_status === 'COMMAND_REFUSED';
+            const qualityFailed = log.judge_verdict && log.judge_verdict !== 'OK' && log.judge_verdict !== 'ACCEPT';
+            return hasError || gateRefused || qualityFailed;
+        });
+    }, [logs]);
+
+    const errorStats = useMemo(() => {
+        let llmErrors = 0;
+        let gateRefusals = 0;
+        let qualityViolations = 0;
+        failedLogs.forEach(log => {
+            if (log.error_text) llmErrors++;
+            if (log.command_gate_status === 'COMMAND_REFUSED') gateRefusals++;
+            if (log.judge_verdict && log.judge_verdict !== 'OK' && log.judge_verdict !== 'ACCEPT') qualityViolations++;
+        });
+        return { total: failedLogs.length, llmErrors, gateRefusals, qualityViolations };
+    }, [failedLogs]);
+
+    const filtered = failedLogs.filter(log => {
+        if (activeKind === 'GATE' && log.command_gate_status !== 'COMMAND_REFUSED') return false;
+        if (activeKind === 'LLM' && !log.error_text) return false;
+        if (activeKind === 'QUALITY' && (!log.judge_verdict || log.judge_verdict === 'OK' || log.judge_verdict === 'ACCEPT')) return false;
+        return true;
+    });
+
+    return (
+        <div className="errors-audit-layout">
+            <div className="errors-kpi-row">
+                <div className="error-kpi-card is-total">
+                    <AlertTriangle size={18} />
+                    <div>
+                        <strong>{errorStats.total}</strong>
+                        <span>Всего сбоев</span>
+                    </div>
+                </div>
+                <div className="error-kpi-card is-danger">
+                    <XCircle size={18} />
+                    <div>
+                        <strong>{errorStats.llmErrors}</strong>
+                        <span>Ошибок LLM API</span>
+                    </div>
+                </div>
+                <div className="error-kpi-card is-warning">
+                    <ShieldAlert size={18} />
+                    <div>
+                        <strong>{errorStats.gateRefusals}</strong>
+                        <span>Command Gate Refusals</span>
+                    </div>
+                </div>
+                <div className="error-kpi-card is-purple">
+                    <Activity size={18} />
+                    <div>
+                        <strong>{errorStats.qualityViolations}</strong>
+                        <span>Нарушений качества</span>
+                    </div>
+                </div>
+            </div>
+
+            <Card className="errors-list-card">
+                <CardHeader
+                    eyebrow="Audit & Security"
+                    title="Журнал сбоев и отказов"
+                    description="Детализированный список запросов с ошибками генерации, блокировками команд и нарушениями поведения."
+                    action={
+                        <div className="inline-controls">
+                            {[['ALL', 'Все'], ['GATE', 'Gate Refusals'], ['LLM', 'LLM Errors'], ['QUALITY', 'Качество']].map(([k, label]) => (
+                                <Button
+                                    key={k}
+                                    size="sm"
+                                    variant={activeKind === k ? 'primary' : 'outline'}
+                                    onClick={() => setActiveKind(k)}
+                                >
+                                    {label}
+                                </Button>
+                            ))}
+                        </div>
+                    }
+                />
+
+                {filtered.length === 0 ? (
+                    <div className="empty-state">
+                        <CheckCircle2 size={32} style={{ color: 'var(--green)' }} />
+                        <strong>Сбоев и критических ошибок не обнаружено</strong>
+                        <span>Все последние {logs.length} LLM-запросов выполнены штатно.</span>
+                    </div>
+                ) : (
+                    <div className="errors-items-list">
+                        {filtered.map(log => (
+                            <div key={log.id} className="error-audit-item" onClick={() => onSelectLog && onSelectLog(log.id)}>
+                                <div className="error-audit-header">
+                                    <div className="error-audit-title">
+                                        {log.command_gate_status === 'COMMAND_REFUSED' && <Badge variant="red">COMMAND REFUSED</Badge>}
+                                        {log.error_text && <Badge variant="red">ERROR</Badge>}
+                                        {log.judge_verdict && log.judge_verdict !== 'OK' && <Badge variant="yellow">{log.judge_verdict}</Badge>}
+                                        <strong>{log.user_text || 'Системный вызов'}</strong>
+                                    </div>
+                                    <div className="error-audit-meta">
+                                        <span>{log.username ? `@${log.username}` : (log.first_name || `User #${log.user_id}`)}</span>
+                                        <span>·</span>
+                                        <span>{formatRelativeTime(log.created_at)}</span>
+                                    </div>
+                                </div>
+                                {log.command_gate_reason && (
+                                    <div className="error-detail-box is-gate">
+                                        <strong>Причина отказа гейта:</strong>
+                                        <p>{log.command_gate_reason}</p>
+                                    </div>
+                                )}
+                                {log.error_text && (
+                                    <div className="error-detail-box is-llm">
+                                        <strong>Ошибка LLM:</strong>
+                                        <p>{log.error_text}</p>
+                                    </div>
+                                )}
+                                <div className="error-audit-footer">
+                                    <span>{log.provider_name || 'LLM'} · {log.model || '—'} · {log.latency_ms || 0} мс</span>
+                                    <Button size="sm" variant="outline"><ChevronRight size={13} /> Открыть разбор</Button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </Card>
+        </div>
+    );
+}
+
+function SimulationRationaleTab({ toast }) {
+    const [traces, setTraces] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [categoryFilter, setCategoryFilter] = useState('ALL');
+    const [search, setSearch] = useState('');
+
+    async function loadRationale() {
+        setLoading(true);
+        try {
+            const result = await api('/api/admin/radiant/rationale?limit=100');
+            setTraces(result.traces || []);
+        } catch (e) {
+            if (toast) toast(e.message, 'error');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        loadRationale();
+    }, []);
+
+    const categories = useMemo(() => {
+        const set = new Set();
+        traces.forEach(t => t.category && set.add(t.category));
+        return ['ALL', ...Array.from(set)];
+    }, [traces]);
+
+    const filtered = traces.filter(t => {
+        if (categoryFilter !== 'ALL' && t.category !== categoryFilter) return false;
+        if (search) {
+            const q = search.toLowerCase();
+            const inTitle = String(t.title || '').toLowerCase().includes(q);
+            const inExp = String(t.explanation || '').toLowerCase().includes(q);
+            if (!inTitle && !inExp) return false;
+        }
+        return true;
+    });
+
+    return (
+        <Card className="rationale-panel-card">
+            <CardHeader
+                eyebrow="GOAP & Radiant Engine"
+                title="Обоснование решений Леры (Rationale)"
+                description="Логи автономного планировщика: почему Лера выбрала определенное действие, как изменились голод, усталость, настроение и планы."
+                action={
+                    <div className="inline-controls">
+                        <Button size="sm" variant="outline" onClick={loadRationale} disabled={loading}>
+                            <RefreshCw size={13} className={cn(loading && 'spin-icon')} /> Обновить
+                        </Button>
+                    </div>
+                }
+            />
+
+            <div className="terminal-filter-toolbar">
+                <div className="terminal-level-tabs">
+                    {categories.map(cat => (
+                        <button
+                            key={cat}
+                            className={cn('terminal-filter-btn', categoryFilter === cat && 'is-active')}
+                            onClick={() => setCategoryFilter(cat)}
+                        >
+                            {cat === 'ALL' ? 'Все категории' : cat}
+                            <span className="count-pill">
+                                {cat === 'ALL' ? traces.length : traces.filter(t => t.category === cat).length}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+
+                <div className="terminal-search-box">
+                    <Search size={14} className="search-icon" />
+                    <input
+                        type="text"
+                        placeholder="Поиск по решениям и мотивам..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                    />
+                    {search && (
+                        <button className="clear-search-btn" onClick={() => setSearch('')}>
+                            <X size={13} />
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {loading ? (
+                <div className="empty-state">Загружаю цепочку решений…</div>
+            ) : filtered.length === 0 ? (
+                <div className="empty-state">Решений по фильтру не найдено.</div>
+            ) : (
+                <div className="rationale-feed-list">
+                    {filtered.map(item => (
+                        <div key={item.id} className="rationale-card-item">
+                            <div className="rationale-item-head">
+                                <div className="rationale-item-badges">
+                                    <Badge variant="blue">{item.category || 'DECISION'}</Badge>
+                                    <strong>{item.title}</strong>
+                                </div>
+                                <time className="rationale-time">{formatDate(item.timestamp)}</time>
+                            </div>
+                            <p className="rationale-explanation">{item.explanation}</p>
+                            {item.payload && Object.keys(item.payload).length > 0 && (
+                                <details className="rationale-payload-box">
+                                    <summary>Параметры и состояние (Payload)</summary>
+                                    <pre>{JSON.stringify(item.payload, null, 2)}</pre>
+                                </details>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </Card>
+    );
+}
+
+function LogsPanel({ toast }) {
+    const [activeTab, setActiveTab] = useState('prompts');
+    const [logs, setLogs] = useState([]);
+    const [selected, setSelected] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [limit, setLimit] = useState(50);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [kindFilter, setKindFilter] = useState('ALL');
+    const [groupMode, setGroupMode] = useState('timeline');
+    const [inspectorTab, setInspectorTab] = useState('overview');
+    const [copiedKey, setCopiedKey] = useState(null);
+
+    async function loadLogs() {
+        setLoading(true);
+        try {
+            const data = await api(`/api/admin/prompt-logs?limit=${limit}`);
+            setLogs(data.logs || []);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function choose(id) {
+        try {
+            const data = await api(`/api/admin/prompt-logs/${id}`);
+            setSelected(data);
+            if (activeTab !== 'prompts') {
+                setActiveTab('prompts');
+            }
+        } catch (e) {
+            if (toast) toast(e.message, 'error');
+        }
+    }
+
+    async function judge() {
+        if (!selected) return;
+        try {
+            const result = await api(`/api/admin/prompt-logs/${selected.log.id}/judge`, { method: 'POST' });
+            setSelected({ ...selected, quality: result.judge.quality });
+            if (toast) toast(result.judge.explanation || 'Качество проверено');
+        } catch (e) {
+            if (toast) toast(e.message, 'error');
+        }
+    }
+
     async function clearChatHistory() {
         try {
             const result = await api('/api/admin/chat-history/clear', { method: 'POST', body: JSON.stringify({}) });
@@ -870,96 +1396,596 @@ function LlmPanel({ toast }) {
         }
     }
 
-    useEffect(() => { loadLogs(); }, []);
+    function handleCopy(text, key) {
+        copyToClipboard(text, () => {
+            setCopiedKey(key);
+            setTimeout(() => setCopiedKey(null), 2000);
+            if (toast) toast('Скопировано в буфер обмена');
+        });
+    }
+
+    useEffect(() => {
+        loadLogs();
+    }, [limit]);
+
+    const filteredLogs = useMemo(() => {
+        return logs.filter(log => {
+            if (kindFilter === 'CHAT') {
+                const k = String(log.kind || '').toUpperCase();
+                if (!['CHAT', 'CASUAL', 'EROTIC', 'JOKE'].includes(k)) return false;
+            } else if (kindFilter === 'MEMORY') {
+                if (String(log.kind || '').toUpperCase() !== 'MEMORY') return false;
+            } else if (kindFilter === 'CHANNEL') {
+                const k = String(log.kind || '').toUpperCase();
+                if (!k.includes('CHANNEL') && !k.includes('OBSERVER')) return false;
+            } else if (kindFilter === 'ERRORS') {
+                const hasError = Boolean(log.error_text);
+                const gateRefused = log.command_gate_status === 'COMMAND_REFUSED';
+                const qualityFailed = log.judge_verdict && log.judge_verdict !== 'OK' && log.judge_verdict !== 'ACCEPT';
+                if (!hasError && !gateRefused && !qualityFailed) return false;
+            }
+
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase();
+                const text = String(log.user_text || '').toLowerCase();
+                const preview = String(log.preview || '').toLowerCase();
+                const user = String(log.username || log.first_name || log.user_id || '').toLowerCase();
+                const model = String(log.model || '').toLowerCase();
+                const kind = String(log.kind || '').toLowerCase();
+                if (!text.includes(q) && !preview.includes(q) && !user.includes(q) && !model.includes(q) && !kind.includes(q)) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }, [logs, kindFilter, searchQuery]);
+
+    const usersGrouped = useMemo(() => {
+        const groups = {};
+        filteredLogs.forEach(log => {
+            const key = log.user_id ? String(log.user_id) : 'system';
+            if (!groups[key]) {
+                groups[key] = {
+                    userId: log.user_id,
+                    username: log.username,
+                    firstName: log.first_name,
+                    items: [],
+                    lastDate: log.created_at
+                };
+            }
+            groups[key].items.push(log);
+        });
+        return Object.values(groups).sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
+    }, [filteredLogs]);
+
+    const failuresCount = useMemo(() => {
+        return logs.filter(l => Boolean(l.error_text) || l.command_gate_status === 'COMMAND_REFUSED').length;
+    }, [logs]);
 
     return (
-        <div className="llm-super-panel">
-            <div className="llm-layout-v2">
-                <Card>
-                    <CardHeader eyebrow="Диалоги и LLM" title="Почему Лера ответила так" description="Сначала выбери сообщение. Технические детали открываются только по запросу. Ключи и секреты скрыты." action={<div className="inline-controls"><ConfirmAction title="Удалить всю историю диалогов?" description="Будут удалены сообщения всех пользователей из chat_history и conversation_events. Технические prompt-логи останутся." confirmText="Удалить всё" variant="danger" onConfirm={clearChatHistory}>Очистить историю</ConfirmAction><Button size="icon" aria-label="Обновить логи" onClick={loadLogs}><RefreshCw size={15} /></Button></div>} />
-                    <div className="llm-list">
-                        {loading ? <div className="empty-state">Загружаю…</div> : logs.map(log => (
-                            <button className={cn('llm-row', selected?.log?.id === log.id && 'selected')} onClick={() => choose(log.id)} key={log.id}>
-                                <MessageSquare size={15} />
-                                <div><strong>{log.user_text || 'Системный вызов'}</strong><span>{log.kind} · {formatTime(log.created_at)} · {log.model || '—'}</span></div>
-                                <QualityBadge log={log} />
-                            </button>
-                        ))}
-                    </div>
-                </Card>
-                <Card className="llm-detail">
-                    <CardHeader eyebrow="Разбор ответа" title={selected?.log?.user_text || 'Выбери сообщение'} description={selected ? `${selected.log.kind || 'LLM'} · ${selected.log.mode || '—'} · ${selected.log.provider_name || '—'} · ${selected.log.latency_ms || 0} мс` : 'Здесь будет цепочка контекста, ответа и проверки качества.'} />
-                    {selected ? (
-                        <div className="llm-sections">
-                            <div className="answer-box">
-                                <span>Ответ Леры</span>
-                                <p>{selected.layers?.parsed_response || selected.layers?.raw_response || '—'}</p>
-                                <div className="quality-row">
-                                    <QualityBadge log={selected} />
-                                    <Button size="sm" onClick={judge}><CheckCircle2 size={14} /> Проверить качество</Button>
-                                </div>
-                            </div>
-                            <details open><summary>Цепочка генерации</summary>
-                                {(() => {
-                                    const trace = selected.layers?.generation_trace || [];
-                                    const first = trace.find(item => item.step === 'first');
-                                    const retry = trace.find(item => item.step === 'retry');
-                                    const fallback = trace.find(item => item.step === 'fallback');
-                                    const judges = trace.filter(item => item.step === 'judge');
-                                    const firstJudge = judges.find(item => item.phase === 'first');
-                                    const relationship = trace.find(item => item.step === 'relationship');
-                                    const relationshipEvent = firstJudge?.relationshipEvent;
-                                    const formatRelationshipNumber = value => Number(value || 0).toFixed(1);
-                                    const formatRelationshipDelta = value => {
-                                        const delta = Number(value || 0);
-                                        return `${delta >= 0 ? '+' : ''}${formatRelationshipNumber(delta)}`;
-                                    };
-                                    const finalAnswer = selected.layers?.parsed_response || selected.layers?.raw_response || '—';
-                                    return <div className="generation-trace">
-                                        {selected.log.kind === 'MEMORY' && <div className="memory-trace-card">
-                                            <span>Memory extraction</span>
-                                            <p>{trace[0]?.step === 'retry' ? 'Первый ответ не распарсился — выполнен один retry.' : trace[0]?.step === 'failed' ? 'Extraction завершился ошибкой.' : 'Ответ памяти распарсился с первой попытки.'}</p>
-                                            {selected.log.error_text && <small>Ошибка: {selected.log.error_text}</small>}
-                                            {trace[0]?.firstParseError && <small>Ошибка первого парсинга: {trace[0].firstParseError}</small>}
-                                            <details><summary>Raw и параметры вызова</summary><pre>{JSON.stringify({ firstRawResponse: trace[0]?.firstRawResponse, finalRawResponse: trace[0]?.rawResponse || selected.layers?.raw_response, sampling: trace[0]?.sampling, provider: selected.log.provider_name, model: selected.log.model }, null, 2)}</pre></details>
-                                            <details><summary>Фактически переданный prompt</summary><pre>{selected.layers?.system_prompt || trace[0]?.prompt || '—'}</pre></details>
-                                        </div>}
-                                        <div><span>Первый ответ</span><p>{first?.response || 'Нет данных для старого лога'}</p></div>
-                                        {judges.filter(item => item.phase === 'first').map((item, index) => <div key={`judge-first-${index}`}><span>Judge первого ответа</span><p>{item.verdict}{item.code ? ` · ${item.code}` : ''}</p><small>{item.error || ''}</small>{item.judgeMessages && <details><summary>Что получил судья</summary><pre>{JSON.stringify(item.judgeMessages, null, 2)}</pre></details>}</div>)}
-                                        {firstJudge && <div className="relationship-trace">
-                                            <span>Relationship Judge</span>
-                                            {relationshipEvent
-                                                ? <p>{relationshipEvent.type} · интенсивность {formatRelationshipNumber(relationshipEvent.intensity)}</p>
-                                                : <p>Нет данных об отношениях</p>}
-                                            {relationship?.error
-                                                ? <small>Не удалось записать изменение: {relationship.error}</small>
-                                                : relationship?.deltas
-                                                ? <small>Изменения: trust {formatRelationshipDelta(relationship.deltas.trust)} · affection {formatRelationshipDelta(relationship.deltas.affection)} · irritation {formatRelationshipDelta(relationship.deltas.irritation)}</small>
-                                                : relationshipEvent?.type === 'NEUTRAL' || !relationshipEvent
-                                                ? <small>Отношения не изменились</small>
-                                                : <small>Изменение не записано в логе</small>}
-                                            {relationship && !relationship.error && <small>После события: trust {formatRelationshipNumber(relationship.state?.trust)} · affection {formatRelationshipNumber(relationship.state?.affection)} · irritation {formatRelationshipNumber(relationship.state?.irritation)}</small>}
-                                        </div>}
-                                        {retry ? <div><span>Retry: {retry.reason || 'повтор'}</span><p>{retry.response || 'Пустой ответ'}</p><small>{retry.instruction || ''}</small></div> : <div><span>Retry</span><p>Без retry</p></div>}
-                                        {judges.filter(item => item.phase === 'retry').map((item, index) => <div key={`judge-retry-${index}`}><span>Judge retry</span><p>{item.verdict}{item.code ? ` · ${item.code}` : ''}</p><small>{item.error || ''}</small>{item.judgeMessages && <details><summary>Что получил судья</summary><pre>{JSON.stringify(item.judgeMessages, null, 2)}</pre></details>}</div>)}
-                                        {fallback && <div><span>Quality fallback: {(fallback.reason || []).join(', ') || 'проверка качества'}</span><p>{fallback.response || '—'}</p></div>}
-                                        <div><span>Финальный ответ</span><p>{finalAnswer}</p></div>
-                                    </div>;
-                                })()}
-                            </details>
-                            <details><summary>Контекст дня</summary><pre>{selected.layers?.radiant_context || '—'}</pre></details>
-                            <details><summary>Память пользователя</summary><pre>{JSON.stringify(selected.layers?.memory_used || [], null, 2)}</pre></details>
-                            <details><summary>Usage и стоимость</summary><pre>{JSON.stringify({ usage: selected.log.usage, costUsd: selected.log.cost_usd, mode: selected.log.mode, provider: selected.log.provider_name, model: selected.log.model }, null, 2)}</pre></details>
-                            <details><summary>Полный prompt</summary><pre>{selected.layers?.system_prompt || '—'}</pre></details>
-                        </div>
-                    ) : (
-                        <div className="empty-state"><Sparkles size={22} /><span>Выбери вызов слева</span></div>
-                    )}
-                </Card>
+        <div className="super-logs-workspace">
+            <div className="logs-main-tab-nav">
+                <button
+                    className={cn('logs-nav-tab', activeTab === 'prompts' && 'is-active')}
+                    onClick={() => setActiveTab('prompts')}
+                >
+                    <MessageSquare size={15} />
+                    <span>Диалоги & LLM</span>
+                    <span className="tab-pill">{logs.length}</span>
+                </button>
+
+                <button
+                    className={cn('logs-nav-tab', activeTab === 'stream' && 'is-active')}
+                    onClick={() => setActiveTab('stream')}
+                >
+                    <Terminal size={15} />
+                    <span>Live Терминал Сервера</span>
+                    <span className="live-mini-dot" />
+                </button>
+
+                <button
+                    className={cn('logs-nav-tab', activeTab === 'errors' && 'is-active', failuresCount > 0 && 'has-failures')}
+                    onClick={() => setActiveTab('errors')}
+                >
+                    <AlertTriangle size={15} />
+                    <span>Ошибки & Сбои</span>
+                    {failuresCount > 0 && <span className="tab-pill is-danger">{failuresCount}</span>}
+                </button>
+
+                <button
+                    className={cn('logs-nav-tab', activeTab === 'rationale' && 'is-active')}
+                    onClick={() => setActiveTab('rationale')}
+                >
+                    <Cpu size={15} />
+                    <span>GOAP & Rationale</span>
+                </button>
             </div>
 
+            {activeTab === 'stream' && <LiveServerLogsTab toast={toast} />}
+            {activeTab === 'errors' && <ErrorsAuditTab logs={logs} onSelectLog={choose} />}
+            {activeTab === 'rationale' && <SimulationRationaleTab toast={toast} />}
+
+            {activeTab === 'prompts' && (
+                <div className="llm-super-panel">
+                    <div className="logs-toolbar-strip">
+                        <div className="logs-search-wrapper">
+                            <Search size={14} className="search-icon" />
+                            <input
+                                type="text"
+                                placeholder="Поиск сообщений, @username, модели, ID..."
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                            />
+                            {searchQuery && (
+                                <button className="clear-search-btn" onClick={() => setSearchQuery('')}>
+                                    <X size={13} />
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="logs-kind-chips">
+                            {[
+                                ['ALL', 'Все'],
+                                ['CHAT', '💬 Диалоги'],
+                                ['MEMORY', '🧠 Память'],
+                                ['CHANNEL', '📢 Канал'],
+                                ['ERRORS', '⚠️ Только сбои']
+                            ].map(([k, label]) => (
+                                <button
+                                    key={k}
+                                    className={cn('kind-chip-btn', kindFilter === k && 'is-active')}
+                                    onClick={() => setKindFilter(k)}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="logs-grouping-selector">
+                            <span className="group-label">Группировка:</span>
+                            <div className="group-buttons">
+                                <button
+                                    className={cn('group-btn', groupMode === 'timeline' && 'is-active')}
+                                    onClick={() => setGroupMode('timeline')}
+                                    title="Хронологическая лента"
+                                >
+                                    <Clock size={13} /> Лента
+                                </button>
+                                <button
+                                    className={cn('group-btn', groupMode === 'users' && 'is-active')}
+                                    onClick={() => setGroupMode('users')}
+                                    title="Группировка по собеседникам"
+                                >
+                                    <Users size={13} /> Собеседники
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="logs-right-actions">
+                            <select
+                                className="limit-select"
+                                value={limit}
+                                onChange={e => setLimit(Number(e.target.value))}
+                            >
+                                <option value={30}>30 записей</option>
+                                <option value={50}>50 записей</option>
+                                <option value={100}>100 записей</option>
+                            </select>
+
+                            <ConfirmAction
+                                title="Удалить всю историю диалогов?"
+                                description="Будут удалены сообщения всех пользователей из chat_history и conversation_events. Технические prompt-логи останутся."
+                                confirmText="Удалить всё"
+                                variant="danger"
+                                onConfirm={clearChatHistory}
+                            >
+                                Очистить историю
+                            </ConfirmAction>
+
+                            <Button size="icon" aria-label="Обновить логи" onClick={loadLogs} disabled={loading}>
+                                <RefreshCw size={14} className={cn(loading && 'spin-icon')} />
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="llm-layout-v2">
+                        <Card className="llm-list-card">
+                            <CardHeader
+                                eyebrow="Prompt Stream"
+                                title={groupMode === 'users' ? `Пользователи (${usersGrouped.length})` : `Вызовы (${filteredLogs.length})`}
+                                description="Сначала выбери сообщение. Технические детали открываются только по запросу. Ключи и секреты скрыты."
+                            />
+                            <div className="llm-list">
+                                {loading ? (
+                                    <div className="empty-state">Загружаю логи…</div>
+                                ) : filteredLogs.length === 0 ? (
+                                    <div className="empty-state">
+                                        <Sparkles size={24} />
+                                        <span>Логов по текущему фильтру не найдено.</span>
+                                    </div>
+                                ) : groupMode === 'users' ? (
+                                    usersGrouped.map(group => (
+                                        <div key={group.userId || 'system'} className="user-dialog-group-card">
+                                            <div className="user-group-head">
+                                                <div className="user-avatar-circle">
+                                                    {group.username ? group.username.charAt(0).toUpperCase() : (group.firstName ? group.firstName.charAt(0).toUpperCase() : 'U')}
+                                                </div>
+                                                <div className="user-group-info">
+                                                    <strong>{group.firstName || group.username ? `${group.firstName || ''} (@${group.username || 'unknown'})` : `User #${group.userId || 'System'}`}</strong>
+                                                    <span>{group.items.length} сообщений · {formatRelativeTime(group.lastDate)}</span>
+                                                </div>
+                                            </div>
+                                            <div className="user-group-messages">
+                                                {group.items.map(log => (
+                                                    <button
+                                                        className={cn(
+                                                            'llm-row',
+                                                            selected?.log?.id === log.id && 'selected',
+                                                            log.command_gate_status === 'COMMAND_REFUSED' && 'is-refused',
+                                                            log.error_text && 'is-error'
+                                                        )}
+                                                        onClick={() => choose(log.id)}
+                                                        key={log.id}
+                                                    >
+                                                        <div className="llm-row-icon">
+                                                            {log.kind === 'MEMORY' ? <Brain size={14} /> : log.kind?.includes('CHANNEL') ? <Radio size={14} /> : <MessageSquare size={14} />}
+                                                        </div>
+                                                        <div className="llm-row-body">
+                                                            <div className="llm-row-top">
+                                                                <strong>{log.user_text || 'Системный вызов'}</strong>
+                                                                <time>{formatTime(log.created_at)}</time>
+                                                            </div>
+                                                            {log.preview && <span className="llm-row-preview">«{log.preview}»</span>}
+                                                            <div className="llm-row-badges">
+                                                                <Badge variant={getKindBadgeVariant(log.kind)}>{log.kind || 'LLM'}</Badge>
+                                                                {log.model && <span className="chip-model">{log.model}</span>}
+                                                                {log.latency_ms && <span className="chip-metric">{log.latency_ms}ms</span>}
+                                                                {log.command_gate_status === 'COMMAND_REFUSED' && <Badge variant="red">REFUSED</Badge>}
+                                                            </div>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    filteredLogs.map(log => (
+                                        <button
+                                            className={cn(
+                                                'llm-row',
+                                                selected?.log?.id === log.id && 'selected',
+                                                log.command_gate_status === 'COMMAND_REFUSED' && 'is-refused',
+                                                log.error_text && 'is-error'
+                                            )}
+                                            onClick={() => choose(log.id)}
+                                            key={log.id}
+                                        >
+                                            <div className="llm-row-icon">
+                                                {log.kind === 'MEMORY' ? <Brain size={15} /> : log.kind?.includes('CHANNEL') ? <Radio size={15} /> : <MessageSquare size={15} />}
+                                            </div>
+                                            <div className="llm-row-body">
+                                                <div className="llm-row-top">
+                                                    <span className="llm-user-label">
+                                                        {log.username ? `@${log.username}` : (log.first_name || (log.user_id ? `ID:${log.user_id}` : 'Система'))}
+                                                    </span>
+                                                    <time>{formatRelativeTime(log.created_at)}</time>
+                                                </div>
+                                                <strong className="llm-user-msg">{log.user_text || 'Системный запрос'}</strong>
+                                                {log.preview && <span className="llm-row-preview">«{log.preview}»</span>}
+                                                <div className="llm-row-badges">
+                                                    <Badge variant={getKindBadgeVariant(log.kind)}>{log.kind || 'LLM'}</Badge>
+                                                    {log.model && <span className="chip-model">{log.model}</span>}
+                                                    {log.latency_ms ? <span className="chip-metric">{log.latency_ms}ms</span> : null}
+                                                    {log.total_tokens ? <span className="chip-metric">{log.total_tokens}tok</span> : null}
+                                                    {log.command_gate_status === 'COMMAND_REFUSED' && <Badge variant="red">REFUSED</Badge>}
+                                                    {log.error_text && <Badge variant="red">ERROR</Badge>}
+                                                </div>
+                                            </div>
+                                            <QualityBadge log={log} />
+                                        </button>
+                                    ))
+                                )}
+                            </div>
+                        </Card>
+
+                        <Card className="llm-detail-card">
+                            <CardHeader
+                                eyebrow="X-Ray Inspector"
+                                title={selected?.log?.user_text || (selected ? 'Системный вызов' : 'Выбери запрос')}
+                                description={selected ? `${selected.log.kind || 'LLM'} · ${selected.log.mode || '—'} · ${selected.log.provider_name || '—'} · ${formatDate(selected.log.created_at)}` : 'Полная цепочка генерации, слои промпта, контекст и проверка качества.'}
+                                action={selected && (
+                                    <div className="inline-controls">
+                                        <Button size="sm" variant="outline" onClick={() => handleCopy(selected, 'full_json')}>
+                                            {copiedKey === 'full_json' ? <><Check size={13} /> Скопировано</> : <><Copy size={13} /> JSON</>}
+                                        </Button>
+                                        <Button size="sm" onClick={judge}>
+                                            <CheckCircle2 size={13} /> Проверить качество
+                                        </Button>
+                                    </div>
+                                )}
+                            />
+
+                            {selected ? (
+                                <div className="llm-detail-content">
+                                    <div className="kpi-metrics-strip">
+                                        <div className="kpi-metric-box">
+                                            <span className="kpi-label">Провайдер / Модель</span>
+                                            <strong className="kpi-value">{selected.log.provider_name || 'openai'} / {selected.log.model || '—'}</strong>
+                                        </div>
+                                        <div className="kpi-metric-box">
+                                            <span className="kpi-label">Задержка</span>
+                                            <strong className="kpi-value">{selected.log.latency_ms || 0} мс</strong>
+                                        </div>
+                                        <div className="kpi-metric-box">
+                                            <span className="kpi-label">Токены (P / C / T)</span>
+                                            <strong className="kpi-value">{selected.log.prompt_tokens || 0} / {selected.log.completion_tokens || 0} / {selected.log.total_tokens || 0}</strong>
+                                        </div>
+                                        <div className="kpi-metric-box">
+                                            <span className="kpi-label">Стоимость</span>
+                                            <strong className="kpi-value">${Number(selected.log.cost_usd || 0).toFixed(5)}</strong>
+                                        </div>
+                                        <div className="kpi-metric-box">
+                                            <span className="kpi-label">Command Gate</span>
+                                            <strong className={cn('kpi-value', selected.log.command_gate_status === 'COMMAND_REFUSED' && 'text-danger')}>
+                                                {selected.log.command_gate_status || 'APPROVED'}
+                                            </strong>
+                                        </div>
+                                    </div>
+
+                                    <div className="inspector-subtabs-nav">
+                                        {[
+                                            ['overview', '💬 Сообщение & Ответ'],
+                                            ['trace', '🔍 Трейс генерации'],
+                                            ['assembly', '🧩 Сборка Prompt'],
+                                            ['json', '📄 Raw Payload']
+                                        ].map(([tabKey, tabTitle]) => (
+                                            <button
+                                                key={tabKey}
+                                                className={cn('inspector-tab-btn', inspectorTab === tabKey && 'is-active')}
+                                                onClick={() => setInspectorTab(tabKey)}
+                                            >
+                                                {tabTitle}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {inspectorTab === 'overview' && (
+                                        <div className="inspector-tab-pane">
+                                            <div className="dialog-view-container">
+                                                <div className="dialog-user-bubble">
+                                                    <div className="bubble-header">
+                                                        <span>Сообщение собеседника</span>
+                                                        <small>{selected.log.username ? `@${selected.log.username}` : (selected.log.first_name || `ID: ${selected.log.user_id}`)}</small>
+                                                    </div>
+                                                    <p>{selected.log.user_text || '—'}</p>
+                                                </div>
+
+                                                <div className="dialog-assistant-bubble">
+                                                    <div className="bubble-header">
+                                                        <span>Ответ Леры</span>
+                                                        <Button size="icon" variant="ghost" onClick={() => handleCopy(selected.layers?.parsed_response || selected.layers?.raw_response, 'answer')}>
+                                                            {copiedKey === 'answer' ? <Check size={12} /> : <Copy size={12} />}
+                                                        </Button>
+                                                    </div>
+                                                    <p>{selected.layers?.parsed_response || selected.layers?.raw_response || '—'}</p>
+                                                    <div className="answer-footer-row">
+                                                        <QualityBadge log={selected} />
+                                                        <span className="model-tag">{selected.log.model}</span>
+                                                    </div>
+                                                </div>
+
+                                                {selected.log.error_text && (
+                                                    <div className="error-alert-box">
+                                                        <AlertTriangle size={16} />
+                                                        <div>
+                                                            <strong>Ошибка выполнения</strong>
+                                                            <p>{selected.log.error_text}</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {selected.log.command_gate_reason && (
+                                                    <div className="error-alert-box is-gate">
+                                                        <ShieldAlert size={16} />
+                                                        <div>
+                                                            <strong>Причина блокировки гейтом</strong>
+                                                            <p>{selected.log.command_gate_reason}</p>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {inspectorTab === 'trace' && (
+                                        <div className="inspector-tab-pane">
+                                            {(() => {
+                                                const trace = selected.layers?.generation_trace || [];
+                                                const first = trace.find(item => item.step === 'first');
+                                                const retry = trace.find(item => item.step === 'retry');
+                                                const fallback = trace.find(item => item.step === 'fallback');
+                                                const judges = trace.filter(item => item.step === 'judge');
+                                                const firstJudge = judges.find(item => item.phase === 'first');
+                                                const relationship = trace.find(item => item.step === 'relationship');
+                                                const relationshipEvent = firstJudge?.relationshipEvent;
+                                                const formatRelationshipNumber = value => Number(value || 0).toFixed(1);
+                                                const formatRelationshipDelta = value => {
+                                                    const delta = Number(value || 0);
+                                                    return `${delta >= 0 ? '+' : ''}${formatRelationshipNumber(delta)}`;
+                                                };
+                                                const finalAnswer = selected.layers?.parsed_response || selected.layers?.raw_response || '—';
+
+                                                return (
+                                                    <div className="generation-trace-visual">
+                                                        {selected.log.kind === 'MEMORY' && (
+                                                            <div className="trace-step-card is-memory">
+                                                                <div className="trace-step-head">
+                                                                    <Brain size={15} />
+                                                                    <strong>Memory Extraction Pipeline</strong>
+                                                                </div>
+                                                                <p>{trace[0]?.step === 'retry' ? 'Первый ответ не распарсился — выполнен один retry.' : trace[0]?.step === 'failed' ? 'Extraction завершился ошибкой.' : 'Ответ памяти распарсился с первой попытки.'}</p>
+                                                                {selected.log.error_text && <small className="trace-error">Ошибка: {selected.log.error_text}</small>}
+                                                            </div>
+                                                        )}
+
+                                                        <div className="trace-step-card">
+                                                            <div className="trace-step-head">
+                                                                <span className="step-num">1</span>
+                                                                <strong>Первый ответ</strong>
+                                                            </div>
+                                                            <p className="trace-text-content">{first?.response || 'Нет сохраненных данных первого драфта'}</p>
+                                                        </div>
+
+                                                        {judges.filter(item => item.phase === 'first').map((item, index) => (
+                                                            <div key={`judge-first-${index}`} className="trace-step-card is-judge">
+                                                                <div className="trace-step-head">
+                                                                    <CheckCircle2 size={15} />
+                                                                    <strong>Judge первого ответа: {item.verdict}{item.code ? ` (${item.code})` : ''}</strong>
+                                                                </div>
+                                                                {item.error && <small className="trace-error">{item.error}</small>}
+                                                                {item.judgeMessages && (
+                                                                    <details className="trace-details">
+                                                                        <summary>Что передано судье</summary>
+                                                                        <pre>{JSON.stringify(item.judgeMessages, null, 2)}</pre>
+                                                                    </details>
+                                                                )}
+                                                            </div>
+                                                        ))}
+
+                                                        {firstJudge && (
+                                                            <div className="trace-step-card is-relationship">
+                                                                <div className="trace-step-head">
+                                                                    <Heart size={15} />
+                                                                    <strong>Relationship Judge</strong>
+                                                                </div>
+                                                                {relationshipEvent ? (
+                                                                    <p>Событие: <strong>{relationshipEvent.type}</strong> (интенсивность {formatRelationshipNumber(relationshipEvent.intensity)})</p>
+                                                                ) : (
+                                                                    <p>Отношения остались нейтральными</p>
+                                                                )}
+                                                                {relationship?.deltas && (
+                                                                    <div className="relationship-deltas-row">
+                                                                        <span className="delta-chip">Доверие: {formatRelationshipDelta(relationship.deltas.trust)}</span>
+                                                                        <span className="delta-chip">Симпатия: {formatRelationshipDelta(relationship.deltas.affection)}</span>
+                                                                        <span className="delta-chip">Раздражение: {formatRelationshipDelta(relationship.deltas.irritation)}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        {retry && (
+                                                            <div className="trace-step-card is-retry">
+                                                                <div className="trace-step-head">
+                                                                    <span className="step-num">2</span>
+                                                                    <strong>Retry: {retry.reason || 'повтор'}</strong>
+                                                                </div>
+                                                                <p className="trace-text-content">{retry.response || 'Пустой ответ'}</p>
+                                                                {retry.instruction && <small className="trace-note">{retry.instruction}</small>}
+                                                            </div>
+                                                        )}
+
+                                                        {fallback && (
+                                                            <div className="trace-step-card is-fallback">
+                                                                <div className="trace-step-head">
+                                                                    <ShieldAlert size={15} />
+                                                                    <strong>Quality Fallback</strong>
+                                                                </div>
+                                                                <p>{fallback.response || '—'}</p>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="trace-step-card is-final">
+                                                            <div className="trace-step-head">
+                                                                <Sparkles size={15} />
+                                                                <strong>Финальный ответ (Цепочка генерации)</strong>
+                                                            </div>
+                                                            <p className="trace-text-content">{finalAnswer}</p>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
+
+                                    {inspectorTab === 'assembly' && (
+                                        <div className="inspector-tab-pane">
+                                            <div className="assembly-sections-list">
+                                                <details open className="assembly-accordion">
+                                                    <summary>
+                                                        <span>01. System Prompt Assembly</span>
+                                                        <Button size="icon" variant="ghost" onClick={(e) => { e.preventDefault(); handleCopy(selected.layers?.system_prompt, 'sys_prompt'); }}>
+                                                            {copiedKey === 'sys_prompt' ? <Check size={12} /> : <Copy size={12} />}
+                                                        </Button>
+                                                    </summary>
+                                                    <pre className="assembly-code-box">{selected.layers?.system_prompt || '—'}</pre>
+                                                </details>
+
+                                                <details className="assembly-accordion">
+                                                    <summary>
+                                                        <span>02. Контекст дня (Radiant Day Context)</span>
+                                                        <Button size="icon" variant="ghost" onClick={(e) => { e.preventDefault(); handleCopy(selected.layers?.radiant_context, 'day_ctx'); }}>
+                                                            {copiedKey === 'day_ctx' ? <Check size={12} /> : <Copy size={12} />}
+                                                        </Button>
+                                                    </summary>
+                                                    <pre className="assembly-code-box">{selected.layers?.radiant_context || 'Контекст дня отсутствует'}</pre>
+                                                </details>
+
+                                                <details className="assembly-accordion">
+                                                    <summary>
+                                                        <span>03. Память собеседника (Memory Used)</span>
+                                                        <Badge variant="purple">{selected.layers?.memory_used?.length || 0} фактов</Badge>
+                                                    </summary>
+                                                    <pre className="assembly-code-box">{JSON.stringify(selected.layers?.memory_used || [], null, 2)}</pre>
+                                                </details>
+
+                                                <details className="assembly-accordion">
+                                                    <summary>
+                                                        <span>04. Физиология и состояние (Physics Snapshot)</span>
+                                                    </summary>
+                                                    <pre className="assembly-code-box">{JSON.stringify(selected.layers?.physics || {}, null, 2)}</pre>
+                                                </details>
+
+                                                <details className="assembly-accordion">
+                                                    <summary>
+                                                        <span>05. История диалога (Messages History)</span>
+                                                        <Badge>{selected.layers?.messages?.length || 0} сообщений</Badge>
+                                                    </summary>
+                                                    <pre className="assembly-code-box">{JSON.stringify(selected.layers?.messages || [], null, 2)}</pre>
+                                                </details>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {inspectorTab === 'json' && (
+                                        <div className="inspector-tab-pane">
+                                            <div className="raw-json-header">
+                                                <span>Полный JSON объекта вызова</span>
+                                                <Button size="sm" variant="outline" onClick={() => handleCopy(selected, 'raw_full')}>
+                                                    {copiedKey === 'raw_full' ? <><Check size={13} /> Скопировано</> : <><Copy size={13} /> Копировать всё</>}
+                                                </Button>
+                                            </div>
+                                            <pre className="admin-code-editor">{JSON.stringify(selected, null, 2)}</pre>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="empty-state">
+                                    <Sparkles size={28} />
+                                    <strong>Выбери диалог или вызов слева</strong>
+                                    <span>Здесь откроется детальный разбор генерации ответа Леры.</span>
+                                </div>
+                            )}
+                        </Card>
+                    </div>
+                </div>
+            )}
         </div>
     );
+}
+
+function LlmPanel(props) {
+    return <LogsPanel {...props} />;
 }
 
 const STUDIO_INTENTS = ['AUTO', 'CASUAL', 'EROTIC', 'JOKE'];
