@@ -3,7 +3,7 @@ import {
     getUserMemories,
     getUserRelationship,
     getChannelPosterSettings,
-    getChannelPostLogs,
+    getChannelPostHistory,
     getOrderedAiProviders,
     getLeraProfile,
     getLeraProfileProjection
@@ -222,7 +222,7 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
     }
     if (!postText) {
         try {
-            const recentLogs = await getChannelPostLogs(1);
+            const recentLogs = await getChannelPostHistory(1);
             if (recentLogs?.[0]?.text) {
                 postText = recentLogs[0].text;
                 rootPosts.set(rootMessageId, postText);

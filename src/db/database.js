@@ -1621,6 +1621,7 @@ export async function getChannelPostHistory(limit = 5) {
     const result = await query('SELECT * FROM channel_post_logs ORDER BY created_at DESC LIMIT $1', [limit]);
     return result.rows.reverse();
 }
+export const getChannelPostLogs = getChannelPostHistory;
 
 export async function deleteChannelPostLog(id) {
     const result = await query('DELETE FROM channel_post_logs WHERE id = $1 RETURNING *', [id]);
