@@ -1513,13 +1513,110 @@ function SandboxPanel({ toast }) {
         <footer className="studio-workspace-footer"><span>{activeProvider?.name || 'Активный провайдер'} · {activeProvider?.model_name || 'модель по умолчанию'}</span><span>{selectedContextUser ? `Контекст: ${selectedContextUser.user.first_name || selectedContextUser.user.telegram_id}` : 'Контекст пользователя не подключён'} · история {history.length}</span></footer>
     </div>;
 }
+function CommentsPromptStudioPanel({ toast }) {
+    const [postText, setPostText] = useState('сегодня такой странный день на Петроградке, еле до кофе дошла');
+    const [commentText, setCommentText] = useState('Лера, ты опять до утра не спала?');
+    const [isKnown, setIsKnown] = useState(true);
+    const [userName, setUserName] = useState('Богдан');
+    const [isDirectMention, setIsDirectMention] = useState(true);
+    const [decisionResult, setDecisionResult] = useState(null);
+    const [testing, setTesting] = useState(false);
+
+    async function testCommentDecision() {
+        setTesting(true);
+        setDecisionResult(null);
+        try {
+            const res = await api('/api/admin/channel/comments/test', {
+                method: 'POST',
+                body: JSON.stringify({
+                    postText,
+                    commentText,
+                    isKnown,
+                    userName,
+                    isDirectMention
+                })
+            });
+            if (res?.decision) {
+                setDecisionResult(res.decision);
+                toast?.('Решение ИИ сгенерировано');
+            }
+        } catch (err) {
+            toast?.(err.message, 'error');
+        } finally {
+            setTesting(false);
+        }
+    }
+
+    return (
+        <div className="content-channel-layout" style={{ marginTop: 16 }}>
+            <Card>
+                <CardHeader eyebrow="Поверхность: Комментарии" title="💬 Правила и контекст для комментариев в ТГК" description="Базовый образ Леры проецируется для публичного общения в привязанном чате канала." />
+                <div className="topic-prompt-explainer">
+                    <span className="eyebrow">Базовые правила публичных комментариев</span>
+                    <p>• <strong>Тон:</strong> 19-летняя студентка из СПб, живая, теплая, ироничная, легкий сленг (жиза, рил, кароч).</p>
+                    <p>• <strong>Формат ответа:</strong> 1–2 коротких предложения, строчными буквами, без лишних смайликов внутри текста.</p>
+                    <p>• <strong>Узнавание друзей:</strong> если юзер есть в личке бота — Лера знает его имя и воспоминания, может по-дружески подколоть.</p>
+                    <p>• <strong>Сверхстрогая безопасность:</strong> СТРОЖАЙШЕ ЗАПРЕЩЕНО раскрывать приватные интимные подробности, фото или секреты из ЛС в публичном чате.</p>
+                </div>
+            </Card>
+
+            <Card>
+                <CardHeader eyebrow="Песочница" title="🧪 Интерактивный тест ответа и реакции" description="Проверьте, как Лера среагирует на комментарий подписчика (знакомого или незнакомца)." />
+                <div className="photo-upload-form">
+                    <label>Пост в канале
+                        <input value={postText} onChange={e => setPostText(e.target.value)} placeholder="Текст исходного поста" />
+                    </label>
+                    <label>Комментарий подписчика
+                        <input value={commentText} onChange={e => setCommentText(e.target.value)} placeholder="Текст комментария" />
+                    </label>
+                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <input type="checkbox" checked={isKnown} onChange={e => setIsKnown(e.target.checked)} />
+                            Собеседник знаком из ЛС
+                        </label>
+                        {isKnown && (
+                            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                Имя:
+                                <input value={userName} onChange={e => setUserName(e.target.value)} style={{ width: 120 }} />
+                            </label>
+                        )}
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <input type="checkbox" checked={isDirectMention} onChange={e => setIsDirectMention(e.target.checked)} />
+                            Прямой тег / реплай на Леру
+                        </label>
+                    </div>
+                    <Button onClick={testCommentDecision} disabled={testing} variant="primary">
+                        <Play size={15} /> {testing ? 'Думаю…' : 'Протестировать решение ИИ'}
+                    </Button>
+                </div>
+
+                {decisionResult && (
+                    <div className="channel-draft-card" style={{ marginTop: 16 }}>
+                        <div className="channel-post-header">
+                            <Badge variant="blue">Решение ИИ</Badge>
+                            {decisionResult.reaction && <span style={{ fontSize: 24 }}>{decisionResult.reaction}</span>}
+                            <span>{decisionResult.reason || '—'}</span>
+                        </div>
+                        <div style={{ padding: 12, background: 'var(--bg-card-muted, rgba(255,255,255,0.04))', borderRadius: 8 }}>
+                            <strong>Ответ Леры:</strong>
+                            <p style={{ marginTop: 6, fontSize: 15 }}>{decisionResult.reply || '— (без текстового ответа)'}</p>
+                        </div>
+                    </div>
+                )}
+            </Card>
+        </div>
+    );
+}
+
 function AiSandboxPromptStudio({ toast }) {
     return <Tabs.Root className="llm-super-panel studio-area-tabs" defaultValue="sandbox">
         <Tabs.List className="studio-area-tablist" aria-label="Рабочая зона AI">
-            <Tabs.Trigger value="sandbox"><WandSparkles size={15} />Тест ответов и публикация</Tabs.Trigger>
+            <Tabs.Trigger value="sandbox"><WandSparkles size={15} />Тест ответов и публикация (DM)</Tabs.Trigger>
+            <Tabs.Trigger value="comments"><MessageSquare size={15} />Комменты ТГК</Tabs.Trigger>
             <Tabs.Trigger value="production"><ShieldAlert size={15} />Система: провайдеры и правила</Tabs.Trigger>
         </Tabs.List>
         <Tabs.Content value="sandbox"><SandboxPanel toast={toast} /></Tabs.Content>
+        <Tabs.Content value="comments"><CommentsPromptStudioPanel toast={toast} /></Tabs.Content>
         <Tabs.Content value="production"><LlmSettingsPanel toast={toast} /></Tabs.Content>
     </Tabs.Root>;
 }
@@ -2375,7 +2472,7 @@ function ContentPanel({ toast }) {
     const [photoFileName, setPhotoFileName] = useState('');
     const [catalog, setCatalog] = useState([]);
     const [contentSent, setContentSent] = useState([]);
-    const [contentForm, setContentForm] = useState({ telegram_type: 'link', telegram_file_id: '', url: '', description: '', enabled: true, allow_in_dialogue: true, allow_initiative: true });
+    const [contentForm, setContentForm] = useState({ telegram_type: 'link', telegram_file_id: '', url: '', description: '', enabled: true, allow_in_dialogue: true, allow_initiative: true, allow_channel: false });
     const [contentChannelId, setContentChannelId] = useState('-1003729264804');
 
     const [channel, setChannel] = useState(null);
@@ -2535,6 +2632,10 @@ function ContentPanel({ toast }) {
             judgePrompt: result.settings?.judge_prompt || '',
             judgeTimeoutMs: result.settings?.judge_timeout_ms || 5000,
             judgeMaxTokens: result.settings?.judge_max_tokens || 120,
+            commentsEnabled: result.settings?.comments_enabled !== false,
+            reactionChance: result.settings?.reaction_chance ?? 40,
+            commentChance: result.settings?.comment_chance ?? 15,
+            recognizeUsers: result.settings?.recognize_users !== false,
             promptBlocks: { voice: '', context: '', restrictions: '', cta: '', ...(result.settings?.prompt_blocks || {}) }
         });
     }
@@ -2592,14 +2693,18 @@ function ContentPanel({ toast }) {
         flirt: 'Флирт и Игривость',
         life: 'Личная жизнь',
         jokes: 'Юмор и Шутки',
-        questions: 'Вопросы аудитории'
+        questions: 'Вопросы аудитории',
+        meme: 'Мемы и картинки (#тгк)',
+        repost: 'Репосты с мнением Леры'
     };
     const TOPIC_PROMPT_RULES = {
         thoughts: 'внутреннее ощущение или наблюдение из обычной жизни',
         flirt: 'лёгкий публичный флирт без обращения к конкретному человеку',
         life: 'бытовая деталь, маленькая неловкость или настроение',
         jokes: 'короткая ироничная шутка или наблюдение',
-        questions: 'естественный вопрос подписчикам от первого лица'
+        questions: 'естественный вопрос подписчикам от первого лица',
+        meme: 'дерзкая или смешная подпись к мему / картинке',
+        repost: 'личное мнение и реакция на пересланный пост'
     };
 
     return (
@@ -2645,6 +2750,7 @@ function ContentPanel({ toast }) {
                             <input value={contentForm.description} placeholder="Короткое описание для Леры" onChange={event => setContentForm({ ...contentForm, description: event.target.value })} />
                             <label><input type="checkbox" checked={contentForm.allow_in_dialogue} onChange={event => setContentForm({ ...contentForm, allow_in_dialogue: event.target.checked })} /> В диалоге</label>
                             <label><input type="checkbox" checked={contentForm.allow_initiative} onChange={event => setContentForm({ ...contentForm, allow_initiative: event.target.checked })} /> В инициативе</label>
+                            <label><input type="checkbox" checked={contentForm.allow_channel} onChange={event => setContentForm({ ...contentForm, allow_channel: event.target.checked })} /> В канале ТГК (#тгк)</label>
                             <Button onClick={addContent}>Добавить</Button>
                         </div>
                     </Card>
@@ -2653,13 +2759,18 @@ function ContentPanel({ toast }) {
                         <div className="photos-card-grid">
                             {catalog.length ? catalog.map(item => (
                                 <div className="photo-card" key={item.id}>
-                                    <div className="photo-card-header"><Badge variant={item.enabled ? 'green' : 'muted'}>{item.telegram_type}</Badge><span>#{item.id}</span></div>
+                                    <div className="photo-card-header">
+                                        <Badge variant={item.enabled ? 'green' : 'muted'}>{item.telegram_type}</Badge>
+                                        {item.allow_channel && <Badge variant="blue">#тгк</Badge>}
+                                        <span>#{item.id}</span>
+                                    </div>
                                     <div className="photo-card-body">
                                         <input defaultValue={item.description} onBlur={event => updateContent(item, { description: event.target.value })} />
                                         <span className="photo-file-id">{item.url || item.telegram_file_id}</span>
                                         <label><input type="checkbox" checked={item.enabled} onChange={event => updateContent(item, { enabled: event.target.checked })} /> Включён</label>
                                         <label><input type="checkbox" checked={item.allow_in_dialogue} onChange={event => updateContent(item, { allow_in_dialogue: event.target.checked })} /> В диалоге</label>
                                         <label><input type="checkbox" checked={item.allow_initiative} onChange={event => updateContent(item, { allow_initiative: event.target.checked })} /> В инициативе</label>
+                                        <label><input type="checkbox" checked={item.allow_channel} onChange={event => updateContent(item, { allow_channel: event.target.checked })} /> В канале ТГК</label>
                                     </div>
                                     <div className="photo-card-actions">
                                         <Button variant="outline" onClick={() => run(() => api(`/api/admin/content/${item.id}/test`, { method: 'POST', body: '{}' }), 'Отправлено админу')}>Тест себе</Button>
@@ -2753,8 +2864,7 @@ function ContentPanel({ toast }) {
                             <label>Channel ID<input value={channelForm.channelId} placeholder="-100123456789" onChange={event => setChannelForm({ ...channelForm, channelId: event.target.value })} /></label>
                             <label>Ссылка на канал<input value={channelForm.channelUrl} placeholder="t.me/..." onChange={event => setChannelForm({ ...channelForm, channelUrl: event.target.value })} /></label>
                             <label>Частота (ч)<input type="number" min="1" max="168" value={channelForm.frequencyHours} onChange={event => setChannelForm({ ...channelForm, frequencyHours: event.target.value })} /></label>
-                            <label>Сообщений<select value={channelForm.messagesCount} onChange={event => setChannelForm({ ...channelForm, messagesCount: event.target.value })}><option value="1">1 сообщение</option><option value="2">2 сообщения</option><option value="3">3 сообщения</option><option value="random">Случайно (1-3)</option></select></label>
-                            <label>Медиа-режим<select value={channelForm.mediaMode} onChange={event => setChannelForm({ ...channelForm, mediaMode: event.target.value })}><option value="none">Без фото (только текст)</option><option value="db_photo">Прикреплять фото из базы</option></select></label>
+                            <label>Медиа-режим<select value={channelForm.mediaMode} onChange={event => setChannelForm({ ...channelForm, mediaMode: event.target.value })}><option value="none">Без фото (только текст)</option><option value="db_photo">Прикреплять фото из базы</option><option value="meme">Мемы и картинки из каталога (#тгк)</option></select></label>
                             <label>Температура <span>{Number(channelForm.temperature).toFixed(1)}</span><input type="range" min="0" max="2" step="0.1" value={channelForm.temperature} onChange={event => setChannelForm({ ...channelForm, temperature: Number(event.target.value) })} /></label>
                             <label>Креативность <span>{Number(channelForm.creativity).toFixed(1)}</span><input type="range" min="0" max="1" step="0.1" value={channelForm.creativity} onChange={event => setChannelForm({ ...channelForm, creativity: Number(event.target.value) })} /></label>
                             <label>Проверка канала<select value={channelForm.judgeMode} onChange={event => setChannelForm({ ...channelForm, judgeMode: event.target.value })}><option value="OFF">OFF</option><option value="OBSERVE">OBSERVE</option><option value="ENFORCE">ENFORCE</option></select></label>
@@ -2780,6 +2890,30 @@ function ContentPanel({ toast }) {
                             <label className="classifier-prompt-editor">Правила channel-judge
                                 <textarea value={channelForm.judgePrompt} placeholder="Проверяй публичный пост строго..." onChange={event => setChannelForm({ ...channelForm, judgePrompt: event.target.value })} />
                             </label>
+                        </div>
+                    </Card>
+
+                    <Card>
+                        <CardHeader eyebrow="Интерактив в канале" title="💬 Комментарии и реакции" description="Автоответы подписчикам в привязанной группе обсуждений, умные эмодзи-реакции и узнавание собеседников из ЛС." />
+                        <div className="channel-settings-grid">
+                            <label className="channel-enabled">
+                                <input type="checkbox" checked={channelForm.commentsEnabled} onChange={event => setChannelForm({ ...channelForm, commentsEnabled: event.target.checked })} />
+                                <strong>Включить автоответы и реакции</strong>
+                            </label>
+                            <label className="channel-enabled">
+                                <input type="checkbox" checked={channelForm.recognizeUsers} onChange={event => setChannelForm({ ...channelForm, recognizeUsers: event.target.checked })} />
+                                <strong>Узнавать собеседников из ЛС</strong> (по имени и фактам памяти)
+                            </label>
+                            <label>Шанс эмодзи-реакции на коммент: <span>{channelForm.reactionChance}%</span>
+                                <input type="range" min="0" max="100" step="5" value={channelForm.reactionChance} onChange={event => setChannelForm({ ...channelForm, reactionChance: Number(event.target.value) })} />
+                            </label>
+                            <label>Шанс случайного комментария в тред: <span>{channelForm.commentChance}%</span>
+                                <input type="range" min="0" max="100" step="5" value={channelForm.commentChance} onChange={event => setChannelForm({ ...channelForm, commentChance: Number(event.target.value) })} />
+                            </label>
+                        </div>
+                        <div className="channel-action-bar">
+                            <span>Прямые теги (@username) и реплаи на Леру получают 100% ответ. Интимные тайны в публичный чат не утекают.</span>
+                            <Button onClick={saveChannel}>Сохранить настройки комментариев</Button>
                         </div>
                     </Card>
 

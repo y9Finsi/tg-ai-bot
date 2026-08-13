@@ -102,6 +102,7 @@ test('content channel reads native media and URL only from Telegram entities', (
         audio: { file_id: 'audio-file' }
     }), {
         telegramType: 'audio', telegramFileId: 'audio-file', description: 'трек на вечер',
+        allowChannel: false,
         sourceChannelId: -100123, sourceMessageId: 5
     });
     assert.deepEqual(extractContentFromChannelPost({
@@ -109,7 +110,16 @@ test('content channel reads native media and URL only from Telegram entities', (
         entities: [{ type: 'url', offset: 7, length: 21 }]
     }), {
         telegramType: 'link', url: 'https://example.com/a', description: 'смотри https://example.com/a',
+        allowChannel: false,
         sourceChannelId: -100123, sourceMessageId: 6
+    });
+    assert.deepEqual(extractContentFromChannelPost({
+        chat: { id: -100123 }, message_id: 9, caption: 'смешной кот #тгк',
+        photo: [{ file_id: 'photo-1' }, { file_id: 'photo-2' }]
+    }), {
+        telegramType: 'photo', telegramFileId: 'photo-2', description: 'смешной кот',
+        allowChannel: true,
+        sourceChannelId: -100123, sourceMessageId: 9
     });
     assert.equal(extractContentFromChannelPost({
         chat: { id: -100123 }, message_id: 7, text: 'https://example.com/no-entity'

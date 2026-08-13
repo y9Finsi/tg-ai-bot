@@ -5,7 +5,9 @@ import {
     getRandomLeraPhoto,
     getOrderedAiProviders,
     getLeraProfile,
-    getLeraProfileProjection
+    getLeraProfileProjection,
+    getRandomChannelContent,
+    getLeraContent
 } from './database.js';
 import { getOpenAIClientAndModel } from './ai.js';
 import { getCachedOpenAIClient, logLlmTrace } from './ai/llm_client.js';
@@ -18,7 +20,9 @@ const TOPIC_DESCRIPTIONS = {
     flirt: 'Пикантный флирт, кокетство и интригующие намеки',
     life: 'Личные фейлы, милые случайности и истории из дня',
     jokes: 'Ироничный юмор, жизненные мемы и дерзкие шутки',
-    questions: 'Провокационный вопрос подписчикам или интерактив'
+    questions: 'Провокационный вопрос подписчикам или интерактив',
+    meme: 'Дерзкая, жизненная или ироничная подпись к мему/картинке',
+    repost: 'Личное мнение и реакция на пересланный пост'
 };
 const PUBLIC_BLOCK_LABELS = { voice: 'Голос и подача', context: 'Контекст', restrictions: 'Ограничения', cta: 'CTA' };
 
@@ -36,14 +40,14 @@ function getFormattedTimeMSK() {
     });
 }
 
-function splitGeneratedPost(rawText, messagesCountSetting) {
-    const cleanedText = String(rawText || '').replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/\[IMAGE:[\s\S]*?\]/gi, '').replace(/\[RECOMMEND\]/gi, '').trim();
-    let chunks = messagesCountSetting === '1'
-        ? [cleanedText.replace(/---/g, '\n')]
-        : cleanedText.split(/---/g).map(chunk => chunk.trim().replace(/^[\s\-–—]+/gm, '')).filter(Boolean);
-    if (messagesCountSetting === '2' && chunks.length > 2) chunks = chunks.slice(0, 2);
-    if (messagesCountSetting === '3' && chunks.length > 3) chunks = chunks.slice(0, 3);
-    return chunks.length ? chunks.slice(0, 3) : [cleanedText];
+function cleanGeneratedPost(rawText) {
+    return String(rawText || '')
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')
+        .replace(/\[IMAGE:[\s\S]*?\]/gi, '')
+        .replace(/\[RECOMMEND\]/gi, '')
+        .replace(/---/g, '\n')
+        .replace(/^[\s\-–—]+/gm, '')
+        .trim();
 }
 
 function safeProvenance({ topic, timeOfDay, messagesCount, settings, model }) {
@@ -107,24 +111,34 @@ export async function generateChannelPostDraft(overrideSettings = null) {
     const time = getFormattedTimeMSK();
     const timeOfDay = getTimeOfDayMSK();
     const topic = selectWeightedTopic(settings);
-    const topicDescription = TOPIC_DESCRIPTIONS[topic] || 'Мысли вслух и жизненные заметки';
-    const messagesCount = settings.messages_count || '1';
+    let topicDescription = TOPIC_DESCRIPTIONS[topic] || 'Мысли вслух и жизненные заметки';
+    let mediaContent = null;
+    if (topic === 'meme' || settings.media_mode === 'meme') {
+        mediaContent = await getRandomChannelContent({ type: 'photo' }) || await getRandomChannelContent();
+        if (mediaContent) {
+            topicDescription = `Дерзкая подпись к мему/картинке: ${mediaContent.description || 'жизненный мем'}`;
+        }
+    }
+    const messagesCount = '1';
     const publicFacts = settings.public_facts_enabled ? (settings.public_facts || []) : [];
     const baseProvenance = safeProvenance({
         topic, timeOfDay, messagesCount,
         settings: { ...settings, public_facts: publicFacts, profile_version: profile.version },
         model: null
     });
+    if (mediaContent) {
+        baseProvenance.media_content_id = mediaContent.id;
+        baseProvenance.media_type = mediaContent.telegram_type;
+    }
     const systemPrompt = buildChannelSystemPrompt({
-        time, timeOfDay, topic, topicDescription, recentPosts, messagesCount, promptBlocks: settings.prompt_blocks,
+        time, timeOfDay, topic, topicDescription, recentPosts, messagesCount: '1', promptBlocks: settings.prompt_blocks,
         leraPrompt: settings.public_profile_enabled === false ? '' : getLeraProfileProjection(profile.profile, 'CHANNEL'),
         publicFacts,
         creativity: settings.creativity,
         ctaStyle: settings.cta_style
     });
     let generated = await requestDraftText({ systemPrompt, topicDescription, temperature: settings.temperature });
-    let chunks = splitGeneratedPost(generated.text, messagesCount);
-    let text = chunks.join('\n---\n');
+    let text = cleanGeneratedPost(generated.text);
     let judge = await judgeChannelText({ text, topic, publicFacts, recentPosts, profile, settings });
     let attempt = 1;
     if (judge.passed === false && settings.judge_mode === 'ENFORCE') {
@@ -134,8 +148,7 @@ export async function generateChannelPostDraft(overrideSettings = null) {
             temperature: settings.temperature,
             retryReason: judge.code || 'CHANNEL_REJECTED'
         });
-        chunks = splitGeneratedPost(generated.text, messagesCount);
-        text = chunks.join('\n---\n');
+        text = cleanGeneratedPost(generated.text);
         attempt = 2;
         judge = await judgeChannelText({ text, topic, publicFacts, recentPosts, profile, settings });
     }
@@ -153,10 +166,11 @@ export async function generateChannelPostDraft(overrideSettings = null) {
     };
     const draft = {
         text,
-        chunks,
+        chunks: [text],
         topic,
         provenance,
         judge,
+        media_content_id: mediaContent?.id || null,
         status: judge.passed === false && settings.judge_mode === 'ENFORCE' ? 'DRAFT_REJECTED' : 'DRAFT'
     };
     if (judge.passed === false && settings.judge_mode === 'ENFORCE') {
@@ -195,17 +209,17 @@ async function judgeChannelText({ text, topic, publicFacts, recentPosts, profile
     });
 }
 
-export async function publishChannelDraft(bot, { text, topic, provenance = {} } = {}, overrideSettings = null) {
+export async function publishChannelDraft(bot, { text, topic, provenance = {}, media_content_id = null } = {}, overrideSettings = null) {
     if (!bot) throw new Error('Бот не инициализирован');
     const settings = overrideSettings ? { ...(await getChannelPosterSettings()), ...overrideSettings } : await getChannelPosterSettings();
     const channelId = String(settings.channel_id || '').trim();
     if (!channelId) throw new Error('Юзернейм или ID канала не указан в настройках.');
-    const chunks = String(text || '').split(/\n---\n/g).map(chunk => chunk.trim()).filter(Boolean).slice(0, 3);
-    if (!chunks.length || chunks.join('').length > 12000) throw new Error('Черновик пустой или слишком длинный.');
+    const cleanedText = cleanGeneratedPost(text);
+    if (!cleanedText || cleanedText.length > 4000) throw new Error('Черновик пустой или слишком длинный.');
     const profile = await getLeraProfile();
     const recentPosts = await getChannelPostHistory(5);
     const publicFacts = settings.public_facts_enabled ? (settings.public_facts || []) : [];
-    const judge = await judgeChannelText({ text: chunks.join('\n---\n'), topic, publicFacts, recentPosts, profile, settings });
+    const judge = await judgeChannelText({ text: cleanedText, topic, publicFacts, recentPosts, profile, settings });
     if (judge.passed === false && settings.judge_mode === 'ENFORCE') {
         const rejectedProvenance = {
             ...provenance,
@@ -218,7 +232,7 @@ export async function publishChannelDraft(bot, { text, topic, provenance = {} } 
         const draftLog = await saveChannelPostLog({
             channel_id: channelId,
             topic,
-            text: chunks.join('\n---\n'),
+            text: cleanedText,
             media_mode: settings.media_mode,
             provenance: rejectedProvenance,
             status: 'DRAFT_REJECTED'
@@ -226,25 +240,45 @@ export async function publishChannelDraft(bot, { text, topic, provenance = {} } 
         return { success: false, published: false, status: 'DRAFT_REJECTED', reason: judge.code, judge, log: draftLog };
     }
     let photoToSend = null;
-    if (settings.media_mode === 'db_photo') {
+    let contentMedia = null;
+    const contentId = media_content_id || provenance.media_content_id;
+    if (contentId) {
+        contentMedia = await getLeraContent(contentId).catch(() => null);
+    }
+    if (!contentMedia && settings.media_mode === 'db_photo') {
         const photo = await getRandomLeraPhoto({ access_level: 'free', time_of_day: getTimeOfDayMSK() });
         photoToSend = photo?.file_id || null;
     }
     const telegramMessageIds = [];
-    for (let index = 0; index < chunks.length; index += 1) {
-        const isLast = index === chunks.length - 1;
-        const result = isLast && photoToSend
-            ? await bot.telegram.sendPhoto(channelId, photoToSend, { caption: chunks[index] })
-            : await bot.telegram.sendMessage(channelId, chunks[index]);
-        if (result?.message_id) telegramMessageIds.push(result.message_id);
+    let sentResult = null;
+    if (contentMedia) {
+        if (contentMedia.telegram_type === 'photo' && contentMedia.telegram_file_id) {
+            sentResult = await bot.telegram.sendPhoto(channelId, contentMedia.telegram_file_id, { caption: cleanedText });
+        } else if (contentMedia.telegram_type === 'animation' && contentMedia.telegram_file_id) {
+            sentResult = await bot.telegram.sendAnimation(channelId, contentMedia.telegram_file_id, { caption: cleanedText });
+        } else if (contentMedia.telegram_type === 'video' && contentMedia.telegram_file_id) {
+            sentResult = await bot.telegram.sendVideo(channelId, contentMedia.telegram_file_id, { caption: cleanedText });
+        } else if (contentMedia.telegram_type === 'audio' && contentMedia.telegram_file_id) {
+            sentResult = await bot.telegram.sendAudio(channelId, contentMedia.telegram_file_id, { caption: cleanedText });
+        } else if (contentMedia.telegram_type === 'link' && contentMedia.url) {
+            sentResult = await bot.telegram.sendMessage(channelId, `${cleanedText}\n\n${contentMedia.url}`);
+        } else {
+            sentResult = await bot.telegram.sendMessage(channelId, cleanedText);
+        }
+    } else if (photoToSend) {
+        sentResult = await bot.telegram.sendPhoto(channelId, photoToSend, { caption: cleanedText });
+    } else {
+        sentResult = await bot.telegram.sendMessage(channelId, cleanedText);
     }
+    if (sentResult?.message_id) telegramMessageIds.push(sentResult.message_id);
+
     const safeTopic = TOPIC_DESCRIPTIONS[topic] ? topic : 'thoughts';
     const log = await saveChannelPostLog({
-        channel_id: channelId, topic: safeTopic, text: chunks.join('\n---\n'), photo_url: photoToSend,
-        media_mode: settings.media_mode, provenance: { ...provenance, topic: safeTopic, judge_verdict: judge.verdict, judge_code: judge.code, published: true }, telegram_message_ids: telegramMessageIds,
+        channel_id: channelId, topic: safeTopic, text: cleanedText, photo_url: photoToSend || contentMedia?.telegram_file_id || null,
+        media_mode: contentMedia ? contentMedia.telegram_type : settings.media_mode, provenance: { ...provenance, topic: safeTopic, judge_verdict: judge.verdict, judge_code: judge.code, published: true }, telegram_message_ids: telegramMessageIds,
         status: 'PUBLISHED'
     });
-    return { success: true, count: chunks.length, text: log.text, channel_id: channelId, log };
+    return { success: true, count: 1, text: log.text, channel_id: channelId, log };
 }
 
 let channelPosterInterval = null;

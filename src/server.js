@@ -82,6 +82,7 @@ import { sendCatalogContent } from './content_service.js';
 import { reloadAIClient } from './ai.js';
 import { requestLlmCompletion, getCachedOpenAIClient } from './ai/llm_client.js';
 import { generateAndPublishChannelPost, generateChannelPostDraft, publishChannelDraft } from './channel_poster.js';
+import { generateCommentDecision } from './channel_comments.js';
 import { normalizeTopicDistribution } from './channel_topics.js';
 import { getRecentLogs, logEmitter } from './logger.js';
 import { getLlmParams, updateLlmParams, getLeraPrompts, updateLeraPrompts, DEFAULT_LLM_PARAMS, getRoutingPromptModules, getRoutedSystemPrompt } from './prompts.js';
@@ -1287,7 +1288,8 @@ export function startAdminServer() {
                 description: String(req.body.description || '').trim(),
                 enabled: req.body.enabled !== false,
                 allowInDialogue: req.body.allow_in_dialogue !== false,
-                allowInitiative: req.body.allow_initiative !== false
+                allowInitiative: req.body.allow_initiative !== false,
+                allowChannel: req.body.allow_channel === true
             });
             res.json({ success: true, content });
         } catch (e) {
@@ -1880,8 +1882,8 @@ export function startAdminServer() {
 
     app.post('/api/admin/channel/settings', async (req, res) => {
         try {
-            const { channelId, channelUrl, isEnabled, frequencyHours, topics, topicWeights, messagesCount, mediaMode, promptBlocks, temperature, inheritLeraPrompt, includeDayContext, publicProfileEnabled, publicFactsEnabled, publicFacts, creativity, ctaStyle, judgeMode, judgeProviderId, judgeModel, judgePrompt, judgeTimeoutMs, judgeMaxTokens } = req.body;
-            const allowedTopics = ['thoughts', 'flirt', 'life', 'jokes', 'questions'];
+            const { channelId, channelUrl, isEnabled, frequencyHours, topics, topicWeights, messagesCount, mediaMode, promptBlocks, temperature, inheritLeraPrompt, includeDayContext, publicProfileEnabled, publicFactsEnabled, publicFacts, creativity, ctaStyle, judgeMode, judgeProviderId, judgeModel, judgePrompt, judgeTimeoutMs, judgeMaxTokens, commentsEnabled, reactionChance, commentChance, recognizeUsers } = req.body;
+            const allowedTopics = ['thoughts', 'flirt', 'life', 'jokes', 'questions', 'meme', 'repost'];
             const safeTopics = Array.isArray(topics) ? topics.filter(topic => allowedTopics.includes(topic)) : [];
             const activeTopics = safeTopics.length ? safeTopics : ['thoughts'];
             const safeWeights = normalizeTopicDistribution(activeTopics, Object.fromEntries(
@@ -1894,8 +1896,8 @@ export function startAdminServer() {
                 setSetting('channel_frequency_hours', String(Math.max(1, Math.min(168, Number(frequencyHours) || 4)))),
                 setSetting('channel_topics', JSON.stringify(activeTopics)),
                 setSetting('channel_topic_weights', JSON.stringify(safeWeights)),
-                setSetting('channel_messages_count', ['1', '2', '3', 'random'].includes(String(messagesCount)) ? String(messagesCount) : '1'),
-                setSetting('channel_media_mode', ['none', 'db_photo'].includes(mediaMode) ? mediaMode : 'none'),
+                setSetting('channel_messages_count', '1'),
+                setSetting('channel_media_mode', ['none', 'db_photo', 'meme'].includes(mediaMode) ? mediaMode : 'none'),
                 setSetting('channel_prompt_blocks', JSON.stringify(Object.fromEntries(['voice', 'context', 'restrictions', 'cta'].map(key => [key, String(promptBlocks?.[key] || '').trim().slice(0, 1200)])))),
                 setSetting('channel_temperature', String(Math.max(0, Math.min(2, Number(temperature ?? 0.7))))),
                 setSetting('channel_inherit_lera_prompt', 'false'),
@@ -1910,7 +1912,11 @@ export function startAdminServer() {
                 setSetting('channel_judge_model', String(judgeModel || '').trim().slice(0, 240)),
                 setSetting('channel_judge_prompt', String(judgePrompt || '').trim().slice(0, 12000)),
                 setSetting('channel_judge_timeout_ms', String(Math.max(1000, Math.min(60000, Number(judgeTimeoutMs) || 5000)))),
-                setSetting('channel_judge_max_tokens', String(Math.max(40, Math.min(240, Number(judgeMaxTokens) || 120))))
+                setSetting('channel_judge_max_tokens', String(Math.max(40, Math.min(240, Number(judgeMaxTokens) || 120)))),
+                setSetting('channel_comments_enabled', commentsEnabled !== false ? 'true' : 'false'),
+                setSetting('channel_reaction_chance', String(Math.max(0, Math.min(100, Number(reactionChance ?? 40))))),
+                setSetting('channel_comment_chance', String(Math.max(0, Math.min(100, Number(commentChance ?? 15))))),
+                setSetting('channel_recognize_users', recognizeUsers !== false ? 'true' : 'false')
             ]);
             res.json({ success: true, settings: await getChannelPosterSettings() });
         } catch (e) {
@@ -1950,6 +1956,31 @@ export function startAdminServer() {
         try {
             const result = await publishChannelDraft(botInstance, req.body || {});
             res.status(result?.success === false ? 409 : 200).json({ success: result?.success !== false, result });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/channel/comments/test', async (req, res) => {
+        try {
+            const { postText, commentText, isKnown, userName, userFacts, isDirectMention } = req.body || {};
+            const commenter = isKnown ? {
+                isKnown: true,
+                userId: 999999,
+                name: userName || 'Богдан',
+                relationshipStatus: 'друг',
+                facts: Array.isArray(userFacts) ? userFacts : ['любит гулять по ночам', 'пьет много кофе']
+            } : { isKnown: false };
+
+            const channelSettings = await getChannelPosterSettings();
+            const decision = await generateCommentDecision({
+                postText: postText || 'сегодня такой странный день на Петроградке',
+                commentText: commentText || 'Лера, ты опять до утра не спала?',
+                commenter,
+                isDirectMention: isDirectMention !== false,
+                channelSettings
+            });
+            res.json({ success: true, decision });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }

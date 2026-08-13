@@ -32,6 +32,7 @@ import { initDatabaseTables } from './database.js';
 import { initChannelPoster, stopChannelPoster } from './channel_poster.js';
 import { editContentChannelPost, extractContentFromChannelPost } from './content_service.js';
 import { enqueuePersonalInitiatives } from './initiative_service.js';
+import { handleChannelDiscussionMessage } from './channel_comments.js';
 
 const requiredEnvs = ['BOT_TOKEN', 'ADMIN_ID', 'OPENROUTER_API_KEY', 'DATABASE_URL'];
 for (const envName of requiredEnvs) {
@@ -1342,6 +1343,13 @@ bot.on('message_reaction', async (ctx) => {
 });
 
 bot.on('text', async (ctx) => {
+    if (ctx.chat && (ctx.chat.type === 'supergroup' || ctx.chat.type === 'group')) {
+        await handleChannelDiscussionMessage(bot, ctx).catch(err => {
+            console.error('[CHANNEL DISCUSSION ERROR]:', err.message);
+        });
+        return;
+    }
+
     const userId = ctx.from.id;
     const text = ctx.message.text;
 

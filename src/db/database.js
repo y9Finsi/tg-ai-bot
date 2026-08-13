@@ -284,6 +284,7 @@ export async function initDatabaseTables() {
                 enabled BOOLEAN NOT NULL DEFAULT TRUE,
                 allow_in_dialogue BOOLEAN NOT NULL DEFAULT TRUE,
                 allow_initiative BOOLEAN NOT NULL DEFAULT TRUE,
+                allow_channel BOOLEAN NOT NULL DEFAULT FALSE,
                 source_channel_id BIGINT,
                 source_message_id BIGINT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -414,6 +415,7 @@ export async function initDatabaseTables() {
             ALTER TABLE channel_post_logs ADD COLUMN IF NOT EXISTS provenance JSONB NOT NULL DEFAULT '{}'::jsonb;
             ALTER TABLE channel_post_logs ADD COLUMN IF NOT EXISTS telegram_message_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
             ALTER TABLE channel_post_logs ADD COLUMN IF NOT EXISTS status VARCHAR(24) NOT NULL DEFAULT 'PUBLISHED';
+            ALTER TABLE lera_content ADD COLUMN IF NOT EXISTS allow_channel BOOLEAN NOT NULL DEFAULT FALSE;
         `);
 
         // Runs after CREATE TABLE payments above, otherwise these ALTERs fail on a fresh DB.
@@ -766,22 +768,23 @@ export async function getInitiativeStages(userId, anchorEventId) {
     return result.rows.map(row => row.kind).filter(Boolean);
 }
 
-export async function addLeraContent({ telegramType, telegramFileId = null, url = null, description = '', enabled = true, allowInDialogue = true, allowInitiative = true, sourceChannelId = null, sourceMessageId = null }) {
+export async function addLeraContent({ telegramType, telegramFileId = null, url = null, description = '', enabled = true, allowInDialogue = true, allowInitiative = true, allowChannel = false, sourceChannelId = null, sourceMessageId = null }) {
     const result = await query(
         `INSERT INTO lera_content
             (telegram_type, telegram_file_id, url, description, enabled, allow_in_dialogue,
-             allow_initiative, source_channel_id, source_message_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             allow_initiative, allow_channel, source_channel_id, source_message_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (source_channel_id, source_message_id)
            WHERE source_channel_id IS NOT NULL AND source_message_id IS NOT NULL
          DO UPDATE SET telegram_type = EXCLUDED.telegram_type,
              telegram_file_id = EXCLUDED.telegram_file_id, url = EXCLUDED.url,
              description = EXCLUDED.description, enabled = EXCLUDED.enabled,
              allow_in_dialogue = EXCLUDED.allow_in_dialogue,
-             allow_initiative = EXCLUDED.allow_initiative, updated_at = NOW()
+             allow_initiative = EXCLUDED.allow_initiative,
+             allow_channel = EXCLUDED.allow_channel, updated_at = NOW()
          RETURNING *`,
         [telegramType, telegramFileId, url, description, enabled, allowInDialogue,
-            allowInitiative, sourceChannelId, sourceMessageId]
+            allowInitiative, allowChannel, sourceChannelId, sourceMessageId]
     );
     return result.rows[0];
 }
@@ -817,11 +820,26 @@ export async function updateLeraContent(id, fields = {}) {
     if (!current) return null;
     const result = await query(
         `UPDATE lera_content SET description = $2, enabled = $3,
-             allow_in_dialogue = $4, allow_initiative = $5, updated_at = NOW()
+             allow_in_dialogue = $4, allow_initiative = $5, allow_channel = $6, updated_at = NOW()
          WHERE id = $1 RETURNING *`,
         [id, fields.description ?? current.description, fields.enabled ?? current.enabled,
             fields.allow_in_dialogue ?? current.allow_in_dialogue,
-            fields.allow_initiative ?? current.allow_initiative]
+            fields.allow_initiative ?? current.allow_initiative,
+            fields.allow_channel ?? current.allow_channel]
+    );
+    return result.rows[0] || null;
+}
+
+export async function getRandomChannelContent({ type = null } = {}) {
+    const params = [];
+    let filter = 'WHERE enabled = TRUE AND allow_channel = TRUE';
+    if (type) {
+        params.push(type);
+        filter += ` AND telegram_type = $${params.length}`;
+    }
+    const result = await query(
+        `SELECT * FROM lera_content ${filter} ORDER BY RANDOM() LIMIT 1`,
+        params
     );
     return result.rows[0] || null;
 }
@@ -1545,7 +1563,7 @@ export async function getOrderedAiProviders() {
 }
 
 export async function getChannelPosterSettings() {
-    const keys = ['channel_poster_enabled', 'channel_id', 'lera_channel_id', 'channel_frequency_hours', 'channel_topics', 'channel_topic_weights', 'channel_messages_count', 'channel_media_mode', 'channel_prompt_blocks', 'channel_temperature', 'channel_inherit_lera_prompt', 'channel_include_day_context', 'channel_public_profile_enabled', 'channel_public_facts_enabled', 'channel_public_facts', 'channel_creativity', 'channel_cta_style', 'channel_judge_mode', 'channel_judge_provider_id', 'channel_judge_model', 'channel_judge_prompt', 'channel_judge_timeout_ms', 'channel_judge_max_tokens'];
+    const keys = ['channel_poster_enabled', 'channel_id', 'lera_channel_id', 'channel_frequency_hours', 'channel_topics', 'channel_topic_weights', 'channel_messages_count', 'channel_media_mode', 'channel_prompt_blocks', 'channel_temperature', 'channel_inherit_lera_prompt', 'channel_include_day_context', 'channel_public_profile_enabled', 'channel_public_facts_enabled', 'channel_public_facts', 'channel_creativity', 'channel_cta_style', 'channel_judge_mode', 'channel_judge_provider_id', 'channel_judge_model', 'channel_judge_prompt', 'channel_judge_timeout_ms', 'channel_judge_max_tokens', 'channel_comments_enabled', 'channel_reaction_chance', 'channel_comment_chance', 'channel_recognize_users'];
     const result = await query('SELECT key, value FROM settings WHERE key = ANY($1::text[])', [keys]);
     const values = Object.fromEntries(result.rows.map(row => [row.key, row.value]));
     let topics = ['thoughts', 'life', 'jokes'];
@@ -1582,6 +1600,10 @@ export async function getChannelPosterSettings() {
         judge_prompt: values.channel_judge_prompt || '',
         judge_timeout_ms: Math.max(1000, Math.min(60000, Number(values.channel_judge_timeout_ms || 5000))),
         judge_max_tokens: Math.max(40, Math.min(240, Number(values.channel_judge_max_tokens || 120))),
+        comments_enabled: values.channel_comments_enabled !== 'false',
+        reaction_chance: Math.max(0, Math.min(100, Number(values.channel_reaction_chance ?? 40))),
+        comment_chance: Math.max(0, Math.min(100, Number(values.channel_comment_chance ?? 15))),
+        recognize_users: values.channel_recognize_users !== 'false',
         last_posted_at: (await query(`SELECT created_at FROM channel_post_logs WHERE status = 'PUBLISHED' ORDER BY created_at DESC LIMIT 1`)).rows[0]?.created_at || null
     };
 }
@@ -1713,6 +1735,24 @@ export function getLeraProfileProjection(profile, surface = 'CHAT') {
             `Допустимые темы и флирт: ${p.flirt}`,
             `Публичные ограничения: ${p.forbidden}`,
             `Правила фактов: ${p.facts}`
+        ].join('\n');
+    }
+    if (mode === 'CHANNEL_COMMENT' || mode === 'COMMENTS') {
+        return [
+            `Публичный образ в комментариях: ${p.public_image}`,
+            `Голос и стиль общения: ${p.speech}`,
+            `Вайб и подколы: ${p.flirt}`,
+            `Границы публичности (никакого слива интима и личных секретов): ${p.forbidden}`,
+            `Правила фактов: ${p.facts}`
+        ].join('\n');
+    }
+    if (mode === 'INITIATIVE') {
+        return [
+            `Личность: ${p.age_bio}`,
+            `Характер: ${p.character}`,
+            `Голос и подача: ${p.speech}`,
+            `Флирт и теплота: ${p.flirt}`,
+            `Ограничения: ${p.forbidden}`
         ].join('\n');
     }
     return [

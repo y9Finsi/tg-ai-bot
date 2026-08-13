@@ -53,11 +53,14 @@ function isBareUrlDescription(description, url) {
 
 export function extractContentFromChannelPost(post) {
     if (!post) return null;
-    const sourceText = stripContentChannelStatus(post.caption || post.text || '');
+    const rawSourceText = stripContentChannelStatus(post.caption || post.text || '');
     const url = entityUrl(post, post.text || post.caption || '');
+    const isChannelTagged = /#(?:тгк|канал|мем|репост)(?!\p{L})/iu.test(rawSourceText);
+    const sourceText = rawSourceText.replace(/#(?:тгк|канал|мем|репост)(?!\p{L})/giu, '').replace(/\s+/g, ' ').trim();
     const description = isBareUrlDescription(sourceText, url) ? '' : sourceText;
     const common = {
         description,
+        allowChannel: isChannelTagged,
         sourceChannelId: post.chat?.id || null,
         sourceMessageId: post.message_id || null
     };
@@ -97,7 +100,11 @@ function usageLabel(content) {
     const targets = [];
     if (content.allow_in_dialogue ?? content.allowInDialogue) targets.push('в диалоге');
     if (content.allow_initiative ?? content.allowInitiative) targets.push('когда пишу первая');
-    return targets.length ? targets.join(' и ') : 'пока нигде';
+    if (content.allow_channel ?? content.allowChannel) targets.push('в канале ТГК');
+    if (!targets.length) return 'пока нигде';
+    if (targets.length === 1) return targets[0];
+    if (targets.length === 2) return `${targets[0]} и ${targets[1]}`;
+    return `${targets.slice(0, -1).join(', ')} и ${targets.at(-1)}`;
 }
 
 export function formatContentChannelPost(content, { duplicate = false, maxLength = 4096 } = {}) {
