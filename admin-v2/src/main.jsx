@@ -3771,6 +3771,119 @@ function ContentPanel({ toast }) {
         }
     }
 
+    const [imageSettings, setImageSettings] = useState(null);
+    const [imageProviders, setImageProviders] = useState([]);
+    const [imageForm, setImageForm] = useState({
+        provider_id: '',
+        model: 'gemini-2.5-flash',
+        style_prompt: '',
+        auto_generate_channel: true,
+        auto_save_catalog: true,
+        master_reference_dataurl: ''
+    });
+    const [testPrompt, setTestPrompt] = useState('');
+    const [testSaveToCatalog, setTestSaveToCatalog] = useState(false);
+    const [testResult, setTestResult] = useState(null);
+    const [testingImage, setTestingImage] = useState(false);
+
+    async function loadImageSettings() {
+        const [res, provRes] = await Promise.all([
+            run(() => api('/api/admin/image-settings')),
+            run(() => api('/api/admin/providers')).catch(() => ({ providers: [] }))
+        ]);
+        if (res?.settings) {
+            setImageSettings(res.settings);
+            setImageForm({
+                provider_id: res.settings.provider_id || '',
+                model: res.settings.model || 'gemini-2.5-flash',
+                style_prompt: res.settings.style_prompt || '',
+                auto_generate_channel: Boolean(res.settings.auto_generate_channel),
+                auto_save_catalog: Boolean(res.settings.auto_save_catalog),
+                master_reference_dataurl: res.settings.master_reference_dataurl || ''
+            });
+        }
+        if (provRes?.providers) setImageProviders(provRes.providers);
+    }
+
+    async function saveImageSettings() {
+        const saved = await run(() => api('/api/admin/image-settings', {
+            method: 'POST',
+            body: JSON.stringify({
+                provider_id: imageForm.provider_id ? Number(imageForm.provider_id) : null,
+                model: imageForm.model,
+                style_prompt: imageForm.style_prompt,
+                auto_generate_channel: imageForm.auto_generate_channel,
+                auto_save_catalog: imageForm.auto_save_catalog
+            })
+        }), 'Настройки генерации сохранены');
+        if (saved) loadImageSettings();
+    }
+
+    async function uploadMasterRef(file) {
+        if (!file) return;
+        if (file.size > 10 * 1024 * 1024) {
+            if (toast) toast('Файл больше 10 МБ', 'error');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = async () => {
+            const dataUrl = reader.result;
+            await run(() => api('/api/admin/image-settings', {
+                method: 'POST',
+                body: JSON.stringify({ master_reference_dataurl: dataUrl })
+            }), 'Мастер-референс успешно сохранён');
+            loadImageSettings();
+        };
+        reader.readAsDataURL(file);
+    }
+
+    async function clearMasterRef() {
+        await run(() => api('/api/admin/image-settings', {
+            method: 'POST',
+            body: JSON.stringify({ master_reference_dataurl: '' })
+        }));
+        await run(() => api('/api/admin/photos/unset-reference', { method: 'POST' }));
+        if (toast) toast('Мастер-референс сброшен');
+        loadImageSettings();
+        loadPhotos();
+    }
+
+    async function setAsMasterRef(photoId) {
+        await run(() => api(`/api/admin/photos/${photoId}/set-reference`, { method: 'POST' }), `Фото #${photoId} назначено мастер-референсом`);
+        loadImageSettings();
+        loadPhotos();
+    }
+
+    async function runImageTest() {
+        if (!testPrompt.trim()) {
+            if (toast) toast('Введите сюжет для генерации', 'error');
+            return;
+        }
+        setTestingImage(true);
+        setTestResult(null);
+        try {
+            const res = await api('/api/admin/image-generation/test', {
+                method: 'POST',
+                body: JSON.stringify({
+                    prompt: testPrompt.trim(),
+                    providerId: imageForm.provider_id ? Number(imageForm.provider_id) : undefined,
+                    model: imageForm.model,
+                    saveToCatalog: testSaveToCatalog
+                })
+            });
+            setTestResult(res);
+            if (res?.success) {
+                if (toast) toast(res.imageDataUrl ? 'Изображение успешно сгенерировано!' : 'Ответ получен');
+                if (testSaveToCatalog) loadPhotos();
+            }
+        } catch (err) {
+            setTestResult({ error: err.message });
+            if (toast) toast(err.message, 'error');
+        } finally {
+            setTestingImage(false);
+        }
+    }
+
     async function updatePhoto(photo, values) {
         await run(() => api(`/api/admin/photos/${photo.id}`, { method: 'PATCH', body: JSON.stringify(values) }), 'Метаданные фото сохранены');
         loadPhotos();
@@ -3780,6 +3893,7 @@ function ContentPanel({ toast }) {
         loadPhotos();
         loadContent();
         loadChannel();
+        loadImageSettings();
     }, []);
 
     const filteredPhotos = photos.filter(p => {
@@ -3813,6 +3927,9 @@ function ContentPanel({ toast }) {
             <div className="crm-subnav">
                 <Button variant={contentTab === 'photos' ? 'primary' : 'outline'} size="sm" onClick={() => setContentTab('photos')}>
                     <Image size={14} /> 🖼️ Галерея и Загрузка фото ({photos.length})
+                </Button>
+                <Button variant={contentTab === 'image-gen' ? 'primary' : 'outline'} size="sm" onClick={() => { setContentTab('image-gen'); loadImageSettings(); }}>
+                    <Sparkles size={14} /> 🎨 AI Генерация (Gemini)
                 </Button>
                 <Button variant={contentTab === 'channel' ? 'primary' : 'outline'} size="sm" onClick={() => setContentTab('channel')}>
                     <Radio size={14} /> 📢 Автопостинг и Канал
@@ -3932,6 +4049,7 @@ function ContentPanel({ toast }) {
                                     <div className="photo-card-header">
                                         <Badge variant={photo.access_level === 'premium' ? 'green' : 'blue'}>{photo.access_level}</Badge>
                                         <Badge variant={photo.explicitness >= 50 ? 'red' : 'muted'}>{photo.explicitness}%🌶️</Badge>
+                                        {Boolean(photo.is_reference) && <Badge variant="purple">👑 Master Ref</Badge>}
                                     </div>
                                     <PhotoThumbnail photo={photo} />
                                     <div className="photo-card-body">
@@ -3946,12 +4064,132 @@ function ContentPanel({ toast }) {
                                         <span className="photo-file-id">{photo.file_id}</span>
                                     </details>
                                     <div className="photo-card-actions">
+                                        <Button size="xs" variant={photo.is_reference ? 'secondary' : 'outline'} onClick={() => setAsMasterRef(photo.id)}>
+                                            {photo.is_reference ? '👑 Активный референс' : '⭐ Сделать референсом'}
+                                        </Button>
                                         <ConfirmAction title="Удалить фото?" description="Фото исчезнет из каталога." confirmText="Удалить" variant="danger" onConfirm={() => run(() => api(`/api/admin/photos/${photo.id}`, { method: 'DELETE' }), 'Фото удалено').then(loadPhotos)}>
                                             Удалить
                                         </ConfirmAction>
                                     </div>
                                 </div>
                             )) : <div className="empty-state">Фотографии не найдены.</div>}
+                        </div>
+                    </Card>
+                </div>
+            )}
+
+            {contentTab === 'image-gen' && (
+                <div className="content-photos-layout">
+                    <Card>
+                        <CardHeader eyebrow="Настройки генерации" title="Параметры AI Генерации (Gemini / Imagen)" description="Провайдер, модель и авто-постинг фото Леры." />
+                        <div className="channel-settings-grid">
+                            <label>Провайдер для фото
+                                <select value={imageForm.provider_id} onChange={e => setImageForm({ ...imageForm, provider_id: e.target.value })}>
+                                    <option value="">Авто-поиск (Gemini / Image)</option>
+                                    {imageProviders.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name} ({p.model_name})</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label>Модель генерации
+                                <input value={imageForm.model} placeholder="gemini-2.5-flash / imagen-3.0" onChange={e => setImageForm({ ...imageForm, model: e.target.value })} />
+                            </label>
+                            <label className="channel-enabled">
+                                <input type="checkbox" checked={imageForm.auto_generate_channel} onChange={e => setImageForm({ ...imageForm, auto_generate_channel: e.target.checked })} />
+                                <strong>Генерировать фото к постам в ТГК</strong>
+                            </label>
+                            <label className="channel-enabled">
+                                <input type="checkbox" checked={imageForm.auto_save_catalog} onChange={e => setImageForm({ ...imageForm, auto_save_catalog: e.target.checked })} />
+                                <strong>Авто-сохранять генерации в каталог</strong>
+                            </label>
+                        </div>
+                        <div className="channel-action-bar">
+                            <Button onClick={saveImageSettings}>Сохранить настройки</Button>
+                        </div>
+                    </Card>
+
+                    <Card>
+                        <CardHeader eyebrow="Внешность Леры" title="Мастер-референс внешности" description="Эталонное фото лица и стиля Леры, передаваемое в Gemini Vision при генерации." />
+                        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap', marginTop: 12 }}>
+                            <div style={{ width: 140, height: 140, minWidth: 140, borderRadius: 10, border: '2px dashed rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: 'rgba(0,0,0,0.3)' }}>
+                                {imageForm.master_reference_dataurl ? (
+                                    <img src={imageForm.master_reference_dataurl} alt="Master Reference" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : imageSettings?.master_reference_photo?.id ? (
+                                    <img src={`/api/admin/photos/${imageSettings.master_reference_photo.id}/preview`} alt="Master Reference" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                    <span style={{ fontSize: 11, color: '#888', textAlign: 'center', padding: 8 }}>Нет активного референса</span>
+                                )}
+                            </div>
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                <label className="ui-button ui-button-primary photo-file-button" style={{ display: 'inline-block', width: 'fit-content' }}>
+                                    Загрузить фото с компьютера
+                                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => uploadMasterRef(e.target.files?.[0])} />
+                                </label>
+                                <div>
+                                    <Button size="sm" variant="outline" onClick={clearMasterRef}>Сбросить референс</Button>
+                                </div>
+                                <p style={{ fontSize: 12, color: '#aaa', margin: 0 }}>
+                                    Либо перейдите во вкладку «🖼️ Галерея» и нажмите «⭐ Сделать референсом» на любой существующей карточке.
+                                </p>
+                            </div>
+                        </div>
+                    </Card>
+
+                    <Card>
+                        <CardHeader eyebrow="Промпт-пресет" title="Базовый стиль-промпт Леры" description="Описывает постоянную внешность, атмосферу СПб, стиль съемки на iPhone и реализм." />
+                        <div className="context-template-editor" style={{ marginTop: 12 }}>
+                            <textarea
+                                value={imageForm.style_prompt}
+                                rows={4}
+                                placeholder="Realistic candid iPhone selfie of a 19-year-old Russian student girl named Lera from Saint Petersburg..."
+                                onChange={e => setImageForm({ ...imageForm, style_prompt: e.target.value })}
+                            />
+                        </div>
+                        <div className="channel-action-bar">
+                            <Button onClick={saveImageSettings}>Сохранить стиль-промпт</Button>
+                        </div>
+                    </Card>
+
+                    <Card>
+                        <CardHeader eyebrow="Песочница" title="Тест генерации фото Леры" description="Проверка генерации изображения через Gemini с текущим референсом." />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <input
+                                    style={{ flex: 1 }}
+                                    value={testPrompt}
+                                    placeholder="Сюжет: селфи в кофейне на Петроградке, кофе, осеннее пальто, легкая улыбка"
+                                    onChange={e => setTestPrompt(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') runImageTest(); }}
+                                />
+                                <Button onClick={runImageTest} disabled={testingImage}>
+                                    {testingImage ? 'Генерация...' : 'Сгенерировать'}
+                                </Button>
+                            </div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                                <input type="checkbox" checked={testSaveToCatalog} onChange={e => setTestSaveToCatalog(e.target.checked)} />
+                                Автоматически сохранить результат в каталог фото
+                            </label>
+
+                            {testResult && (
+                                <div style={{ background: 'rgba(0,0,0,0.3)', padding: 14, borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', marginTop: 8 }}>
+                                    {testResult.imageDataUrl ? (
+                                        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                                            <img src={testResult.imageDataUrl} alt="Generated" style={{ maxWidth: 280, maxHeight: 280, borderRadius: 8, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.15)' }} />
+                                            <div style={{ flex: 1, minWidth: 200 }}>
+                                                <div style={{ color: '#4ade80', fontWeight: 600, fontSize: 14 }}>✅ Изображение успешно сгенерировано!</div>
+                                                <pre style={{ marginTop: 8, fontSize: 11, background: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 6, maxHeight: 180, overflow: 'auto' }}>
+                                                    {JSON.stringify({ model: testResult.model, mode: testResult.mode, savedPhotoId: testResult.savedPhoto?.id }, null, 2)}
+                                                </pre>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div style={{ color: '#f87171' }}>
+                                            {testResult.error || 'Ответ модели получен, но изображение не найдено.'}
+                                            {testResult.raw && <pre style={{ marginTop: 8, fontSize: 11, color: '#aaa' }}>{testResult.raw}</pre>}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </Card>
                 </div>
@@ -3965,7 +4203,7 @@ function ContentPanel({ toast }) {
                             <label>Channel ID<input value={channelForm.channelId} placeholder="-100123456789" onChange={event => setChannelForm({ ...channelForm, channelId: event.target.value })} /></label>
                             <label>Ссылка на канал<input value={channelForm.channelUrl} placeholder="t.me/..." onChange={event => setChannelForm({ ...channelForm, channelUrl: event.target.value })} /></label>
                             <label>Частота (ч)<input type="number" min="1" max="168" value={channelForm.frequencyHours} onChange={event => setChannelForm({ ...channelForm, frequencyHours: event.target.value })} /></label>
-                            <label>Медиа-режим<select value={channelForm.mediaMode} onChange={event => setChannelForm({ ...channelForm, mediaMode: event.target.value })}><option value="none">Без фото (только текст)</option><option value="db_photo">Прикреплять фото из базы</option><option value="meme">Мемы и картинки из каталога (#тгк)</option></select></label>
+                            <label>Медиа-режим<select value={channelForm.mediaMode} onChange={event => setChannelForm({ ...channelForm, mediaMode: event.target.value })}><option value="none">Без фото (только текст)</option><option value="db_photo">Прикреплять фото из базы</option><option value="ai_photo">AI-генерация фото (Gemini)</option><option value="meme">Мемы и картинки из каталога (#тгк)</option></select></label>
                             <label>Температура <span>{Number(channelForm.temperature).toFixed(1)}</span><input type="range" min="0" max="2" step="0.1" value={channelForm.temperature} onChange={event => setChannelForm({ ...channelForm, temperature: Number(event.target.value) })} /></label>
                             <label>Креативность <span>{Number(channelForm.creativity).toFixed(1)}</span><input type="range" min="0" max="1" step="0.1" value={channelForm.creativity} onChange={event => setChannelForm({ ...channelForm, creativity: Number(event.target.value) })} /></label>
                             <label>Проверка канала<select value={channelForm.judgeMode} onChange={event => setChannelForm({ ...channelForm, judgeMode: event.target.value })}><option value="OFF">OFF</option><option value="OBSERVE">OBSERVE</option><option value="ENFORCE">ENFORCE</option></select></label>
