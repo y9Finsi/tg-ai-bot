@@ -2386,7 +2386,13 @@ function LeraJudgeSettingsEditor({ toast }) {
             <label>Timeout, мс<input type="number" min="1000" max="60000" value={settings.judgeTimeoutMs ?? 5000} onChange={event => update('judgeTimeoutMs', Number(event.target.value))} disabled={loading || saving} /></label>
             <label>Max tokens<input type="number" min="40" max="120" value={settings.judgeMaxTokens ?? 80} onChange={event => update('judgeMaxTokens', Number(event.target.value))} disabled={loading || saving} /></label>
         </div>
-        <label className="classifier-prompt-editor">Правила judge для CHAT и INITIATIVE<textarea value={settings.judgePrompt || ''} placeholder="Опиши, что считать ошибкой ответа." onChange={event => update('judgePrompt', event.target.value)} disabled={loading || saving} /></label>
+        <div className="classifier-prompt-editor-wrap">
+            <div className="classifier-prompt-editor-head">
+                <label>Правила judge для CHAT и INITIATIVE</label>
+                <Button size="xs" variant="outline" onClick={() => update('judgePrompt', DEFAULT_JUDGE_PROMPT)} disabled={loading || saving}>Вставить эталонный чеклист</Button>
+            </div>
+            <textarea value={settings.judgePrompt || ''} placeholder="Опиши, что считать ошибкой ответа." onChange={event => update('judgePrompt', event.target.value)} disabled={loading || saving} rows={8} />
+        </div>
         <div className="studio-live-prompts-actions"><Button size="sm" variant="primary" onClick={save} disabled={loading || saving}>{saving ? 'Сохраняю…' : 'Сохранить настройки judge'}</Button></div>
         <div className="lera-channel-judge">
             <div className="lera-control-section-heading"><div><span className="eyebrow">Публичный канал</span><h4>Правила channel-judge</h4><p>Эти настройки применяются только к постам в ТГК. При ENFORCE плохой текст остаётся черновиком.</p></div><Badge variant={channelSettings.judge_mode === 'ENFORCE' ? 'yellow' : 'blue'}>{channelSettings.judge_mode || 'ENFORCE'}</Badge></div>
@@ -2397,7 +2403,13 @@ function LeraJudgeSettingsEditor({ toast }) {
                 <label>Timeout, мс<input type="number" min="1000" max="60000" value={channelSettings.judge_timeout_ms ?? 5000} onChange={event => updateChannel('judge_timeout_ms', Number(event.target.value))} disabled={loading || channelSaving} /></label>
                 <label>Max tokens<input type="number" min="40" max="240" value={channelSettings.judge_max_tokens ?? 120} onChange={event => updateChannel('judge_max_tokens', Number(event.target.value))} disabled={loading || channelSaving} /></label>
             </div>
-            <label className="classifier-prompt-editor">Инструкция channel-judge<textarea value={channelSettings.judge_prompt || ''} placeholder="Проверяй публичный пост строго: не выдумывай события и приватные детали." onChange={event => updateChannel('judge_prompt', event.target.value)} disabled={loading || channelSaving} /></label>
+            <div className="classifier-prompt-editor-wrap">
+                <div className="classifier-prompt-editor-head">
+                    <label>Инструкция channel-judge</label>
+                    <Button size="xs" variant="outline" onClick={() => updateChannel('judge_prompt', DEFAULT_CHANNEL_JUDGE_PROMPT)} disabled={loading || channelSaving}>Вставить эталонную инструкцию</Button>
+                </div>
+                <textarea value={channelSettings.judge_prompt || ''} placeholder="Проверяй публичный пост строго: не выдумывай события и приватные детали." onChange={event => updateChannel('judge_prompt', event.target.value)} disabled={loading || channelSaving} rows={4} />
+            </div>
             <div className="studio-live-prompts-actions"><Button size="sm" variant="primary" onClick={saveChannel} disabled={loading || channelSaving}>{channelSaving ? 'Сохраняю…' : 'Сохранить channel-judge'}</Button></div>
         </div>
     </div>;
@@ -3003,17 +3015,23 @@ function LlmSettingsPanel({ toast }) {
                     <label>Timeout, мс<input type="number" min="1000" max="60000" value={routingSettings.judgeTimeoutMs ?? 5000} onChange={event => setRoutingSettings({ ...routingSettings, judgeTimeoutMs: Number(event.target.value) })} /></label>
                     <label>Max tokens<input type="number" min="40" max="120" value={routingSettings.judgeMaxTokens ?? 80} onChange={event => setRoutingSettings({ ...routingSettings, judgeMaxTokens: Number(event.target.value) })} /></label>
                 </div>
-                <label className="classifier-prompt-editor">Инструкция судьи<textarea value={routingSettings.judgePrompt || ''} placeholder="Верни JSON с verdict и relationship_event." onChange={event => setRoutingSettings({ ...routingSettings, judgePrompt: event.target.value })} /></label>
-                <div className="field-hint">Это единственное редактируемое правило именно для судьи. Ниже можно посмотреть весь фактический набор данных, с которым он сравнивает ответ.</div>
+                <div className="classifier-prompt-editor-wrap">
+                    <div className="classifier-prompt-editor-head">
+                        <label>Инструкция судьи (Правила проверки)</label>
+                        <Button size="xs" variant="outline" onClick={() => setRoutingSettings({ ...routingSettings, judgePrompt: DEFAULT_JUDGE_PROMPT })}>Вставить эталонный чеклист</Button>
+                    </div>
+                    <textarea value={routingSettings.judgePrompt || ''} placeholder="Верни JSON с verdict и relationship_event." onChange={event => setRoutingSettings({ ...routingSettings, judgePrompt: event.target.value })} rows={8} />
+                </div>
+                <div className="field-hint">Это единственное редактируемое правило для судьи. Ниже показан реальный облегченный вид данных, с которыми сравнивается ответ.</div>
                 <details className="judge-transfer-details">
                     <summary>Как prompt передаётся судье</summary>
                     <div className="judge-transfer-grid">
-                        <div><span>System message</span><pre>{routingSettings.judgePrompt || 'Верни строго PASS или REJECT:CODE.'}</pre></div>
-                        <div><span>User message</span><pre>{`Режим: {{CASUAL|EROTIC|JOKE}}\n\nКонтекст Леры на сегодня: {{время, локация, занятие, погода, события, отношения}}\n\nКак Лера должна говорить и обязательные правила: {{активные модули core + common + текущий режим}}\n\nДиалог: {{последние 6 сообщений, до 700 символов каждое}}\n\nПоследняя реплика пользователя: {{до 1200 символов}}\n\nКандидат-ответ Леры: {{до 1600 символов}}\n\nВерни только PASS или REJECT:<CODE>.`}</pre></div>
+                        <div><span>System message (~120 токенов)</span><pre>{(routingSettings.judgePrompt || DEFAULT_JUDGE_PROMPT) + '\n\nДополнительно верни relationship_event по последней реплике пользователя: тип NEUTRAL, SUPPORT, COMPLIMENT, AFFECTION, INSULT, DISRESPECT или APOLOGY и intensity 0.0–1.0. Формат результата: JSON {"verdict":"PASS","relationship_event":{"type":"NEUTRAL","intensity":0}}.'}</pre></div>
+                        <div><span>User message (~150 токенов)</span><pre>{`Режим: {{CASUAL|EROTIC|JOKE}}\n\nКонтекст Леры на сегодня:\n• Локация: {{локация}}\n• Статус: {{действие}}\n• Самочувствие: {{самочувствие}}\n• Время: {{время}}\n\nДиалог:\n• {{последние 4 реплики}}\n\nПоследняя реплика пользователя:\n{{до 600 символов}}\n\nКандидат-ответ Леры:\n{{до 800 символов}}\n\nВерни только JSON: {"verdict":"PASS","relationship_event":{"type":"NEUTRAL","intensity":0}} или {"verdict":"REJECT:CODE","relationship_event":{"type":"NEUTRAL","intensity":0}}`}</pre></div>
                     </div>
-                    <div className="field-hint">Контекст дня и правила приходят отдельными блоками, а не случайным обрезком общего system prompt. Это отдельный короткий LLM-вызов: при ошибке судьи ответ пропускается дальше.</div>
+                    <div className="field-hint">Контекст дня сжат до короткого статуса и локации. Это отдельный легкий LLM-вызов: при сбое судьи ответ безопасно пропускается дальше.</div>
                 </details>
-                <div className="field-hint">Коды reject: REPETITION, IGNORES_USER, OUT_OF_CHARACTER, STALE_CONTEXT, INVENTED_FACT, BROKEN_LOGIC, FORMAT. Ошибка судьи не блокирует ответ и видна в trace.</div>
+                <div className="field-hint">Коды reject: REPETITION, IGNORES_USER, OUT_OF_CHARACTER, STALE_CONTEXT, INVENTED_FACT, BROKEN_LOGIC, FORMAT.</div>
             </div>
 
             <div className="routing-section memory-settings-section">

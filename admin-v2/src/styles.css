@@ -2267,13 +2267,32 @@
   font-size: 12px;
 }
 
-.classifier-prompt-editor {
+.classifier-prompt-editor,
+.classifier-prompt-editor-wrap {
   margin-top: 14px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
 }
 
-.classifier-prompt-editor textarea {
+.classifier-prompt-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.classifier-prompt-editor-head label {
+  color: #c4c4cc;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.classifier-prompt-editor textarea,
+.classifier-prompt-editor-wrap textarea {
   min-height: 150px;
   resize: vertical;
+  width: 100%;
 }
 
 .generation-trace {
