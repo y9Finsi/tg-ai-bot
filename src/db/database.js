@@ -412,6 +412,9 @@ export async function initDatabaseTables() {
             ALTER TABLE ai_providers ADD COLUMN IF NOT EXISTS sampling_capabilities JSONB NOT NULL DEFAULT '{}'::jsonb;
             ALTER TABLE lera_photos ADD COLUMN IF NOT EXISTS explicitness SMALLINT NOT NULL DEFAULT 0;
             ALTER TABLE lera_photos ADD COLUMN IF NOT EXISTS outfit_tags TEXT[] NOT NULL DEFAULT '{}';
+            ALTER TABLE lera_photos ADD COLUMN IF NOT EXISTS is_reference BOOLEAN DEFAULT FALSE;
+            ALTER TABLE lera_photos ADD COLUMN IF NOT EXISTS prompt TEXT;
+            ALTER TABLE lera_photos ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'manual';
             ALTER TABLE channel_post_logs ADD COLUMN IF NOT EXISTS provenance JSONB NOT NULL DEFAULT '{}'::jsonb;
             ALTER TABLE channel_post_logs ADD COLUMN IF NOT EXISTS telegram_message_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
             ALTER TABLE channel_post_logs ADD COLUMN IF NOT EXISTS status VARCHAR(24) NOT NULL DEFAULT 'PUBLISHED';
@@ -1584,14 +1587,75 @@ export async function addLeraPhoto({
     time_of_day = 'any',
     tags = [],
     explicitness = 0,
-    outfit_tags = []
+    outfit_tags = [],
+    is_reference = false,
+    prompt = null,
+    source = 'manual'
 }) {
     const res = await query(
-        `INSERT INTO lera_photos (file_id, caption, access_level, time_of_day, tags, explicitness, outfit_tags)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [file_id, caption, access_level, time_of_day, tags, explicitness, outfit_tags]
+        `INSERT INTO lera_photos (file_id, caption, access_level, time_of_day, tags, explicitness, outfit_tags, is_reference, prompt, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+        [file_id, caption, access_level, time_of_day, tags, explicitness, outfit_tags, Boolean(is_reference), prompt, source]
     );
     return res.rows[0];
+}
+
+export async function getMasterReferencePhoto() {
+    try {
+        const res = await query('SELECT * FROM lera_photos WHERE is_reference = TRUE ORDER BY id DESC LIMIT 1');
+        return res.rows[0] || null;
+    } catch {
+        return null;
+    }
+}
+
+export async function setMasterReferencePhoto(photoId) {
+    await query('UPDATE lera_photos SET is_reference = FALSE');
+    if (photoId) {
+        const res = await query('UPDATE lera_photos SET is_reference = TRUE WHERE id = $1 RETURNING *', [photoId]);
+        return res.rows[0] || null;
+    }
+    return null;
+}
+
+export async function getImageGenerationSettings() {
+    const [
+        providerId,
+        model,
+        stylePrompt,
+        masterRefDataUrl,
+        autoGenerateChannel,
+        autoSaveCatalog
+    ] = await Promise.all([
+        getSetting('image_provider_id', ''),
+        getSetting('image_model', 'gemini-2.5-flash'),
+        getSetting('image_style_prompt', 'Realistic candid photo of Lera, a 19-year-old Russian student girl from Saint Petersburg, brunette hair, lively expressive eyes, natural lighting, authentic skin texture, casual cute outfit, subtle film grain, amateur iPhone selfie style, strictly preserving the face, haircut and identity from the reference photo.'),
+        getSetting('image_master_reference_dataurl', ''),
+        getSetting('image_auto_channel', 'true'),
+        getSetting('image_auto_save_catalog', 'true')
+    ]);
+
+    const masterPhoto = await getMasterReferencePhoto();
+
+    return {
+        provider_id: providerId ? Number(providerId) : null,
+        model: model || 'gemini-2.5-flash',
+        style_prompt: stylePrompt,
+        master_reference_dataurl: masterRefDataUrl || null,
+        master_reference_photo: masterPhoto || null,
+        auto_generate_channel: autoGenerateChannel === 'true',
+        auto_save_catalog: autoSaveCatalog === 'true'
+    };
+}
+
+export async function saveImageGenerationSettings(settings = {}) {
+    if (settings.provider_id !== undefined) await setSetting('image_provider_id', settings.provider_id ? String(settings.provider_id) : '');
+    if (settings.model !== undefined) await setSetting('image_model', String(settings.model || ''));
+    if (settings.style_prompt !== undefined) await setSetting('image_style_prompt', String(settings.style_prompt || ''));
+    if (settings.master_reference_dataurl !== undefined) await setSetting('image_master_reference_dataurl', String(settings.master_reference_dataurl || ''));
+    if (settings.auto_generate_channel !== undefined) await setSetting('image_auto_channel', settings.auto_generate_channel ? 'true' : 'false');
+    if (settings.auto_save_catalog !== undefined) await setSetting('image_auto_save_catalog', settings.auto_save_catalog ? 'true' : 'false');
+    return getImageGenerationSettings();
 }
 
 export async function getActiveAiProvider() {
@@ -2201,10 +2265,23 @@ export async function updateLeraPhoto(id, fields) {
             access_level = COALESCE($3, access_level),
             time_of_day = COALESCE($4, time_of_day),
             explicitness = COALESCE($5, explicitness),
-            outfit_tags = COALESCE($6, outfit_tags)
-         WHERE id = $7 RETURNING *`,
-        [fields.caption, fields.tags, fields.access_level, fields.time_of_day,
-            fields.explicitness, fields.outfit_tags, id]
+            outfit_tags = COALESCE($6, outfit_tags),
+            is_reference = COALESCE($7, is_reference),
+            prompt = COALESCE($8, prompt),
+            source = COALESCE($9, source)
+         WHERE id = $10 RETURNING *`,
+        [
+            fields.caption,
+            fields.tags,
+            fields.access_level,
+            fields.time_of_day,
+            fields.explicitness,
+            fields.outfit_tags,
+            fields.is_reference !== undefined ? Boolean(fields.is_reference) : null,
+            fields.prompt,
+            fields.source,
+            id
+        ]
     );
     return res.rows[0];
 }

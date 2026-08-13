@@ -30,6 +30,10 @@ import {
     addLeraPhoto,
     updateLeraPhoto,
     deleteLeraPhoto,
+    getMasterReferencePhoto,
+    setMasterReferencePhoto,
+    getImageGenerationSettings,
+    saveImageGenerationSettings,
     getRecentConversationEvents,
     formatConversationEvent,
     appendConversationEvent,
@@ -113,6 +117,7 @@ import {
     generateSandboxAbTest,
     migratePresetToCurrent
 } from './ai/sandbox_service.js';
+import { generateLeraPhoto, getMasterReferenceDataUrl } from './services/image_generator.js';
 
 const DEFAULT_CONTENT_CHANNEL_ID = '-1003729264804';
 
@@ -1218,6 +1223,43 @@ export function startAdminServer() {
         }
     });
 
+    app.post('/api/admin/photos/:id/set-reference', async (req, res) => {
+        try {
+            const photo = await setMasterReferencePhoto(req.params.id);
+            if (!photo) return res.status(404).json({ error: 'Фото не найдено' });
+            res.json({ success: true, photo });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/photos/unset-reference', async (req, res) => {
+        try {
+            await setMasterReferencePhoto(null);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.get('/api/admin/image-settings', async (req, res) => {
+        try {
+            const settings = await getImageGenerationSettings();
+            res.json({ success: true, settings });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/image-settings', async (req, res) => {
+        try {
+            const settings = await saveImageGenerationSettings(req.body || {});
+            res.json({ success: true, settings });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.get('/api/admin/content', async (req, res) => {
         try {
             const [items, sent, contentChannelId] = await Promise.all([
@@ -1400,39 +1442,44 @@ export function startAdminServer() {
 
     app.post('/api/admin/image-generation/test', async (req, res) => {
         try {
-            const { providerId, model, prompt, size = '1024x1024', imageDataUrl } = req.body || {};
+            const { providerId, model, prompt, size = '1024x1024', imageDataUrl: explicitDataUrl, saveToCatalog = false } = req.body || {};
             const normalizedPrompt = String(prompt || '').trim();
             if (!normalizedPrompt) return res.status(400).json({ error: 'Напиши prompt для изображения' });
+
+            let effectiveDataUrl = explicitDataUrl;
+            if (!effectiveDataUrl) {
+                effectiveDataUrl = await getMasterReferenceDataUrl(botInstance);
+            }
 
             const providers = await getAiProviders();
             const provider = providerId
                 ? providers.find(item => Number(item.id) === Number(providerId))
-                : providers.find(item => String(item.model_name || '').toLowerCase().includes('image'));
+                : providers.find(item => String(item.model_name || '').toLowerCase().includes('image') || String(item.model_name || '').toLowerCase().includes('gemini'));
             if (!provider) return res.status(404).json({ error: 'Провайдер для изображений не найден' });
 
             const selectedModel = String(model || provider.model_name || '').trim();
             if (!selectedModel) return res.status(400).json({ error: 'Не выбрана модель изображения' });
-            if (imageDataUrl && (!String(imageDataUrl).startsWith('data:image/') || String(imageDataUrl).length > 15_000_000)) {
+            if (effectiveDataUrl && (!String(effectiveDataUrl).startsWith('data:image/') || String(effectiveDataUrl).length > 15_000_000)) {
                 return res.status(400).json({ error: 'Референс должен быть изображением до 10 МБ' });
             }
 
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000);
             try {
-                const endpoint = imageDataUrl
+                const endpoint = effectiveDataUrl
                     ? `${String(provider.base_url).replace(/\/+$/, '')}/chat/completions`
                     : `${String(provider.base_url).replace(/\/+$/, '')}/images/generations`;
-                const payload = imageDataUrl
+                const payload = effectiveDataUrl
                     ? {
                         model: selectedModel,
                         messages: [{
                             role: 'user',
                             content: [
-                                { type: 'text', text: `${normalizedPrompt}\n\nВерни именно сгенерированное изображение, а не только описание.` },
-                                { type: 'image_url', image_url: { url: imageDataUrl } }
+                                { type: 'text', text: `${normalizedPrompt}\n\nВерни именно сгенерированное изображение в формате markdown ![image](data:image/jpeg;base64,...), а не только описание.` },
+                                { type: 'image_url', image_url: { url: effectiveDataUrl } }
                             ]
                         }],
-                        max_tokens: 1200
+                        max_tokens: 1500
                     }
                     : {
                         model: selectedModel,
@@ -1455,16 +1502,62 @@ export function startAdminServer() {
                     return res.status(502).json({ error: `Bridge: ${detail}` });
                 }
 
-                if (imageDataUrl) {
+                let resultImageDataUrl = null;
+                let b64Json = null;
+
+                if (effectiveDataUrl) {
                     const content = data?.choices?.[0]?.message?.content;
                     const text = typeof content === 'string' ? content : '';
-                    const embeddedImage = text.match(/!\[image\]\((data:image\/[^;]+;base64,[^)]+)\)/i)?.[1] || null;
-                    return res.json({ success: true, mode: 'reference', model: selectedModel, content: text, imageDataUrl: embeddedImage });
+                    resultImageDataUrl = text.match(/!\[image\]\((data:image\/[^;]+;base64,[^)]+)\)/i)?.[1]
+                        || text.match(/(data:image\/[^;]+;base64,[A-Za-z0-9+/=]+)/i)?.[1]
+                        || null;
+                    if (resultImageDataUrl) {
+                        b64Json = resultImageDataUrl.split(',')[1];
+                    }
+                } else {
+                    const image = data?.data?.[0];
+                    if (image?.b64_json) {
+                        b64Json = image.b64_json;
+                        resultImageDataUrl = `data:image/png;base64,${image.b64_json}`;
+                    }
                 }
 
-                const image = data?.data?.[0];
-                if (!image?.b64_json) return res.status(502).json({ error: 'Bridge не вернул байты изображения' });
-                res.json({ success: true, mode: 'generation', model: selectedModel, mimeType: 'image/png', b64Json: image.b64_json, revisedPrompt: image.revised_prompt || normalizedPrompt });
+                let savedPhoto = null;
+                if (saveToCatalog && botInstance && b64Json) {
+                    try {
+                        const targetChatId = Number(process.env.ADMIN_ID);
+                        if (targetChatId) {
+                            const buffer = Buffer.from(b64Json, 'base64');
+                            const sent = await botInstance.telegram.sendPhoto(targetChatId, { source: buffer, filename: 'lera_gen.jpg' }, { caption: `🤖 [Admin Test] ${normalizedPrompt.slice(0, 200)}` });
+                            const telegramPhoto = sent.photo?.at(-1);
+                            if (telegramPhoto?.file_id) {
+                                savedPhoto = await addLeraPhoto({
+                                    file_id: telegramPhoto.file_id,
+                                    caption: normalizedPrompt.slice(0, 300),
+                                    access_level: 'free',
+                                    time_of_day: 'any',
+                                    tags: ['ai_generated', 'admin_test'],
+                                    explicitness: 0,
+                                    outfit_tags: [],
+                                    prompt: normalizedPrompt,
+                                    source: 'admin_test'
+                                });
+                            }
+                        }
+                    } catch (saveErr) {
+                        console.warn('[IMAGE TEST] Ошибка авто-сохранения в каталог:', saveErr.message);
+                    }
+                }
+
+                res.json({
+                    success: true,
+                    mode: effectiveDataUrl ? 'reference' : 'generation',
+                    model: selectedModel,
+                    imageDataUrl: resultImageDataUrl,
+                    b64Json,
+                    savedPhoto,
+                    raw: data?.choices?.[0]?.message?.content || null
+                });
             } finally {
                 clearTimeout(timeout);
             }

@@ -79,10 +79,65 @@
     </main>
 
     <main id="tab-content" class="tab-content workspace">
-        <div class="page-intro"><div><p class="overline">CONTENT / 05</p><h2>Content & providers</h2><p class="muted">Промпты, AI providers, фото, канал и промокоды доступны локальными блоками.</p></div></div>
+        <div class="page-intro"><div><p class="overline">CONTENT / 05</p><h2>Content & providers</h2><p class="muted">AI провайдеры, генерация фото Леры с референсом через Gemini, каталог фото и авто-постинг в канал.</p></div></div>
         <section class="panel"><div class="panel-head"><div><p class="overline">AI PROVIDERS</p><h3>Provider chain</h3></div><button class="btn secondary" onclick="testProviders()">Test fallback chain</button></div><div class="inline-form"><input id="prov-name" class="input" placeholder="Name"><input id="prov-url" class="input grow" placeholder="Base URL"><input id="prov-key" class="input" type="password" placeholder="API key"><input id="prov-model" class="input" placeholder="Model"><button class="btn primary" onclick="addNewProvider()">Add</button></div><div id="test-results-box" class="feed compact"></div><div id="providers-list" class="card-grid"></div></section>
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <p class="overline">AI IMAGE GENERATION</p>
+                    <h3>Генерация фото Леры (Gemini + Master Reference)</h3>
+                </div>
+                <button class="btn secondary" onclick="fetchImageSettings()">Обновить</button>
+            </div>
+            <div class="inline-form">
+                <select id="img-provider-select" class="input" style="min-width: 180px;"><option value="">Авто-поиск (Gemini/Image)</option></select>
+                <input id="img-model-input" class="input" placeholder="Модель (gemini-2.5-flash / imagen-3.0)">
+                <label class="toggle"><input id="img-auto-channel" type="checkbox"> ТГК AI-фото</label>
+                <label class="toggle"><input id="img-auto-save" type="checkbox"> Авто-сохранять в каталог</label>
+                <button class="btn primary" onclick="saveImageGenSettings()">Сохранить настройки</button>
+            </div>
+            <div style="margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+                <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                    <label class="overline" style="display:block; margin-bottom: 8px; font-weight: 600;">МАСТЕР-РЕФЕРЕНС ВНЕШНОСТИ ЛЕРЫ</label>
+                    <div style="display: flex; gap: 12px; align-items: flex-start;">
+                        <div id="master-ref-preview-box" style="width: 110px; height: 110px; min-width: 110px; border-radius: 8px; border: 1px dashed var(--border, rgba(255,255,255,0.2)); display: flex; align-items: center; justify-content: center; overflow: hidden; background: rgba(0,0,0,0.3);">
+                            <span id="master-ref-empty-text" class="muted" style="font-size: 11px; text-align: center; padding: 4px;">Нет референса</span>
+                            <img id="master-ref-preview-img" style="width: 100%; height: 100%; object-fit: cover; display: none;" />
+                        </div>
+                        <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+                            <input id="master-ref-file-input" type="file" accept="image/*" class="input file-input" onchange="uploadMasterReferenceFile(this)">
+                            <div class="button-row">
+                                <button class="btn ghost" style="padding: 4px 8px; font-size: 11px;" onclick="clearMasterReference()">Сбросить референс</button>
+                            </div>
+                            <p class="muted" style="font-size: 11px; line-height: 1.3;">Или нажми «⭐ Сделать референсом» на любой карточке в каталоге фото ниже.</p>
+                        </div>
+                    </div>
+                </div>
+                <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                    <label class="overline" style="display:block; margin-bottom: 8px; font-weight: 600;">БАЗОВЫЙ СТИЛЬ-ПРОМПТ ЛЕРЫ</label>
+                    <textarea id="img-style-prompt" class="input" style="width: 100%; height: 100px; resize: vertical; font-size: 12px; font-family: monospace;" placeholder="Realistic candid photo of Lera..."></textarea>
+                </div>
+            </div>
+            <div style="margin-top: 14px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 12px;">
+                <label class="overline" style="display:block; margin-bottom: 6px;">ТЕСТ ГЕНЕРАЦИИ ФОТО</label>
+                <div class="inline-form">
+                    <input id="img-test-prompt" class="input grow" placeholder="Сюжет для теста: селфи в кафе на Невском, осеннее пальто, кофе в руке">
+                    <label class="toggle"><input id="img-test-save" type="checkbox"> В каталог</label>
+                    <button id="img-test-btn" class="btn primary" onclick="testImageGen()">Сгенерировать</button>
+                </div>
+                <div id="img-test-result-box" style="margin-top: 12px; display: none;">
+                    <div style="display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap;">
+                        <img id="img-test-result-img" style="max-width: 260px; max-height: 260px; border-radius: 8px; object-fit: cover; border: 1px solid rgba(255,255,255,0.15);" />
+                        <div style="flex: 1; min-width: 200px;">
+                            <div id="img-test-status" style="font-size: 13px; font-weight: 600; color: #4ade80;"></div>
+                            <pre id="img-test-meta" class="code-block" style="margin-top: 8px; font-size: 11px; max-height: 180px; overflow: auto;"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
         <section class="panel"><div class="panel-head"><div><p class="overline">PHOTO CATALOG</p><h3>Lera photos</h3></div></div><div class="inline-form"><input id="input-file-id" class="input grow" placeholder="Telegram file_id"><input id="input-caption" class="input grow" placeholder="Caption"><input id="input-photo-tags" class="input" placeholder="Tags"><button class="btn primary" onclick="uploadPhoto()">Add photo</button></div><input id="input-photo-file" type="file" class="input file-input"><input id="input-outfit-tags" class="hidden"><input id="input-explicitness" type="hidden" value="0"><select id="select-access-level" class="hidden"><option value="free">free</option></select><select id="select-time-of-day" class="hidden"><option value="any">any</option></select><div id="photos-grid" class="card-grid"></div></section>
-        <section class="panel"><div class="panel-head"><div><p class="overline">CHANNEL / PROMOS</p><h3>Publishing controls</h3></div><button class="btn secondary" onclick="fetchChannelSettings()">Load</button></div><div class="inline-form"><input id="channel-id-input" class="input" placeholder="Channel ID"><input id="channel-url-input" class="input grow" placeholder="Public URL"><input id="channel-frequency" class="input" type="number" value="4"><select id="channel-message-count" class="input"><option>1</option><option>2</option><option>3</option><option value="random">random</option></select><select id="channel-media-mode" class="hidden"><option value="none">none</option><option value="db_photo">photo</option></select><button class="btn primary" onclick="saveChannelSettings()">Save</button><label class="toggle"><input id="channel-enabled" type="checkbox"> enabled</label></div><div id="channel-topic-controls" class="topic-controls"></div><div class="button-row"><button class="btn secondary" onclick="publishChannelNow()">Publish now</button><button class="btn ghost" onclick="toggleFreeModeAction()">Free mode</button><button class="btn ghost" onclick="resetLimits()">Reset limits</button></div><p id="free-mode-status" class="muted"></p><div id="channel-history" class="feed compact"></div></section>
+        <section class="panel"><div class="panel-head"><div><p class="overline">CHANNEL / PROMOS</p><h3>Publishing controls</h3></div><button class="btn secondary" onclick="fetchChannelSettings()">Load</button></div><div class="inline-form"><input id="channel-id-input" class="input" placeholder="Channel ID"><input id="channel-url-input" class="input grow" placeholder="Public URL"><input id="channel-frequency" class="input" type="number" value="4"><select id="channel-message-count" class="input"><option>1</option><option>2</option><option>3</option><option value="random">random</option></select><select id="channel-media-mode" class="input"><option value="none">без медиа</option><option value="db_photo">фото из базы</option><option value="ai_photo">AI-генерация фото (Gemini)</option><option value="meme">мем</option></select><button class="btn primary" onclick="saveChannelSettings()">Save</button><label class="toggle"><input id="channel-enabled" type="checkbox"> enabled</label></div><div id="channel-topic-controls" class="topic-controls"></div><div class="button-row"><button class="btn secondary" onclick="publishChannelNow()">Publish now</button><button class="btn ghost" onclick="toggleFreeModeAction()">Free mode</button><button class="btn ghost" onclick="resetLimits()">Reset limits</button></div><p id="free-mode-status" class="muted"></p><div id="channel-history" class="feed compact"></div></section>
     </main>
 
     <main id="tab-system" class="tab-content workspace">

@@ -157,7 +157,7 @@ function switchTab(tabId, button = null) {
         'tab-behavior': fetchDecisions,
         'tab-llm': async () => { await fetchDevSnapshot(); await fetchPromptSettings(); },
         'tab-users': async () => { await fetchUsers(); await fetchDigests(); },
-        'tab-content': async () => { await fetchProviders(); await fetchPhotos(); await fetchChannelSettings(); },
+        'tab-content': async () => { await fetchProviders(); await fetchImageSettings(); await fetchPhotos(); await fetchChannelSettings(); },
         'tab-system': async () => { await fetchInventory(); await fetchDiagnostics(); }
     };
     loaders[tabId]?.();
@@ -1117,6 +1117,197 @@ async function addInventoryItem() {
     }
 }
 
+let currentImageSettings = null;
+
+async function fetchImageSettings() {
+    try {
+        const data = await api('/api/admin/image-settings');
+        const providersData = await api('/api/admin/providers').catch(() => ({ providers: [] }));
+        const settings = data.settings || {};
+        currentImageSettings = settings;
+
+        const provSelect = document.getElementById('img-provider-select');
+        if (provSelect) {
+            provSelect.innerHTML = '<option value="">Авто-поиск (Gemini/Image)</option>';
+            (providersData.providers || []).forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = `${p.name} (${p.model_name})`;
+                if (settings.provider_id && Number(settings.provider_id) === Number(p.id)) {
+                    opt.selected = true;
+                }
+                provSelect.appendChild(opt);
+            });
+        }
+
+        const modelInput = document.getElementById('img-model-input');
+        if (modelInput) modelInput.value = settings.model || 'gemini-2.5-flash';
+
+        const stylePrompt = document.getElementById('img-style-prompt');
+        if (stylePrompt) stylePrompt.value = settings.style_prompt || '';
+
+        const autoChannel = document.getElementById('img-auto-channel');
+        if (autoChannel) autoChannel.checked = Boolean(settings.auto_generate_channel);
+
+        const autoSave = document.getElementById('img-auto-save');
+        if (autoSave) autoSave.checked = Boolean(settings.auto_save_catalog);
+
+        const previewImg = document.getElementById('master-ref-preview-img');
+        const emptyText = document.getElementById('master-ref-empty-text');
+        if (previewImg && emptyText) {
+            if (settings.master_reference_dataurl) {
+                previewImg.src = settings.master_reference_dataurl;
+                previewImg.style.display = 'block';
+                emptyText.style.display = 'none';
+            } else if (settings.master_reference_photo?.id) {
+                previewImg.src = `/api/admin/photos/${settings.master_reference_photo.id}/preview?ts=${Date.now()}`;
+                previewImg.style.display = 'block';
+                emptyText.style.display = 'none';
+            } else {
+                previewImg.style.display = 'none';
+                emptyText.style.display = 'block';
+            }
+        }
+    } catch (err) {
+        console.warn('Ошибка загрузки настроек генерации картинок:', err.message);
+    }
+}
+
+async function saveImageGenSettings() {
+    try {
+        const providerId = document.getElementById('img-provider-select')?.value || null;
+        const model = document.getElementById('img-model-input')?.value.trim() || 'gemini-2.5-flash';
+        const style_prompt = document.getElementById('img-style-prompt')?.value.trim() || '';
+        const auto_generate_channel = document.getElementById('img-auto-channel')?.checked ?? true;
+        const auto_save_catalog = document.getElementById('img-auto-save')?.checked ?? true;
+
+        await api('/api/admin/image-settings', {
+            method: 'POST',
+            body: JSON.stringify({
+                provider_id: providerId ? Number(providerId) : null,
+                model,
+                style_prompt,
+                auto_generate_channel,
+                auto_save_catalog
+            })
+        });
+
+        showToast('Настройки генерации фото сохранены');
+        await fetchImageSettings();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+async function uploadMasterReferenceFile(input) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) return showToast('Файл больше 10 МБ', 'error');
+
+    try {
+        const dataUrl = await fileToDataUrl(file);
+        await api('/api/admin/image-settings', {
+            method: 'POST',
+            body: JSON.stringify({ master_reference_dataurl: dataUrl })
+        });
+        showToast('Мастер-референс успешно загружен');
+        input.value = '';
+        await fetchImageSettings();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+async function clearMasterReference() {
+    try {
+        await api('/api/admin/image-settings', {
+            method: 'POST',
+            body: JSON.stringify({ master_reference_dataurl: '' })
+        });
+        await api('/api/admin/photos/unset-reference', { method: 'POST' });
+        showToast('Мастер-референс сброшен');
+        await fetchImageSettings();
+        await fetchPhotos();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+async function setAsMasterReference(photoId) {
+    try {
+        await api(`/api/admin/photos/${photoId}/set-reference`, { method: 'POST' });
+        showToast(`Фото #${photoId} назначено мастер-референсом внешности`);
+        await fetchImageSettings();
+        await fetchPhotos();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+async function testImageGen() {
+    const promptInput = document.getElementById('img-test-prompt');
+    const prompt = promptInput?.value.trim();
+    if (!prompt) return showToast('Напиши сюжет для теста', 'error');
+
+    const btn = document.getElementById('img-test-btn');
+    const saveToCatalog = document.getElementById('img-test-save')?.checked || false;
+    const resultBox = document.getElementById('img-test-result-box');
+    const resultImg = document.getElementById('img-test-result-img');
+    const statusText = document.getElementById('img-test-status');
+    const metaPre = document.getElementById('img-test-meta');
+
+    btn.disabled = true;
+    btn.textContent = 'Генерация...';
+    resultBox.style.display = 'block';
+    statusText.textContent = '⏳ Отправляем запрос к Gemini...';
+    statusText.style.color = '#fbbf24';
+    resultImg.style.display = 'none';
+    metaPre.textContent = 'Ожидание ответа модели...';
+
+    try {
+        const providerId = document.getElementById('img-provider-select')?.value || null;
+        const model = document.getElementById('img-model-input')?.value.trim() || undefined;
+
+        const res = await api('/api/admin/image-generation/test', {
+            method: 'POST',
+            body: JSON.stringify({
+                prompt,
+                providerId: providerId ? Number(providerId) : undefined,
+                model,
+                saveToCatalog
+            })
+        });
+
+        if (res.imageDataUrl) {
+            resultImg.src = res.imageDataUrl;
+            resultImg.style.display = 'block';
+            statusText.textContent = `✅ Успешно сгенерировано (${res.model || res.mode})`;
+            statusText.style.color = '#4ade80';
+            metaPre.textContent = JSON.stringify({
+                model: res.model,
+                mode: res.mode,
+                savedPhotoId: res.savedPhoto?.id || null,
+                caption: prompt
+            }, null, 2);
+            if (saveToCatalog) {
+                showToast('Фото сохранено в каталог!');
+                await fetchPhotos();
+            }
+        } else {
+            statusText.textContent = '⚠️ Ответ получен, но изображение не распознано';
+            statusText.style.color = '#f87171';
+            metaPre.textContent = res.raw || JSON.stringify(res, null, 2);
+        }
+    } catch (err) {
+        statusText.textContent = `❌ Ошибка: ${err.message}`;
+        statusText.style.color = '#f87171';
+        metaPre.textContent = err.stack || err.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Сгенерировать';
+    }
+}
+
 async function fetchPhotos() {
     try {
         const data = await api('/api/admin/photos');
@@ -1125,7 +1316,8 @@ async function fetchPhotos() {
         data.photos.forEach(photo => {
             const card = document.createElement('article');
             card.className = 'photo-card';
-            card.innerHTML = `<div class="photo-preview" data-photo-preview="${photo.id}"><span>Превью по запросу</span></div><div class="flex-header"><h4>#${photo.id}</h4><span class="badge">${escapeHtml(photo.access_level)}</span></div><small title="${escapeHtml(photo.file_id)}">${escapeHtml(photo.file_id.slice(0, 24))}…</small><input class="input" placeholder="Описание"><input class="input" placeholder="Теги через запятую"><input class="input" placeholder="Теги одежды"><label class="field">Откровенность<input class="input" type="number" min="0" max="100" value="${photo.explicitness || 0}"></label><select class="input"><option value="free">Free</option><option value="premium">Premium</option><option value="vip">VIP</option></select><select class="input"><option value="any">Любое время</option><option value="morning">Утро</option><option value="day">День</option><option value="evening">Вечер</option><option value="night">Ночь</option></select><div class="button-group"><button class="btn btn-secondary">Превью</button><button class="btn btn-secondary">Сохранить</button><button class="btn btn-god">Удалить</button></div>`;
+            const isRef = Boolean(photo.is_reference);
+            card.innerHTML = `<div class="photo-preview" data-photo-preview="${photo.id}"><span>Превью по запросу</span></div><div class="flex-header"><h4>#${photo.id} ${isRef ? '<span class="badge" style="background:#8b5cf6; color:white;">👑 Master Ref</span>' : ''}</h4><span class="badge">${escapeHtml(photo.access_level)}</span></div><small title="${escapeHtml(photo.file_id)}">${escapeHtml(photo.file_id.slice(0, 24))}…</small><input class="input" placeholder="Описание"><input class="input" placeholder="Теги через запятую"><input class="input" placeholder="Теги одежды"><label class="field">Откровенность<input class="input" type="number" min="0" max="100" value="${photo.explicitness || 0}"></label><select class="input"><option value="free">Free</option><option value="premium">Premium</option><option value="vip">VIP</option></select><select class="input"><option value="any">Любое время</option><option value="morning">Утро</option><option value="day">День</option><option value="evening">Вечер</option><option value="night">Ночь</option></select><div class="button-group"><button class="btn btn-secondary">Превью</button><button class="btn btn-secondary">Сохранить</button><button class="btn btn-secondary" style="${isRef ? 'display:none;' : ''}">⭐ Референс</button><button class="btn btn-god">Удалить</button></div>`;
             const [caption, tags, outfitTags, explicitness] = card.querySelectorAll('input');
             const [accessLevel, timeOfDay] = card.querySelectorAll('select');
             caption.value = photo.caption || '';
@@ -1133,9 +1325,10 @@ async function fetchPhotos() {
             outfitTags.value = (photo.outfit_tags || []).join(', ');
             accessLevel.value = photo.access_level || 'free';
             timeOfDay.value = photo.time_of_day || 'any';
-            const [preview, save, remove] = card.querySelectorAll('button');
+            const [preview, save, setRef, remove] = card.querySelectorAll('button');
             preview.addEventListener('click', () => loadPhotoPreview(photo.id));
             save.addEventListener('click', () => updatePhoto(photo.id, { caption: caption.value, tags: tags.value, access_level: accessLevel.value, time_of_day: timeOfDay.value, outfit_tags: outfitTags.value, explicitness: Number(explicitness.value) }));
+            setRef?.addEventListener('click', () => setAsMasterReference(photo.id));
             remove.addEventListener('click', () => deletePhoto(photo.id));
             container.appendChild(card);
         });

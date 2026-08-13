@@ -18,6 +18,7 @@ import { evaluateLeraReply, getQualityFallback, requiresReplyRetry } from './ai/
 import { classifyIntent, getModeGenerationParams, getModeIntentConfig, getRoutingSettings } from './ai/intent_router.js';
 import { judgeLeraReply } from './ai/response_judge.js';
 import { cleanResponseText } from './utils/response_text.js';
+import { generateLeraPhoto } from './services/image_generator.js';
 // --- 1. КОНСТАНТЫ И ДИНАМИЧЕСКИЙ КЛИЕНТ ИИ ---
 
 const rateLimitMap = new Map();
@@ -197,11 +198,38 @@ ${photoOptionsText}
 }
 
 async function generatePhotoForPrompt(user, imagePrompt, preselectedPhoto = null) {
+    // 1. Пробуем динамическую генерацию через Gemini с мастер-референсом Леры
+    if (imagePrompt && typeof imagePrompt === 'string' && imagePrompt.trim()) {
+        try {
+            const hour = getMoscowHour();
+            const currentTimeOfDay = hour >= 5 && hour < 12 ? 'morning' : (hour >= 12 && hour < 18 ? 'day' : (hour >= 18 && hour < 23 ? 'evening' : 'night'));
+            const generated = await generateLeraPhoto({
+                prompt: imagePrompt,
+                timeOfDay: currentTimeOfDay,
+                user,
+                bot: null,
+                saveToDb: true,
+                source: 'chat'
+            });
+            if (generated && generated.buffer) {
+                return {
+                    source: generated.buffer,
+                    file_id: generated.file_id || null,
+                    id: generated.savedPhoto?.id || null,
+                    caption: generated.caption,
+                    isGenerated: true
+                };
+            }
+        } catch (genErr) {
+            console.warn('[AI CHAT PHOTO] Сбой динамической генерации, переключаемся на fallback фото:', genErr.message);
+        }
+    }
+
     if (preselectedPhoto) {
         return preselectedPhoto;
     }
 
-    // Исключительно подбираем готовое фото Леры из базы данных
+    // 2. Мягкий fallback на готовое фото Леры из базы данных
     const dbPhoto = await getFreeLocalPhotoStream(user, imagePrompt);
     if (dbPhoto) {
         return dbPhoto;

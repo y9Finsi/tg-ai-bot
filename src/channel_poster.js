@@ -14,6 +14,7 @@ import { getCachedOpenAIClient, logLlmTrace } from './ai/llm_client.js';
 import { selectWeightedTopic } from './channel_topics.js';
 import { buildChannelSystemPrompt } from './channel_prompt.js';
 import { judgeLeraReply } from './ai/response_judge.js';
+import { generateLeraPhoto } from './services/image_generator.js';
 
 const TOPIC_DESCRIPTIONS = {
     thoughts: 'Мысли вслух о жизни, парнях и настроении',
@@ -246,9 +247,30 @@ export async function publishChannelDraft(bot, { text, topic, provenance = {}, m
     if (contentId) {
         contentMedia = await getLeraContent(contentId).catch(() => null);
     }
-    if (!contentMedia && settings.media_mode === 'db_photo') {
-        const photo = await getRandomLeraPhoto({ access_level: 'free', time_of_day: getTimeOfDayMSK(), excludeChannelUsed: true });
-        photoToSend = photo?.file_id || null;
+    if (!contentMedia && (settings.media_mode === 'ai_photo' || settings.media_mode === 'db_photo')) {
+        if (settings.media_mode === 'ai_photo') {
+            try {
+                const prompt = `Candid photo of Lera for Telegram channel post. Topic: ${topic}. Post text: "${cleanedText.slice(0, 300)}"`;
+                const generated = await generateLeraPhoto({
+                    prompt,
+                    timeOfDay: getTimeOfDayMSK(),
+                    bot,
+                    saveToDb: true,
+                    source: 'channel'
+                });
+                if (generated?.buffer) {
+                    photoToSend = { source: generated.buffer, filename: 'lera_channel.jpg' };
+                } else if (generated?.file_id) {
+                    photoToSend = generated.file_id;
+                }
+            } catch (e) {
+                console.warn('[CHANNEL POSTER] Сбой генерации фото через Gemini, берем fallback из БД:', e.message);
+            }
+        }
+        if (!photoToSend) {
+            const photo = await getRandomLeraPhoto({ access_level: 'free', time_of_day: getTimeOfDayMSK(), excludeChannelUsed: true });
+            photoToSend = photo?.file_id || null;
+        }
     }
     const telegramMessageIds = [];
     let sentResult = null;
@@ -274,8 +296,9 @@ export async function publishChannelDraft(bot, { text, topic, provenance = {}, m
     if (sentResult?.message_id) telegramMessageIds.push(sentResult.message_id);
 
     const safeTopic = TOPIC_DESCRIPTIONS[topic] ? topic : 'thoughts';
+    const sentPhotoFileId = sentResult?.photo?.at(-1)?.file_id || (typeof photoToSend === 'string' ? photoToSend : null);
     const log = await saveChannelPostLog({
-        channel_id: channelId, topic: safeTopic, text: cleanedText, photo_url: photoToSend || contentMedia?.telegram_file_id || null,
+        channel_id: channelId, topic: safeTopic, text: cleanedText, photo_url: sentPhotoFileId || contentMedia?.telegram_file_id || null,
         media_mode: contentMedia ? contentMedia.telegram_type : settings.media_mode, provenance: { ...provenance, topic: safeTopic, judge_verdict: judge.verdict, judge_code: judge.code, published: true }, telegram_message_ids: telegramMessageIds,
         status: 'PUBLISHED'
     });
