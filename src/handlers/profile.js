@@ -91,14 +91,14 @@ export async function showProfile(ctx, userState, themeConfig = {}) {
 
     const relDisplay = getRelationshipDisplay(rawRelationship || {});
 
-    const msg = `👤 *Твой профиль*\n\n` +
-                `🔑 Твой ID: \`${userId}\`\n\n` +
+    const msg = `👤 <b>Твой профиль</b>\n\n` +
+                `🔑 Твой ID: <code>${userId}</code>\n\n` +
                 `Симпатия: ${relDisplay.affection}% [${relDisplay.bars.affection}]\n` +
                 `Доверие: ${relDisplay.trust}% [${relDisplay.bars.trust}]\n` +
                 `Напряжение: ${relDisplay.irritation}% [${relDisplay.bars.irritation}]\n` +
-                `Статус: *${relDisplay.status}*\n\n` +
-                `✉️ Сообщений: *${freeMode ? 'Безлимит 🔥' : (user.free_requests_left ?? 0)}*\n` +
-                `📸 Фото: *${user.image_balance ?? 0}*`;
+                `Статус: <b>${relDisplay.status}</b>\n\n` +
+                `✉️ Сообщений: <b>${freeMode ? 'Безлимит 🔥' : (user.free_requests_left ?? 0)}</b>\n` +
+                `📸 Фото: <b>${user.image_balance ?? 0}</b>`;
 
     const kb = Markup.inlineKeyboard([
         [Markup.button.callback('⭐️ Пополнить баланс', 'trigger_buy')],
@@ -107,9 +107,9 @@ export async function showProfile(ctx, userState, themeConfig = {}) {
     ]);
 
     if (ctx.callbackQuery) {
-        return ctx.editMessageText(msg, { parse_mode: 'Markdown', reply_markup: kb.reply_markup }).catch(() => {});
+        return ctx.editMessageText(msg, { parse_mode: 'HTML', reply_markup: kb.reply_markup }).catch(() => {});
     }
-    return ctx.reply(msg, { parse_mode: 'Markdown', reply_markup: kb.reply_markup });
+    return ctx.reply(msg, { parse_mode: 'HTML', reply_markup: kb.reply_markup });
 }
 
 export async function showRefs(ctx) {
