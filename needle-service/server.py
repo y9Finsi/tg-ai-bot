@@ -213,9 +213,9 @@ async def route_message(req: RouteRequest):
             best_similarity, best_tool = scores[0]
             second_similarity = scores[1][0] if len(scores) > 1 else 0.0
 
-    # 3. Принятие решения по векторному отрыву (Margin >= 0.05 и сходство >= 0.60)
+    # 3. Принятие решения по векторному отрыву (Margin >= 0.05 и сходство >= 0.52)
     margin = best_similarity - second_similarity
-    if best_tool and best_similarity >= 0.60 and margin >= 0.05:
+    if best_tool and best_similarity >= 0.52 and margin >= 0.05:
         action_name = best_tool.get("name")
         input_schema = best_tool.get("inputSchema", {})
         extracted_args = extract_schema_arguments(msg, input_schema)
