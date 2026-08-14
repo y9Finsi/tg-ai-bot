@@ -1703,7 +1703,7 @@ export async function getVoiceGenerationSettings() {
     ] = await Promise.all([
         getSetting('voice_provider_id', ''),
         getSetting('voice_model', 'cosyvoice3'),
-        getSetting('voice_name', 'female'),
+        getSetting('voice_name', 'default'),
         getSetting('voice_prompt_text', ''),
         getSetting('voice_audio_sample_dataurl', ''),
         getSetting('voice_enabled', 'true')
@@ -1712,7 +1712,7 @@ export async function getVoiceGenerationSettings() {
     return {
         provider_id: providerId ? Number(providerId) : null,
         model: model || 'cosyvoice3',
-        voice: voice || 'female',
+        voice: voice || 'default',
         prompt_text: promptText || '',
         audio_sample_dataurl: audioSampleDataUrl || null,
         master_reference_dataurl: audioSampleDataUrl || null,
