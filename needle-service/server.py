@@ -1,25 +1,76 @@
 """
-Needle 2 Unified Neural & Semantic Router Sidecar Service
-Интеграция официальной нейросети Cactus-Compute/needle2 (45M)
-с гибридным семантическим фаллбэком для русской разговорной речи.
+Needle 3.0 Neural ONNX Router Sidecar Service
+Нейросетевой векторный роутер на базе ruBERT-tiny2 (ONNX Runtime, 28MB),
+производящий моментальное семантическое сопоставление (Cosine Similarity)
+любых зарегистрированных инструментов и классификацию диалоговых намерений.
 """
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional
+import os
 import re
 import time
+import numpy as np
 
-app = FastAPI(title="Needle 2 Neural Router", version="2.7.0")
+app = FastAPI(title="Needle 3.0 Neural ONNX Router", version="3.0.0")
 
-# Попытка загрузки оригинальной нейросети cactus-needle
-HAS_NEURAL_NEEDLE = False
+# 1. Загрузка ONNX Runtime и токенизатора ruBERT-tiny2
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "model", "model.onnx")
+TOKENIZER_PATH = os.path.join(os.path.dirname(__file__), "model", "tokenizer.json")
+
+session = None
+tokenizer = None
+HAS_ONNX = False
+
 try:
-    import needle
-    HAS_NEURAL_NEEDLE = True
-    print("✅ [NEEDLE NEURAL ENGINE] cactus-needle успешно загружен!")
+    if os.path.exists(MODEL_PATH) and os.path.exists(TOKENIZER_PATH):
+        import onnxruntime as ort
+        from tokenizers import Tokenizer
+        
+        sess_options = ort.SessionOptions()
+        sess_options.intra_op_num_threads = 2
+        session = ort.InferenceSession(MODEL_PATH, sess_options, providers=['CPUExecutionProvider'])
+        tokenizer = Tokenizer.from_file(TOKENIZER_PATH)
+        tokenizer.enable_truncation(max_length=128)
+        tokenizer.enable_padding(length=128)
+        HAS_ONNX = True
+        print(f"✅ [ONNX NEURAL ROUTER] ruBERT-tiny2 ({os.path.getsize(MODEL_PATH) // 1024 // 1024} МБ) успешно загружен в память!")
 except Exception as e:
-    print(f"⚠️ [NEEDLE NEURAL ENGINE] cactus-needle fallback mode: {e}")
+    print(f"⚠️ [ONNX NEURAL ROUTER ERROR]: {e}")
+
+# In-memory кэш эмбеддингов для инструментов
+TOOL_EMBEDDINGS_CACHE = {}
+
+def get_text_embedding(text: str) -> np.ndarray:
+    """Вычисляет 312-мерный семантический вектор предложения через ruBERT-tiny2 ONNX"""
+    if not HAS_ONNX or not session or not tokenizer:
+        return np.zeros(312, dtype=np.float32)
+    
+    encoded = tokenizer.encode(text)
+    input_ids = np.array([encoded.ids], dtype=np.int64)
+    attention_mask = np.array([encoded.attention_mask], dtype=np.int64)
+    token_type_ids = np.array([encoded.type_ids], dtype=np.int64)
+    
+    inputs = {
+        'input_ids': input_ids,
+        'attention_mask': attention_mask,
+        'token_type_ids': token_type_ids
+    }
+    
+    sess_inputs = {inp.name: inputs[inp.name] for inp in session.get_inputs() if inp.name in inputs}
+    outputs = session.run(None, sess_inputs)
+    
+    # Mean-pooling по длине последовательности с учетом attention mask
+    last_hidden_state = outputs[0]
+    mask_expanded = np.expand_dims(attention_mask, -1)
+    sum_embeddings = np.sum(last_hidden_state * mask_expanded, axis=1)
+    sum_mask = np.clip(np.sum(mask_expanded, axis=1), 1e-9, None)
+    embedding = sum_embeddings / sum_mask
+    
+    # L2-нормализация для быстрого косинусного сходства через скалярное произведение
+    norm = np.linalg.norm(embedding, axis=1, keepdims=True)
+    return (embedding / np.clip(norm, 1e-9, None))[0]
 
 class RouteRequest(BaseModel):
     message: str
@@ -36,99 +87,13 @@ class RouteResponse(BaseModel):
     reaction_emoji: Optional[str] = None
     latency_ms: float = 0.0
 
-# 1. Диалоговые намерения (режимы)
+# 2. Диалоговые намерения (режимы)
 EROTIC_REGEX = re.compile(r'\b(секс[а-я]*|трах[а-я]*|соси[а-я]*|член[а-я]*|сиськ[а-я]*|попк[а-я]*|грудь|голая|разденься|подроч[а-я]*|минет|эротик[а-я]*|возбужд[а-я]*|поцелуй|в постел[ьи]|шлепни)\b', re.IGNORECASE)
 JOKE_REGEX = re.compile(r'\b(анекдот|шутк[ауи]|пошути|рассмеши|мем|прикол|рофл)\b', re.IGNORECASE)
 REACTION_ONLY_REGEX = re.compile(r'^(ок|оки|пон|понял|ага|да|нет|хз|лол|кек|пхах|ахах|хаха|\)+|\(+|👍|❤️|🔥|😂|🥰|😘|😴|🌚)$', re.IGNORECASE)
 
-# 2. Стоп-слова и синонимы
-STOP_WORDS = {
-    'и', 'в', 'во', 'не', 'что', 'он', 'на', 'я', 'с', 'со', 'как', 'а', 'то', 'все', 'она',
-    'так', 'его', 'но', 'да', 'ты', 'к', 'у', 'же', 'вы', 'за', 'бы', 'по', 'только', 'ее',
-    'мне', 'было', 'вот', 'от', 'меня', 'еще', 'нет', 'о', 'из', 'ему', 'теперь', 'когда',
-    'даже', 'ну', 'вдруг', 'ли', 'если', 'уже', 'или', 'ни', 'быть', 'был', 'него', 'до',
-    'вас', 'нибудь', 'опять', 'уж', 'вам', 'ведь', 'там', 'потом', 'себя', 'ничего', 'ей',
-    'может', 'они', 'тут', 'где', 'есть', 'надо', 'ней', 'для', 'мы', 'тебя', 'их', 'чем',
-    'была', 'сам', 'чтоб', 'без', 'будто', 'чего', 'раз', 'тоже', 'себе', 'под', 'будет',
-    'ж', 'тогда', 'кто', 'этот', 'того', 'потому', 'этого', 'какой', 'совсем', 'ним', 'здесь',
-    'этом', 'один', 'почти', 'мой', 'тем', 'чтобы', 'нее', 'сейчас', 'были', 'куда', 'зачем',
-    'всех', 'никогда', 'можно', 'при', 'наконец', 'два', 'об', 'другой', 'хоть', 'после',
-    'над', 'больше', 'тот', 'через', 'эти', 'нас', 'про', 'всего', 'них', 'какая', 'много',
-    'разве', 'три', 'эту', 'моя', 'впрочем', 'хорошо', 'свою', 'этой', 'перед', 'иногда',
-    'лучше', 'чуть', 'том', 'нельзя', 'такой', 'им', 'более', 'всегда', 'конечно', 'всю',
-    'между', 'пожалуйста', 'плиз', 'слушай', 'лера', 'говорю', 'гворю', 'скажи', 'подскажи'
-}
-
-SYNONYM_MAP = {
-    'инет': 'интернет',
-    'инте': 'интернет',
-    'инту': 'интернет',
-    'инете': 'интернет',
-    'гугл': 'поиск',
-    'погугли': 'поиск',
-    'загугли': 'поиск',
-    'прогугли': 'поиск',
-    'поищи': 'поиск',
-    'ищи': 'поиск',
-    'найди': 'поиск',
-    'найти': 'поиск',
-    'поискать': 'поиск',
-    'напомни': 'напоминание',
-    'напомнить': 'напоминание',
-    'напомнишь': 'напоминание',
-    'напомните': 'напоминание',
-    'таймер': 'напоминание',
-    'будильник': 'напоминание',
-    'запиши': 'напоминание',
-    'погодка': 'погода',
-    'погоде': 'погода',
-    'погоду': 'погода',
-    'градусов': 'погода',
-    'градуса': 'погода',
-    'дождь': 'погода',
-    'дожди': 'погода'
-}
-
-RUSSIAN_SUFFIXES = (
-    'ейший', 'ейшая', 'ейшее', 'ейшие', 'ованный', 'ованная', 'ованное', 'ованные',
-    'вшийся', 'вшаяся', 'вшееся', 'вшиеся', 'ивший', 'ившая', 'ившее', 'ившие',
-    'вшего', 'вшему', 'вшим', 'вших', 'вшем', 'нный', 'нная', 'нное', 'нные',
-    'нного', 'нному', 'нным', 'нных', 'нном', 'ными', 'выми', 'тыми',
-    'ости', 'ость', 'остях', 'остями', 'ением', 'ениями', 'ении', 'ения', 'ение',
-    'ами', 'ями', 'ами', 'ями', 'ей', 'ий', 'ой', 'ый', 'ая', 'яя', 'ое', 'ее',
-    'ые', 'ие', 'ем', 'им', 'ом', 'ым', 'их', 'ых', 'ую', 'юю', 'ою', 'ею',
-    'ать', 'ять', 'еть', 'ить', 'уть', 'ыть', 'али', 'яли', 'ели', 'или',
-    'ала', 'яла', 'ела', 'ила', 'ало', 'яло', 'ело', 'ило', 'али', 'или',
-    'ает', 'яет', 'еет', 'ит', 'ят', 'ут', 'ют', 'ешь', 'ишь', 'ите', 'ете',
-    'ся', 'сь', 'ов', 'ев', 'ей', 'ам', 'ям', 'ах', 'ях', 'ом', 'ем'
-)
-
-def stem_word(word: str) -> str:
-    w = word.lower()
-    if w in SYNONYM_MAP:
-        return SYNONYM_MAP[w]
-    if len(w) <= 3:
-        return w
-    for suffix in RUSSIAN_SUFFIXES:
-        if w.endswith(suffix) and len(w) - len(suffix) >= 3:
-            w = w[:-len(suffix)]
-            break
-    return w
-
-def extract_stems(text: str) -> Set[str]:
-    words = re.findall(r'[a-zA-Zа-яА-Я0-9_]{2,}', text.lower())
-    stems = set()
-    for raw in words:
-        if raw in STOP_WORDS:
-            continue
-        normalized = SYNONYM_MAP.get(raw, raw)
-        stems.add(normalized)
-        stems.add(stem_word(raw))
-        if len(raw) >= 4:
-            stems.add(raw[:4])
-    return stems
-
 def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, Any]:
+    """Автоматически извлекает параметры из сообщения в соответствии с inputSchema инструмента"""
     properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
     if not properties:
         return {}
@@ -136,9 +101,11 @@ def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, 
     args = {}
     msg_cleaned = message.strip()
 
+    # Поиск временных меток
     time_match = re.search(r'\b(завтра|сегодня|вечером|утром|днем|ночью|через\s+\d+\s+(?:минут[а-я]*|час[а-я]*|сек[а-я]*|дн[еяй]*)|в\s+\d{1,2}(?::\d{2})?)\b', msg_cleaned, re.IGNORECASE)
     time_val = time_match.group(0) if time_match else None
 
+    # Очищенный поисковый запрос (удаление вводных глаголов)
     clean_query = re.sub(r'^(ну\s+)?(поищи|найди|загугли|погугли|прогугли|ищи|скажи|узнай|проверь|глянь|посмотри|напомни|поставь)\s+(в\s+инете|в\s+интернете|в\s+гугле|мне|тебе|плиз|пожалуйста)?\s*(кто\s+такой|что\s+такое|где\s+находится|как)?\s*', '', msg_cleaned, flags=re.IGNORECASE).strip()
     if not clean_query:
         clean_query = msg_cleaned
@@ -148,6 +115,7 @@ def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, 
         prop_desc = (prop_meta.get("description") or "").lower()
         name_lower = prop_name.lower()
 
+        # Поле времени
         if any(k in name_lower or k in prop_desc for k in ("when", "time", "date", "delay", "время", "когда", "срок")):
             if time_val:
                 args[prop_name] = time_val
@@ -155,16 +123,19 @@ def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, 
                 args[prop_name] = "скоро"
             continue
 
+        # Числовые поля
         if prop_type in ("integer", "number"):
             num_match = re.search(r'\b\d+(?:\.\d+)?\b', msg_cleaned)
             if num_match:
                 args[prop_name] = float(num_match.group(0)) if '.' in num_match.group(0) else int(num_match.group(0))
             continue
 
+        # Булевые поля
         if prop_type == "boolean":
             args[prop_name] = True
             continue
 
+        # Основной текстовый аргумент (query, text, message, prompt, reminder_text, etc.)
         if any(k in name_lower or k in prop_desc for k in ("query", "text", "search", "reminder", "prompt", "msg", "content", "поиск", "текст", "запрос", "название", "город", "city")):
             if "city" in name_lower or "город" in prop_desc:
                 city_match = re.search(r'\b(санкт-петербург|петербург|питер|москв[аеу]|спб)\b', msg_cleaned, re.IGNORECASE)
@@ -179,39 +150,13 @@ def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, 
 
     return args
 
-def try_neural_needle_route(msg: str, tools: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Вызов нативной нейросети cactus-needle, если пакет установлен"""
-    if not HAS_NEURAL_NEEDLE or not tools:
-        return None
-    try:
-        # Динамическое создание функций для Needle
-        tool_callables = []
-        for t in tools:
-            name = t.get("name")
-            desc = t.get("description", "")
-            def _fn(**kw): return kw
-            _fn.__name__ = name
-            _fn.__doc__ = desc
-            tool_callables.append(_fn)
-
-        agent = needle.Needle(tools=tool_callables)
-        result = agent.run(msg)
-        if hasattr(result, "tool_name") and result.tool_name:
-            return {
-                "action": result.tool_name,
-                "arguments": getattr(result, "arguments", {}) or getattr(result, "args", {}),
-                "confidence": getattr(result, "confidence", 0.95)
-            }
-    except Exception as err:
-        print(f"[NEURAL NEEDLE RUN ERROR]: {err}")
-    return None
-
 @app.get("/health")
 def health():
     return {
         "status": "ok",
-        "service": "needle-neural-router-2.7",
-        "neural_engine": HAS_NEURAL_NEEDLE
+        "service": "needle-neural-onnx-3.0",
+        "has_onnx": HAS_ONNX,
+        "model_file": os.path.exists(MODEL_PATH)
     }
 
 @app.post("/v1/route", response_model=RouteResponse)
@@ -231,6 +176,7 @@ async def route_message(req: RouteRequest):
         mode = "REACTION"
         reaction_emoji = "❤️" if ("❤" in msg or "люблю" in msg) else "👍"
 
+    # Если режим REACTION или короткое бытовое приветствие — сразу no_action
     if mode == "REACTION" or (len(msg.split()) <= 2 and re.match(r'^(привет|хай|ку|добрый день|споки|спокойной ночи|как дела|что делаешь)$', msg, re.IGNORECASE)):
         return RouteResponse(
             type="no_action",
@@ -242,51 +188,48 @@ async def route_message(req: RouteRequest):
             latency_ms=round((time.time() - start) * 1000, 2)
         )
 
-    # 2. Попытка инференса через нейросеть Cactus-Compute/needle2
-    neural_res = try_neural_needle_route(msg, req.tools)
-    if neural_res and neural_res.get("action"):
-        return RouteResponse(
-            type="action",
-            mode=mode,
-            action=neural_res["action"],
-            arguments=neural_res.get("arguments", {}),
-            confidence=neural_res.get("confidence", 0.95),
-            latency_ms=round((time.time() - start) * 1000, 2)
-        )
-
-    # 3. Семантическое сопоставление (Fast Semantic Route)
-    msg_stems = extract_stems(msg)
+    # 2. Нейросетевой векторный роутинг (ONNX Embeddings)
     best_tool = None
-    best_score = 0.0
+    best_similarity = 0.0
 
-    for tool in req.tools:
-        tool_name = tool.get("name", "")
-        tool_desc = tool.get("description", "")
-        tool_title = tool.get("title", "")
-        input_schema = tool.get("inputSchema", {})
-        props = input_schema.get("properties", {}) if isinstance(input_schema, dict) else {}
-        props_text = " ".join([f"{k} {v.get('description', '')}" for k, v in props.items() if isinstance(v, dict)])
+    if HAS_ONNX and req.tools:
+        user_vector = get_text_embedding(msg)
 
-        tool_signature = f"{tool_name} {tool_title} {tool_desc} {props_text}"
-        tool_stems = extract_stems(tool_signature)
+        for tool in req.tools:
+            tool_name = tool.get("name", "")
+            tool_desc = tool.get("description", "")
+            tool_title = tool.get("title", "")
+            input_schema = tool.get("inputSchema", {})
+            props = input_schema.get("properties", {}) if isinstance(input_schema, dict) else {}
+            props_text = " ".join([f"{k}: {v.get('description', '')}" for k, v in props.items() if isinstance(v, dict)])
 
-        common_stems = msg_stems.intersection(tool_stems)
-        if not common_stems:
-            continue
+            tool_signature = f"{tool_title}. {tool_desc}. Параметры: {props_text}"
+            
+            # Кэширование вектора инструмента
+            if tool_name not in TOOL_EMBEDDINGS_CACHE or TOOL_EMBEDDINGS_CACHE[tool_name].get("sig") != tool_signature:
+                tool_vector = get_text_embedding(tool_signature)
+                TOOL_EMBEDDINGS_CACHE[tool_name] = {
+                    "sig": tool_signature,
+                    "vector": tool_vector
+                }
+            else:
+                tool_vector = TOOL_EMBEDDINGS_CACHE[tool_name]["vector"]
 
-        overlap_ratio = len(common_stems) / max(1, len(msg_stems))
-        score = len(common_stems) * 0.35 + overlap_ratio * 0.65
+            # Косинусное сходство между нормализованными векторами ruBERT-tiny2
+            similarity = float(np.dot(user_vector, tool_vector))
 
-        if score > best_score:
-            best_score = score
-            best_tool = tool
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_tool = tool
 
-    if best_tool and best_score >= 0.35:
+    # 3. Принятие решения по векторному сходству
+    # Порог для ruBERT-tiny2: >= 0.58 означает семантическое совпадение намерения
+    if best_tool and best_similarity >= 0.58:
         action_name = best_tool.get("name")
         input_schema = best_tool.get("inputSchema", {})
         extracted_args = extract_schema_arguments(msg, input_schema)
 
-        confidence = min(0.99, round(0.75 + min(0.24, best_score * 0.2), 2))
+        confidence = min(0.99, round(0.70 + (best_similarity * 0.3), 2))
 
         return RouteResponse(
             type="action",
@@ -297,6 +240,7 @@ async def route_message(req: RouteRequest):
             latency_ms=round((time.time() - start) * 1000, 2)
         )
 
+    # 4. Если нет явного соответствия инструментам — обычный диалог
     return RouteResponse(
         type="no_action",
         mode=mode,
