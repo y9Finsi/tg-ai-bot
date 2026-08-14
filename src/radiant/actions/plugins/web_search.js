@@ -182,7 +182,7 @@ export class GeminiSearchProvider {
 export const webSearchAction = {
     name: 'web_search',
     title: 'Поиск в интернете',
-    description: 'Ищет актуальную информацию в интернете, свежие события, новости, расписания, места и факты.',
+    description: 'Поиск и проверка актуальной информации в интернете, свежих новостей, фактов, событий, людей, персон, расписаний, цен и сайтов.',
     inputSchema: {
         type: 'object',
         properties: {
