@@ -2990,8 +2990,11 @@ function ActionsManagerPanel({ toast }) {
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                         <div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                <strong style={{ fontSize: 16 }}>{tool.name}</strong>
+                                                <strong style={{ fontSize: 16 }}>{tool.title || tool.name}</strong>
                                                 <Badge variant={badgeVariant}>{tool.type || 'SYSTEM'}</Badge>
+                                            </div>
+                                            <div style={{ fontSize: 11, fontFamily: 'monospace', opacity: 0.5, marginTop: 2 }}>
+                                                {tool.name}
                                             </div>
                                             <div style={{ fontSize: 13, marginTop: 6, minHeight: 38, opacity: 0.85 }}>
                                                 {tool.description}

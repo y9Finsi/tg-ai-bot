@@ -151,6 +151,7 @@ export class ToolsRepository {
             combined.push({
                 id: dbEntry?.id || null,
                 name: action.name,
+                title: action.title || dbEntry?.description?.split('—')?.[0]?.trim() || action.name,
                 type: dbEntry?.type || action.type || 'SYSTEM',
                 description: dbEntry?.description || action.description,
                 enabled: runtimeAction.enabled,
@@ -167,6 +168,7 @@ export class ToolsRepository {
                 combined.push({
                     id: dbEntry.id,
                     name: dbEntry.name,
+                    title: dbEntry.config?.title || dbEntry.name,
                     type: dbEntry.type || 'WEBHOOK',
                     description: dbEntry.description || dbEntry.config?.description || 'Custom tool',
                     enabled: dbEntry.enabled,

@@ -7,6 +7,7 @@ import { WeatherService } from '../../weather_service.js';
 
 export const weatherAction = {
     name: 'weather',
+    title: 'Погода в Петербурге',
     description: 'Получает текущую и актуальную погоду в Санкт-Петербурге: температуру в градусах, дождь или осадки.',
     inputSchema: {
         type: 'object',

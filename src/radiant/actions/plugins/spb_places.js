@@ -7,6 +7,7 @@ import { LOCATIONS } from '../../world_map.js';
 
 export const spbPlacesAction = {
     name: 'spb_places',
+    title: 'Локации и места СПб',
     description: 'Ищет локации, заведения, кафе, бары, парки и любимые места Леры в Санкт-Петербурге.',
     inputSchema: {
         type: 'object',
