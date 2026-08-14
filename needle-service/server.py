@@ -165,8 +165,9 @@ async def route_message(req: RouteRequest):
         mode = "REACTION"
         reaction_emoji = "❤️" if ("❤" in msg or "люблю" in msg) else "👍"
 
-    # Если режим REACTION или короткое бытовое приветствие — сразу no_action
-    if mode == "REACTION" or (len(msg.split()) <= 2 and re.match(r'^(привет|хай|ку|добрый день|споки|спокойной ночи|как дела|что делаешь)$', msg, re.IGNORECASE)):
+    # Если режим REACTION или обычное бытовое приветствие/диалог — сразу no_action
+    CASUAL_CHAT_REGEX = re.compile(r'^(привет|хай|ку|добрый день|доброе утро|споки|спокойной ночи|как дела|как жизнь|что делаешь|че делаешь|как ты|как твои дела|ты кто|расскажи о себе)', re.IGNORECASE)
+    if mode == "REACTION" or CASUAL_CHAT_REGEX.search(msg) or (len(msg.split()) <= 2 and re.match(r'^(да|нет|ладно|ясно|понятно)$', msg, re.IGNORECASE)):
         return RouteResponse(
             type="no_action",
             mode=mode,
@@ -213,9 +214,9 @@ async def route_message(req: RouteRequest):
             best_similarity, best_tool = scores[0]
             second_similarity = scores[1][0] if len(scores) > 1 else 0.0
 
-    # 3. Принятие решения по векторному отрыву (Margin >= 0.05 и сходство >= 0.52)
+    # 3. Принятие решения по векторному отрыву (Margin >= 0.07 и сходство >= 0.55)
     margin = best_similarity - second_similarity
-    if best_tool and best_similarity >= 0.52 and margin >= 0.05:
+    if best_tool and best_similarity >= 0.55 and margin >= 0.07:
         action_name = best_tool.get("name")
         input_schema = best_tool.get("inputSchema", {})
         extracted_args = extract_schema_arguments(msg, input_schema)
