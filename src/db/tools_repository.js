@@ -8,6 +8,9 @@ import { query } from './database.js';
 import { actionRegistry } from '../radiant/actions/registry.js';
 import { McpClient } from '../radiant/actions/adapters/mcp_client.js';
 import { WebhookClient } from '../radiant/actions/adapters/webhook_client.js';
+import { webSearchAction } from '../radiant/actions/plugins/web_search.js';
+import { weatherAction } from '../radiant/actions/plugins/weather.js';
+import { spbPlacesAction } from '../radiant/actions/plugins/spb_places.js';
 
 export class ToolsRepository {
     static async ensureTable() {
@@ -319,12 +322,13 @@ export class ToolsRepository {
             throw new Error(`Инструмент '${name}' не найден`);
         }
 
-        if (tool.type === 'SYSTEM') {
-            throw new Error('Системные встроенные действия нельзя удалить, их можно только отключить');
-        }
-
         await query('DELETE FROM radiant_tools WHERE name = $1', [name]);
         actionRegistry.unregister(name);
+
+        // Если это было имя системного действия — восстанавливаем встроенный плагин
+        if (name === 'web_search') actionRegistry.register(webSearchAction);
+        if (name === 'weather') actionRegistry.register(weatherAction);
+        if (name === 'spb_places') actionRegistry.register(spbPlacesAction);
 
         return { success: true, name };
     }
