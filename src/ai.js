@@ -606,19 +606,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     const user = await getUser(userId);
     if (!user) return null;
 
-    // 0. Маршрутизация действий (если не была вычислена ранее в generateResponse)
     let resolvedActionRouting = actionRouting;
-    if (!resolvedActionRouting && !isInitiative && userText && !isVoiceRequest) {
-        try {
-            resolvedActionRouting = await actionRouter.routeAndExecute({
-                userText,
-                userId,
-                context: { routingMode, isInitiative: false }
-            });
-        } catch (routeErr) {
-            console.error('[ACTION ROUTER RUN ERROR]:', routeErr.message);
-        }
-    }
 
     // 1. Формирование контекста сообщений (с параллельными запросами БД)
     const {
