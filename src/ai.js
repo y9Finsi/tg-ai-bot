@@ -925,10 +925,6 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         }
     }
 
-    if (!isInitiative && userText && !looksLikeGreeting && greetingPrefix.test(text || '') && greetingPrefix.test(lastLeraText || '')) {
-        text = text.replace(greetingPrefix, '').trim();
-    }
-
     if (photo && (text === "..." || !text)) {
         text = "";
     }
