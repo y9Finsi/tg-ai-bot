@@ -7,8 +7,8 @@ import { LOCATIONS } from '../../world_map.js';
 
 export const spbPlacesAction = {
     name: 'spb_places',
-    title: 'Локации и места СПб',
-    description: 'Ищет локации, заведения, кафе, бары, парки и любимые места Леры в Санкт-Петербурге.',
+    title: 'Локации и заведения СПб',
+    description: 'Поиск адресов, координат и типов конкретных заведений на карте Петербурга: где находится кофейня, бар, ресторан, парк или арт-пространство (Слой, Севкабель, Бертгольд). Для поиска событий и афиши используй web_search.',
     inputSchema: {
         type: 'object',
         properties: {
@@ -25,11 +25,12 @@ export const spbPlacesAction = {
     },
 
     async execute(args = {}, context = {}) {
-        const query = String(args.query || '').trim().toLowerCase();
-        if (!query) {
+        const rawQuery = String(args.query || '').trim().toLowerCase();
+        if (!rawQuery) {
             throw new Error('Поисковый запрос локации не может быть пустым');
         }
 
+        const queryTokens = rawQuery.split(/\s+/).filter(w => w.length >= 3);
         const allLocations = Object.values(LOCATIONS);
         const matches = allLocations.filter(loc => {
             const name = (loc.name || '').toLowerCase();
@@ -37,7 +38,11 @@ export const spbPlacesAction = {
             const district = (loc.district || '').toLowerCase();
             const type = (loc.type || '').toLowerCase();
 
-            return name.includes(query) || shortName.includes(query) || district.includes(query) || type.includes(query);
+            // Точное совпадение или совпадение по любому значащему слову запроса
+            if (name.includes(rawQuery) || shortName.includes(rawQuery) || district.includes(rawQuery) || type.includes(rawQuery)) {
+                return true;
+            }
+            return queryTokens.some(token => name.includes(token) || shortName.includes(token) || type.includes(token));
         });
 
         if (matches.length === 0) {
