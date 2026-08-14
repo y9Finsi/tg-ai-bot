@@ -414,8 +414,51 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         }
     }
 
+function normalizeTextForComparison(text) {
+    return String(text || '')
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim();
+}
+
+function analyzeUserRepetitions(userText, priorEvents = []) {
+    const currentNorm = normalizeTextForComparison(userText);
+    if (!currentNorm) return { isRepeated: false, repeatCount: 0 };
+
+    const recentUserEvents = priorEvents
+        .filter(e => (e.role === 'user' || e.role === 'client') && e.content)
+        .slice(-8);
+
+    let matchCount = 0;
+    for (const ev of recentUserEvents) {
+        const pastNorm = normalizeTextForComparison(ev.content);
+        if (!pastNorm) continue;
+        if (pastNorm === currentNorm) {
+            matchCount++;
+        }
+    }
+
+    return {
+        isRepeated: matchCount > 0,
+        repeatCount: matchCount + 1
+    };
+}
+
+    const userRepetition = !isInitiative && userText ? analyzeUserRepetitions(userText, priorEvents) : { isRepeated: false };
     const systemPrompt = baseSystemPromptText + mediaLogInstruction + tamagotchiInstruction + modeInstruction + historyInstruction;
     const messages = [{ role: 'system', content: systemPrompt }];
+
+    if (userRepetition.isRepeated) {
+        const repetitionDirective = `⚠️ ПОЛЬЗОВАТЕЛЬ ПОВТОРЯЕТСЯ: он уже писал ровно это («${userText}») недавно в этом диалоге (${userRepetition.repeatCount}-й раз подряд).
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО отвечать так, будто это новое сообщение, здороваться заново или выдавать новую бытовую сводку!
+Отреагируй дерзко, с подколом или удивлением в характере Леры:
+- «?? ты уже это писал»
+- «нахуй ты мне одно и то же пишешь?»
+- «че? ты писал уже»
+- «тебя заклинило ахах?» / «пластинку заело?»
+- «ты робот что ли?»`;
+        messages.push({ role: 'system', content: repetitionDirective });
+    }
 
     // Передаем последнее текущее сообщение пользователя (с поддержкой Vision)
     if (!isInitiative && userText) {
@@ -451,6 +494,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         isPhotoRequest,
         preselectedPhoto,
         lastLeraText,
+        hasRecentGreeting: userRepetition.hasRecentGreeting,
         recentReplyTexts: priorEvents
             .filter(event => event.role === 'lera' || event.role === 'assistant')
             .map(event => event.content)
@@ -563,7 +607,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     // 1. Формирование контекста сообщений (с параллельными запросами БД)
     const {
         messages, isPhotoRequest, recommendationPost, preselectedPhoto, lastLeraText,
-        recentReplyTexts, memories, leraState, systemPrompt, radiantContext, judgeLeraRules
+        recentReplyTexts, memories, leraState, systemPrompt, radiantContext, judgeLeraRules,
+        hasRecentGreeting
     } = await buildMessagePayload(user, userId, { userText, photoUrls, isInitiative, routingMode, initiativeReason, initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds, firstMessageAt });
     const routingSettings = await getRoutingSettings();
     const generationParams = getModeGenerationParams(routingMode, routingSettings);
@@ -705,11 +750,6 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     });
 
     const normalizeReply = value => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-    const looksLikeGreeting = /^(привет|приветик|здравствуй|доброе утро|добрый вечер|хай|хелло)/i.test(String(userText || '').trim());
-    const greetingPrefix = /^(приветик?|здравствуй(?:те)?|доброе утро|добрый вечер|хай|хелло)[!,.\s-]*/i;
-    const repeatsGreeting = !looksLikeGreeting
-        && greetingPrefix.test(text || '')
-        && greetingPrefix.test(lastLeraText || '');
     const qualityIssues = evaluateLeraReply(text, userText, null, {
         mode: routingMode,
         recentReplies: recentReplyTexts
@@ -719,7 +759,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     const judgeNeedsRetry = activeJudgeMode === 'ENFORCE' && judgeResult.passed === false;
     let blockedByJudge = false;
     if ((isInitiative && judgeNeedsRetry) || (!isInitiative && userText && (
-        (lastLeraText && (normalizeReply(text) === normalizeReply(lastLeraText) || repeatsGreeting) && !looksLikeGreeting)
+        (lastLeraText && normalizeReply(text) === normalizeReply(lastLeraText))
         || needsQualityRetry
         || judgeNeedsRetry
     ))) {
@@ -727,7 +767,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             ? `judge_${judgeResult.code || 'rejected'}`
             : needsQualityRetry
             ? qualityIssues.includes('format') ? 'response_format' : 'recent_repeat'
-            : repeatsGreeting ? 'repeated_greeting' : 'exact_repeat';
+            : 'exact_repeat';
         const forbiddenPhrase = text || lastLeraText || '';
         const retryInstruction = qualityIssues.includes('format')
             ? 'СТОП: в предыдущем ответе склеились две отдельные фразы. Перепиши ответ заново. Между каждой отдельной короткой репликой поставь буквальный разделитель ||| с пробелами по краям: первая реплика ||| вторая реплика. Не склеивай слова, не используй переносы строк и не добавляй пояснений.'
@@ -737,7 +777,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             ? qualityIssues.includes('nonEmpty')
                 ? 'СТОП: предыдущий ответ оказался пустым после обработки медиа-тегов. Ответь текстом именно на последнюю реплику пользователя. Фото можно добавлять только после нормальной текстовой подписи.'
                 : `СТОП: фраза «${forbiddenPhrase}» уже была отправлена недавно. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО повторять её дословно! Ответь на вопрос другими словами, добавь новую деталь о том, что делаешь/чувствуешь, либо слегка подколи собеседника («ты уже спрашивал ахах / я ж только что сказала»), если он переспрашивает то же самое.`
-            : `СТОП: предыдущий ответ совпал с прошлой репликой «${forbiddenPhrase}». Сгенерируй новый живой ответ именно на последнюю CURRENT_MESSAGE другими словами. Не повторяй приветствие и прошлый текст.`;
+            : `СТОП: предыдущий ответ совпал с прошлой репликой «${forbiddenPhrase}». Сгенерируй новый живой ответ именно на последнюю CURRENT_MESSAGE другими словами. Не повторяй прошлый текст.`;
         const retryMessages = [
             messages[0],
             { role: 'system', content: retryInstruction },
@@ -846,7 +886,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
 
     const finalQuality = evaluateLeraReply(text, userText, null, {
         mode: routingMode,
-        recentReplies: recentReplyTexts
+        recentReplies: recentReplyTexts,
+        hasRecentGreeting
     });
     if (!isInitiative && userText && !(photo && !text) && !(voice && !text) && !finalQuality.passed) {
         text = getQualityFallback(routingMode, {

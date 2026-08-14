@@ -166,3 +166,5 @@ test('clearing history invalidates stale queued responses and excludes older eve
     assert.match(queue, /historyClearedAtBeforeGeneration/);
     assert.match(queue, /historyClearedAtAfterGeneration/);
 });
+
+
