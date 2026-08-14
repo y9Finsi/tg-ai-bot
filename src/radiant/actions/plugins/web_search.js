@@ -35,9 +35,13 @@ function setCachedResult(query, data) {
     }
 }
 
-/**
- * Gemini Search Grounding Provider
- */
+function sanitizeSearchQuery(rawQuery) {
+    let q = String(rawQuery || '').trim();
+    // Убираем искусственные годы будущего времени из игрового контекста симулятора
+    q = q.replace(/\b(202[6-9]|203\d)\b/g, '').replace(/\s{2,}/g, ' ').trim();
+    return q;
+}
+
 /**
  * Gemini Search Grounding Provider
  * Поддерживает:
@@ -52,7 +56,7 @@ export class GeminiSearchProvider {
     }
 
     async search(query) {
-        const queryText = String(query || '').trim();
+        const queryText = sanitizeSearchQuery(query);
         if (!queryText) {
             throw new Error('Поисковый запрос не может быть пустым');
         }
@@ -74,7 +78,7 @@ export class GeminiSearchProvider {
                     messages: [
                         {
                             role: 'user',
-                            content: `Найди актуальную, точную и свежую информацию в интернете по запросу: "${queryText}". Дай краткую factual-сводку с фактами, датами, адресами и деталями.`
+                            content: `Найди самые последние, свежие и актуальные реальные новости и факты в интернете по теме: "${queryText}". Дай конкретную factual-сводку с фактами, событиями и деталями без отказов.`
                         }
                     ],
                     stream: false
@@ -118,7 +122,7 @@ export class GeminiSearchProvider {
                         role: 'user',
                         parts: [
                             {
-                                text: `Найди актуальную, точную и свежую информацию по запросу: "${queryText}". Дай краткую factual-сводку с фактами, датами и деталями.`
+                                text: `Найди самые свежие, последние и актуальные реальные новости и события по запросу: "${queryText}". Приведи конкретные факты, названия, события и даты.`
                             }
                         ]
                     }
