@@ -1462,6 +1462,24 @@ export function startAdminServer() {
         }
     });
 
+    app.get('/api/admin/tools/:name/logs', async (req, res) => {
+        try {
+            const toolName = req.params.name;
+            const limit = Math.min(Number(req.query.limit || 20), 100);
+            const { rows } = await query(
+                `SELECT id, user_id, kind, mode, raw_response, latency_ms, created_at
+                 FROM prompt_logs
+                 WHERE raw_response ILIKE $1 OR user_text ILIKE $1
+                 ORDER BY id DESC
+                 LIMIT $2`,
+                [`%${toolName}%`, limit]
+            );
+            res.json({ success: true, logs: rows });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.post('/api/admin/content', async (req, res) => {
         try {
             const telegramType = String(req.body.telegram_type || 'link');

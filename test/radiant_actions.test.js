@@ -341,6 +341,36 @@ async function runTests() {
         }
     });
 
+    // 12. Action Caching Tests
+    await test('Executor: caches idempotent result and returns cached flag', async () => {
+        let executionCount = 0;
+        const cacheableAction = {
+            name: 'cacheable_calc',
+            description: 'Action with cache',
+            inputSchema: { type: 'object', properties: { x: { type: 'number' } }, required: ['x'] },
+            config: { cacheTtlSeconds: 60 },
+            execute: async ({ x }) => {
+                executionCount++;
+                return { computed: x * 10, count: executionCount };
+            }
+        };
+        actionRegistry.register(cacheableAction);
+
+        // Первый вызов — выполняется реальный execute
+        const res1 = await executeAction({ name: 'cacheable_calc', args: { x: 5 } });
+        assert.strictEqual(res1.status, 'success');
+        assert.strictEqual(res1.data.computed, 50);
+        assert.strictEqual(res1.meta.cached, false);
+        assert.strictEqual(executionCount, 1);
+
+        // Второй вызов с теми же аргументами — мгновенно отдаётся из кэша
+        const res2 = await executeAction({ name: 'cacheable_calc', args: { x: 5 } });
+        assert.strictEqual(res2.status, 'success');
+        assert.strictEqual(res2.data.computed, 50);
+        assert.strictEqual(res2.meta.cached, true);
+        assert.strictEqual(executionCount, 1); // execute не вызывался второй раз
+    });
+
     console.log(`\n--- TEST RESULTS: ${passed} passed, ${failed} failed ---`);
     if (failed > 0) {
         process.exit(1);

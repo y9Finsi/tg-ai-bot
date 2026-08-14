@@ -52,8 +52,39 @@ function validateSchema(schema, data) {
     return { valid: true };
 }
 
+const ACTION_CACHE = new Map();
+const DEFAULT_CACHE_TTL_MS = 15 * 60 * 1000; // 15 минут
+
+function getCacheKey(name, args) {
+    return `${name}:${JSON.stringify(args || {})}`;
+}
+
+export function getFromActionCache(name, args) {
+    const key = getCacheKey(name, args);
+    const item = ACTION_CACHE.get(key);
+    if (!item) return null;
+    if (Date.now() > item.expiresAt) {
+        ACTION_CACHE.delete(key);
+        return null;
+    }
+    return item.data;
+}
+
+export function setInActionCache(name, args, data, ttlMs = DEFAULT_CACHE_TTL_MS) {
+    if (!ttlMs || ttlMs <= 0) return;
+    const key = getCacheKey(name, args);
+    if (ACTION_CACHE.size > 500) {
+        const oldestKey = ACTION_CACHE.keys().next().value;
+        ACTION_CACHE.delete(oldestKey);
+    }
+    ACTION_CACHE.set(key, {
+        data,
+        expiresAt: Date.now() + ttlMs
+    });
+}
+
 /**
- * Исполнение действия с контролем таймаута
+ * Исполнение действия с контролем таймаута и кэшированием
  */
 export async function executeAction({ name, args = {}, context = {}, callId = null }) {
     const start = Date.now();
@@ -98,7 +129,30 @@ export async function executeAction({ name, args = {}, context = {}, callId = nu
         };
     }
 
-    // 3. Валидация входных аргументов по inputSchema
+    // 3. Проверка кэша для идемпотентных запросов (поиск, погода, локации, GET вебхуки)
+    const cacheTtlSeconds = action.config?.cacheTtlSeconds !== undefined
+        ? Number(action.config.cacheTtlSeconds)
+        : 900; // 15 минут по умолчанию
+    const isCacheable = cacheTtlSeconds > 0 && action.config?.method !== 'POST';
+    if (isCacheable) {
+        const cachedData = getFromActionCache(name, args);
+        if (cachedData !== null) {
+            return {
+                action: name,
+                callId: actionCallId,
+                status: 'success',
+                data: cachedData,
+                meta: {
+                    durationMs: 1,
+                    cached: true,
+                    provider: 'cache'
+                },
+                error: null
+            };
+        }
+    }
+
+    // 4. Валидация входных аргументов по inputSchema
     const validation = validateSchema(action.inputSchema, args);
     if (!validation.valid) {
         return {
@@ -118,7 +172,7 @@ export async function executeAction({ name, args = {}, context = {}, callId = nu
         };
     }
 
-    // 4. Выполнение с контролем таймаута
+    // 5. Выполнение с контролем таймаута
     const timeoutMs = action.timeoutMs || 10000;
     try {
         const timeoutPromise = new Promise((_, reject) => {
@@ -141,34 +195,39 @@ export async function executeAction({ name, args = {}, context = {}, callId = nu
 
         const durationMs = Date.now() - start;
 
-        // Если действие уже вернуло готовый ActionResult
+        // Извлечение данных и сохранение в кэш
+        let finalData = rawResult;
+        let finalMeta = {
+            durationMs,
+            cached: false,
+            provider: action.config?.provider || 'system'
+        };
+        let finalStatus = 'success';
+        let finalError = null;
+
         if (rawResult && typeof rawResult === 'object' && rawResult.status && rawResult.data !== undefined) {
-            return {
-                action: name,
-                callId: actionCallId,
-                status: rawResult.status,
-                data: rawResult.data,
-                meta: {
-                    durationMs,
-                    cached: Boolean(rawResult.meta?.cached),
-                    provider: rawResult.meta?.provider || action.config?.provider || 'system',
-                    ...(rawResult.meta || {})
-                },
-                error: rawResult.error || null
+            finalStatus = rawResult.status;
+            finalData = rawResult.data;
+            finalMeta = {
+                durationMs,
+                cached: Boolean(rawResult.meta?.cached),
+                provider: rawResult.meta?.provider || action.config?.provider || 'system',
+                ...(rawResult.meta || {})
             };
+            finalError = rawResult.error || null;
+        }
+
+        if (finalStatus === 'success' && isCacheable) {
+            setInActionCache(name, args, finalData, cacheTtlSeconds * 1000);
         }
 
         return {
             action: name,
             callId: actionCallId,
-            status: 'success',
-            data: rawResult,
-            meta: {
-                durationMs,
-                cached: false,
-                provider: action.config?.provider || 'system'
-            },
-            error: null
+            status: finalStatus,
+            data: finalData,
+            meta: finalMeta,
+            error: finalError
         };
     } catch (err) {
         const durationMs = Date.now() - start;

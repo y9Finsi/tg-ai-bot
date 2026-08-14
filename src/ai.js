@@ -702,9 +702,9 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         }
     }
 
-    // Обработка Native Tool Calling (если LLM решила вызвать инструмент)
+    // Обработка Native Tool Calling (параллельный запуск всех запрошенных действий через Promise.allSettled)
     if (Array.isArray(llmResult?.tool_calls) && llmResult.tool_calls.length > 0) {
-        for (const tc of llmResult.tool_calls) {
+        const toolExecutionPromises = llmResult.tool_calls.map(async (tc) => {
             const funcName = tc.function?.name;
             let funcArgs = {};
             try {
@@ -712,18 +712,31 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             } catch (e) {
                 funcArgs = {};
             }
-            console.log(`⚡ [NATIVE TOOL CALL] Выполнение действия "${funcName}":`, funcArgs);
+            console.log(`⚡ [NATIVE TOOL CALL] Запуск действия "${funcName}":`, funcArgs);
             const execRes = await executeAction({
                 name: funcName,
                 args: funcArgs,
                 context: { userId, userText }
             });
             const toolResultContent = execRes.status === 'success' ? (execRes.data?.text || JSON.stringify(execRes.data)) : `Ошибка: ${execRes.error?.message}`;
-            messages.push({
-                role: 'system',
-                content: `[РЕЗУЛЬТАТ ВЫЗОВА ИНСТРУМЕНТА ${funcName}]:\n${toolResultContent}\n\nСгенерируй живой ответ собеседнику в характере Леры с учетом полученных данных.`
-            });
+            return {
+                name: funcName,
+                content: toolResultContent,
+                execRes
+            };
+        });
+
+        const settledResults = await Promise.allSettled(toolExecutionPromises);
+        for (const settled of settledResults) {
+            if (settled.status === 'fulfilled') {
+                const { name, content } = settled.value;
+                messages.push({
+                    role: 'system',
+                    content: `[РЕЗУЛЬТАТ ВЫЗОВА ИНСТРУМЕНТА ${name}]:\n${content}\n\nСгенерируй живой ответ собеседнику в характере Леры с учетом полученных данных.`
+                });
+            }
         }
+
         try {
             const finalLlmResult = await requestLlmCompletion(user, messages, isPhotoRequest, getOpenAIClientAndModel, { ...generationParams, tools: null });
             if (finalLlmResult?.rawText) {
