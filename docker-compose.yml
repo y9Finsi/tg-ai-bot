@@ -4,8 +4,6 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
-    environment:
-      NEEDLE_ENDPOINT: http://needle:8000/v1/route
     ports:
       - "3000:3000"
     deploy:
@@ -17,19 +15,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      needle:
-        condition: service_started
-
-  needle:
-    container_name: evabot_needle
-    build: ./needle-service
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    deploy:
-      resources:
-        limits:
-          memory: 256M
 
   postgres:
     container_name: evabot_postgres
@@ -60,12 +45,14 @@ services:
       resources:
         limits:
           memory: 256M
+    volumes:
+      - redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 5s
+      timeout: 3s
       retries: 5
 
 volumes:
   pgdata:
-
+  redisdata:

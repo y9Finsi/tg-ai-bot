@@ -1,11 +1,9 @@
 /**
- * Unit & Integration Test Suite for RADIANT Actions + Needle Router
- * Step 1 Vertical Slice Verification
+ * Unit & Integration Test Suite for RADIANT Actions
  */
 
 import assert from 'assert';
 import { actionRegistry, actionRouter, executeAction, webSearchAction } from '../src/radiant/actions/index.js';
-import { NeedleAdapter } from '../src/radiant/actions/adapters/needle.js';
 import { ContextBuilder } from '../src/ai/context_builder.js';
 
 async function runTests() {
@@ -58,38 +56,43 @@ async function runTests() {
 
     // 2. Executor tests
     await test('Executor: executes valid action and returns canonical ActionResult', async () => {
-        const res = await executeAction({
-            name: 'test_dummy',
-            args: { val: 'hello radiant' }
-        });
-        assert.strictEqual(res.status, 'success');
-        assert.strictEqual(res.action, 'test_dummy');
-        assert.deepStrictEqual(res.data, { result: 'hello radiant' });
-        assert.strictEqual(typeof res.meta.durationMs, 'number');
-        assert.strictEqual(res.error, null);
+        const dummyAction = {
+            name: 'calc_square',
+            description: 'Calculate square',
+            inputSchema: { type: 'object', properties: { n: { type: 'number' } }, required: ['n'] },
+            execute: async ({ n }) => ({ result: n * n })
+        };
+        actionRegistry.register(dummyAction);
+
+        const result = await executeAction({ name: 'calc_square', args: { n: 4 } });
+        assert.strictEqual(result.action, 'calc_square');
+        assert.strictEqual(result.status, 'success');
+        assert.strictEqual(result.data.result, 16);
+        assert.strictEqual(typeof result.meta.durationMs, 'number');
+        assert.strictEqual(result.error, null);
     });
 
-    await test('Executor: rejects unknown action without throwing', async () => {
-        const res = await executeAction({ name: 'non_existent_tool_123' });
-        assert.strictEqual(res.status, 'error');
-        assert.strictEqual(res.error.code, 'UNKNOWN_ACTION');
+    await test('Executor: fails gracefully on disabled action', async () => {
+        actionRegistry.setOverride('calc_square', { enabled: false });
+        const result = await executeAction({ name: 'calc_square', args: { n: 4 } });
+        assert.strictEqual(result.status, 'error');
+        assert.strictEqual(result.error.code, 'ACTION_DISABLED');
+        actionRegistry.setOverride('calc_square', { enabled: true });
     });
 
-    await test('Executor: rejects disabled action', async () => {
-        actionRegistry.setOverride('test_dummy', { enabled: false });
-        const res = await executeAction({ name: 'test_dummy', args: { val: 'test' } });
-        assert.strictEqual(res.status, 'error');
-        assert.strictEqual(res.error.code, 'ACTION_DISABLED');
-        actionRegistry.setOverride('test_dummy', { enabled: true });
+    await test('Executor: fails gracefully on unknown action', async () => {
+        const result = await executeAction({ name: 'unknown_action_xyz', args: {} });
+        assert.strictEqual(result.status, 'error');
+        assert.strictEqual(result.error.code, 'UNKNOWN_ACTION');
     });
 
-    await test('Executor: validates inputSchema and rejects invalid args', async () => {
-        const res = await executeAction({ name: 'test_dummy', args: {} });
-        assert.strictEqual(res.status, 'error');
-        assert.strictEqual(res.error.code, 'INVALID_ARGUMENTS');
+    await test('Executor: validates required arguments', async () => {
+        const result = await executeAction({ name: 'calc_square', args: {} });
+        assert.strictEqual(result.status, 'error');
+        assert.strictEqual(result.error.code, 'INVALID_ARGUMENTS');
     });
 
-    await test('Executor: handles action timeout safely', async () => {
+    await test('Executor: handles timeout safety boundary', async () => {
         const slowAction = {
             name: 'slow_action',
             description: 'Slow action for timeout test',
@@ -122,54 +125,14 @@ async function runTests() {
         assert.ok(res.error.message.includes('Something broke inside plugin'));
     });
 
-    // 3. Needle Adapter tests
-    await test('Needle Adapter: handles offline sidecar with ROUTER_OFFLINE', async () => {
-        const deadAdapter = new NeedleAdapter({ endpoint: 'http://127.0.0.1:59999/v1/route', timeoutMs: 100 });
-        const res = await deadAdapter.route({
-            message: 'привет',
-            schemas: [{ name: 'test', description: 'test', inputSchema: {} }]
-        });
-        assert.strictEqual(res.status, 'ROUTER_OFFLINE');
-        assert.strictEqual(res.decision, 'fallback');
-    });
-
-    await test('Needle Adapter: correctly parses unified response with mode and action', async () => {
-        const adapter = new NeedleAdapter({ endpoint: 'http://mock-needle/v1/route' });
-        const originalFetch = global.fetch;
-        global.fetch = async () => ({
-            ok: true,
-            json: async () => ({
-                type: 'action',
-                mode: 'CASUAL',
-                action: 'weather',
-                arguments: { city: 'Санкт-Петербург' },
-                confidence: 0.95,
-                latency_ms: 12.5
-            })
-        });
-
-        try {
-            const res = await adapter.route({ message: 'какая погода?', schemas: [{ name: 'weather' }] });
-            assert.strictEqual(res.status, 'SUCCESS');
-            assert.strictEqual(res.mode, 'CASUAL');
-            assert.strictEqual(res.action, 'weather');
-            assert.strictEqual(res.arguments.city, 'Санкт-Петербург');
-            assert.strictEqual(res.confidence, 0.95);
-        } finally {
-            global.fetch = originalFetch;
-        }
-    });
-
-    // 4. Router tests
-    await test('Router: transparent fallback to LLM when router offline', async () => {
-        const routing = await actionRouter.routeAndExecute({
-            userText: 'что происходит в городе?',
-            userId: 1
-        });
-        // Needle offline -> FALLBACK_TO_LLM, actionResult is null
-        assert.strictEqual(routing.decision, 'FALLBACK_TO_LLM');
-        assert.strictEqual(routing.actionResult, null);
-        assert.strictEqual(routing.trace.status, 'ROUTER_OFFLINE');
+    // 3. Router tests
+    await test('Router: formats tools for OpenAI Function Calling', () => {
+        const tools = actionRouter.getToolsForLlm();
+        assert.ok(Array.isArray(tools));
+        assert.ok(tools.length > 0);
+        const webSearchTool = tools.find(t => t.function?.name === 'web_search');
+        assert.ok(webSearchTool);
+        assert.strictEqual(webSearchTool.type, 'function');
     });
 
     // 5. ContextBuilder ActionResult formatting

@@ -67,6 +67,13 @@ export function buildLlmRequestParams({ model, messages, calculatedMaxTokens, ll
     add('presence_penalty', traceContext.presence_penalty ?? (!strictSampling ? llmParams.presence_penalty ?? 0.1 : null));
     add('frequency_penalty', traceContext.frequency_penalty ?? (!strictSampling ? llmParams.frequency_penalty ?? 0.1 : null));
 
+    if (Array.isArray(traceContext.tools) && traceContext.tools.length > 0) {
+        requestParams.tools = traceContext.tools;
+        if (traceContext.tool_choice) {
+            requestParams.tool_choice = traceContext.tool_choice;
+        }
+    }
+
     if (traceContext.samplingExtraBody && typeof traceContext.samplingExtraBody === 'object' && Object.keys(traceContext.samplingExtraBody).length) {
         requestParams.extra_body = { ...traceContext.samplingExtraBody };
     }
@@ -156,6 +163,18 @@ export async function requestLlmCompletion(user, messages, isPhotoRequest, getOp
                         messages: stripImageUrlsFromMessages(requestParams.messages)
                     };
                     completion = await tempClient.chat.completions.create(fallbackParams);
+                } else if (requestParams.tools && (createErr.message.includes('tools') || createErr.message.includes('function') || createErr.status === 400)) {
+                    console.warn(`⚠️ [TOOLS HARNESS FALLBACK] Модель "${prov.model_name}" не поддерживает нативные tools (${createErr.message}). Переключаем в режим prompt-инъекции...`);
+                    const toolsPrompt = "\n\n[ДОСТУПНЫЕ ИНСТРУМЕНТЫ]:\n" + requestParams.tools.map(t => `- ${t.function.name}: ${t.function.description}. Параметры: ${JSON.stringify(t.function.parameters)}`).join("\n") + "\nЕсли нужно вызвать инструмент, выведи строго <tool_call>{\"name\": \"...\", \"arguments\": {...}}</tool_call>";
+                    const noToolsParams = { ...requestParams };
+                    delete noToolsParams.tools;
+                    delete noToolsParams.tool_choice;
+                    const updatedMessages = [...noToolsParams.messages];
+                    if (updatedMessages[0] && updatedMessages[0].role === 'system') {
+                        updatedMessages[0] = { ...updatedMessages[0], content: updatedMessages[0].content + toolsPrompt };
+                    }
+                    noToolsParams.messages = updatedMessages;
+                    completion = await tempClient.chat.completions.create(noToolsParams);
                 } else {
                     throw createErr;
                 }
@@ -164,8 +183,10 @@ export async function requestLlmCompletion(user, messages, isPhotoRequest, getOp
                 if (i > 0) {
                     console.log(`✅ [FALLBACK SUCCESS] Успешный ответ от провайдера #${i + 1} (${prov.name}) после сбоя предыдущих!`);
                 }
+                const choiceMessage = completion.choices[0]?.message || {};
                 const result = {
-                    rawText: completion.choices[0]?.message?.content || null,
+                    rawText: choiceMessage.content || null,
+                    tool_calls: choiceMessage.tool_calls || null,
                     usage: completion.usage,
                     model: prov.model_name,
                     providerName: prov.name,

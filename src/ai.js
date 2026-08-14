@@ -20,7 +20,7 @@ import { judgeLeraReply } from './ai/response_judge.js';
 import { cleanResponseText } from './utils/response_text.js';
 import { generateLeraPhoto } from './services/image_generator.js';
 import { generateLeraVoice } from './services/voice_generator.js';
-import { actionRouter } from './radiant/actions/index.js';
+import { actionRegistry, executeAction } from './radiant/actions/index.js';
 // --- 1. КОНСТАНТЫ И ДИНАМИЧЕСКИЙ КЛИЕНТ ИИ ---
 
 const rateLimitMap = new Map();
@@ -669,6 +669,27 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         }).catch(() => null);
     };
 
+    // 1.5. Формирование динамических схем инструментов для Native Tool Calling
+    let formattedTools = [];
+    if (!isInitiative) {
+        try {
+            const activeSchemas = actionRegistry.getSchemas({ userId });
+            formattedTools = activeSchemas.map(s => ({
+                type: 'function',
+                function: {
+                    name: s.name,
+                    description: `${s.title ? s.title + ': ' : ''}${s.description}`,
+                    parameters: s.inputSchema || { type: 'object', properties: {} }
+                }
+            }));
+            if (formattedTools.length > 0) {
+                generationParams.tools = formattedTools;
+            }
+        } catch (e) {
+            console.warn('[TOOLS REGISTRY ERROR]:', e.message);
+        }
+    }
+
     // 2. Вызов нейросети через модуль llm_client
     let llmResult;
     try {
@@ -690,6 +711,38 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                 reason: 'NETWORK_ERROR'
             });
             return { text: fallbackText, photo: null, recommendationPost: null };
+        }
+    }
+
+    // Обработка Native Tool Calling (если LLM решила вызвать инструмент)
+    if (Array.isArray(llmResult?.tool_calls) && llmResult.tool_calls.length > 0) {
+        for (const tc of llmResult.tool_calls) {
+            const funcName = tc.function?.name;
+            let funcArgs = {};
+            try {
+                funcArgs = typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments) : (tc.function?.arguments || {});
+            } catch (e) {
+                funcArgs = {};
+            }
+            console.log(`⚡ [NATIVE TOOL CALL] Выполнение действия "${funcName}":`, funcArgs);
+            const execRes = await executeAction({
+                name: funcName,
+                args: funcArgs,
+                context: { userId, userText }
+            });
+            const toolResultContent = execRes.status === 'success' ? (execRes.data?.text || JSON.stringify(execRes.data)) : `Ошибка: ${execRes.error?.message}`;
+            messages.push({
+                role: 'system',
+                content: `[РЕЗУЛЬТАТ ВЫЗОВА ИНСТРУМЕНТА ${funcName}]:\n${toolResultContent}\n\nСгенерируй живой ответ собеседнику в характере Леры с учетом полученных данных.`
+            });
+        }
+        try {
+            const finalLlmResult = await requestLlmCompletion(user, messages, isPhotoRequest, getOpenAIClientAndModel, { ...generationParams, tools: null });
+            if (finalLlmResult?.rawText) {
+                llmResult = finalLlmResult;
+            }
+        } catch (finalErr) {
+            console.warn('[TOOL FOLLOWUP ERROR]:', finalErr.message);
         }
     }
 
@@ -1067,60 +1120,19 @@ export async function generateResponse(userId, text, envelope = {}) {
             content: event.content
         }));
 
-    // 1. Попытка быстрой единой маршрутизации через Needle 2 (~10-25 мс)
+    // 1. Классификация намерения и режима диалога (CASUAL, EROTIC, JOKE, REACTION)
     try {
-        actionRouting = await actionRouter.routeAndExecute({
-            userText: text,
-            userId,
-            history
-        });
-
-        if (actionRouting && actionRouting.mode) {
-            routingMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(actionRouting.mode)
-                ? actionRouting.mode
-                : (actionRouting.mode === 'REACTION' ? 'REACTION' : 'CASUAL');
-
-            classifierResult = {
-                mode: actionRouting.mode,
-                providerName: 'needle-router-2',
-                model: 'Needle-2-45M',
-                reactionEmoji: actionRouting.reactionEmoji || '',
-                latencyMs: Math.round(actionRouting.trace?.routerLatencyMs || actionRouting.trace?.latencyMs || 15),
-                usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
-            };
-
-            // Логируем быстрый вызов Needle Router в DevTools
-            savePromptLog({
-                userId,
-                kind: 'NEEDLE_ROUTER',
-                mode: routingMode,
-                userText: text,
-                rawResponse: `MODE:${routingMode}` + (actionRouting.actionResult ? ` | ACTION:${actionRouting.actionResult.action}` : ''),
-                parsedResponse: { mode: routingMode, action: actionRouting.actionResult?.action || null, trace: actionRouting.trace },
-                model: 'Needle-2-45M',
-                providerName: 'needle-router-2',
-                latencyMs: classifierResult.latencyMs
-            }).catch(() => null);
-        }
-    } catch (needleErr) {
-        console.warn('[NEEDLE ROUTER ERROR]:', needleErr.message);
-    }
-
-    // 2. Fallback на классический Intent Router (DeepSeek), если Needle не дал режим
-    if (!classifierResult) {
-        try {
-            classifierResult = await classifyIntent({ userId, userText: text, history });
-            routingMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(classifierResult.mode)
-                ? classifierResult.mode
-                : 'CASUAL';
-            const usage = classifierResult.usage || {};
-            const classifierCost = (Number(usage.prompt_tokens || 0) * 0.13 / 1000000)
-                + (Number(usage.completion_tokens || 0) * 0.28 / 1000000);
-            if (classifierCost > 0) await addApiCost(userId, classifierCost);
-        } catch (routingError) {
-            console.error('[INTENT ROUTER] fallback to CASUAL:', routingError.message);
-            classifierResult = { mode: 'CASUAL', error: routingError.message };
-        }
+        classifierResult = await classifyIntent({ userId, userText: text, history });
+        routingMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(classifierResult.mode)
+            ? classifierResult.mode
+            : 'CASUAL';
+        const usage = classifierResult.usage || {};
+        const classifierCost = (Number(usage.prompt_tokens || 0) * 0.13 / 1000000)
+            + (Number(usage.completion_tokens || 0) * 0.28 / 1000000);
+        if (classifierCost > 0) await addApiCost(userId, classifierCost);
+    } catch (routingError) {
+        console.error('[INTENT ROUTER] fallback to CASUAL:', routingError.message);
+        classifierResult = { mode: 'CASUAL', error: routingError.message };
     }
 
     const hasIncomingPhoto = Array.isArray(envelope.photoUrls) && envelope.photoUrls.length > 0;
