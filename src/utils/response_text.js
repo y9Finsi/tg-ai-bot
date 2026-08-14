@@ -40,7 +40,10 @@ export function cleanResponseText(rawText) {
 export function splitResponseMessages(text) {
     const raw = String(text || '').trim();
     if (!raw) return [];
-    return raw.split(/\r?\n+|\s*\|\|\|\s*/).map(part => part.trim()).filter(Boolean);
+    return raw
+        .split(/\r?\n+|\s*(?:\|{2,4}|[｜]{2,4}|\\\|\\\|\\\|)\s*/)
+        .map(part => part.replace(/\|{2,4}|[｜]{2,4}/g, '').trim())
+        .filter(Boolean);
 }
 
 export function findResponseFormatIssues(text) {
