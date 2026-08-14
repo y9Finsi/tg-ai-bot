@@ -95,3 +95,45 @@ export function relationshipToPrompt(state = DEFAULT_RELATIONSHIP) {
     lines.push('Не проговаривай эти параметры и не объясняй пользователю состояние отношений — используй их только как внутренний контекст.');
     return lines.join('\n');
 }
+
+export function getRelationshipDisplay(state = DEFAULT_RELATIONSHIP) {
+    const rel = normalizeRelationship(state);
+    const trust = Math.round(rel.trust);
+    const affection = Math.round(rel.affection);
+    const irritation = Math.round(rel.irritation);
+
+    let status = '👀 Присматривается';
+    if (irritation >= 60) {
+        status = '⚡ Злая пиздец (лучше не бесить)';
+    } else if (irritation >= 35) {
+        status = '😤 Дуется / Напряг';
+    } else if (affection >= 85 && trust >= 75) {
+        status = '👑 Влюблена по уши / Любимый №1';
+    } else if (affection >= 70 && trust >= 60) {
+        status = '💖 Сильное притяжение / Тёплый вайб';
+    } else if (affection >= 55) {
+        status = '💬 Флирт / Приятный интерес';
+    } else if (affection <= 25 && trust <= 25) {
+        status = '🧊 Холод / Полный игнор';
+    } else if (trust >= 75) {
+        status = '🤝 Близкий друг / Полное доверие';
+    }
+
+    const renderBar = (val, fillChar, emptyChar = '░', length = 8) => {
+        const count = Math.min(length, Math.max(0, Math.round((val / 100) * length)));
+        return fillChar.repeat(count) + emptyChar.repeat(length - count);
+    };
+
+    return {
+        trust,
+        affection,
+        irritation,
+        status,
+        bars: {
+            affection: renderBar(affection, '❤️', '🖤', 8),
+            trust: renderBar(trust, '🤝', '░', 8),
+            irritation: renderBar(irritation, '⚡', '░', 8)
+        }
+    };
+}
+

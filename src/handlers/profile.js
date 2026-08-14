@@ -1,18 +1,6 @@
 import { Markup } from 'telegraf';
-import { getUser, createUser, isFreeModeEnabled, getReferralsCount, claimDailyBonus, getSetting } from '../database.js';
-
-const DEFAULT_LERA_THEME = {
-    title: 'Уровень симпатии Леры',
-    fill: '💖',
-    empty: '🖤',
-    max: '👑 Твой любимый №1',
-    statuses: [
-        '💔 Холодок',
-        '💬 Флирт',
-        '🔥 Сильное притяжение',
-        '❤️ Любимый'
-    ]
-};
+import { getUser, createUser, isFreeModeEnabled, getReferralsCount, claimDailyBonus, getSetting, getUserRelationship } from '../database.js';
+import { getRelationshipDisplay } from '../ai/relationship.js';
 
 export function setupProfile(bot, userState, themeConfig = {}) {
     bot.hears('👤 Профиль', (ctx) => showProfile(ctx, userState, themeConfig));
@@ -96,41 +84,24 @@ export async function showProfile(ctx, userState, themeConfig = {}) {
         user = await getUser(userId);
     }
     
-    const freeMode = await isFreeModeEnabled();
-    const mode = user.roleplay_mode || 'flirthot'; 
-    const theme = (themeConfig && themeConfig[mode]) || DEFAULT_LERA_THEME;
-    
-    const maxLevel = 150; 
-    let percent;
-    let fillCount;
-    let statusText = theme.max;
+    const [freeMode, rawRelationship] = await Promise.all([
+        isFreeModeEnabled(),
+        getUserRelationship(userId).catch(() => null)
+    ]);
 
-    if (freeMode) {
-        percent = 100;
-        fillCount = 10;
-    } else {
-        const textBalance = Number(user.free_requests_left || 0);
-        percent = Math.min(100, Math.round((textBalance / maxLevel) * 100));
-        fillCount = Math.floor(percent / 10);
-        if (textBalance > 0 && fillCount === 0) fillCount = 1;
-        
-        if (Number(user.total_spent || 0) <= 0 && textBalance === 0) statusText = "💔 Забытый (Жми на магазин!)";
-        else if (textBalance > 150) statusText = theme.statuses[3];
-        else if (textBalance > 50)  statusText = theme.statuses[2];
-        else if (textBalance > 10)  statusText = theme.statuses[1];
-        else statusText = theme.statuses[0];
-    }
-
-    const progressBar = theme.fill.repeat(fillCount) + theme.empty.repeat(10 - fillCount);
-    const levelText = freeMode ? 'MAX' : `${percent}%`;
+    const relDisplay = getRelationshipDisplay(rawRelationship || {});
 
     const msg = `👤 *Твой профиль*\n\n` +
                 `🔑 Твой ID: \`${userId}\`\n\n` +
-                `*${theme.title}:* ${levelText}\n` +
-                `[${progressBar}]\n` +
-                `💬 Статус: *${statusText}*\n\n` +
-                `✉️ Сообщений: *${user.free_requests_left || 0}*\n` +
-                `📸 Фото: *${user.image_balance}*`;
+                `💬 Вайб отношений: *${relDisplay.status}*\n\n` +
+                `❤️ *Теплота и симпатия:* ${relDisplay.affection}%\n` +
+                `\`[${relDisplay.bars.affection}]\`\n` +
+                `🤝 *Доверие:* ${relDisplay.trust}%\n` +
+                `\`[${relDisplay.bars.trust}]\`\n` +
+                `⚡ *Напряжение:* ${relDisplay.irritation}%\n` +
+                `\`[${relDisplay.bars.irritation}]\`\n\n` +
+                `✉️ Сообщений: *${freeMode ? 'Безлимит 🔥' : (user.free_requests_left ?? 0)}*\n` +
+                `📸 Фото: *${user.image_balance ?? 0}*`;
 
     const kb = Markup.inlineKeyboard([
         [Markup.button.callback('⭐️ Пополнить баланс', 'trigger_buy')],
