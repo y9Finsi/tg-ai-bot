@@ -93,9 +93,9 @@ export async function showProfile(ctx, userState, themeConfig = {}) {
 
     const msg = `👤 <b>Твой профиль</b>\n\n` +
                 `🔑 Твой ID: <code>${userId}</code>\n\n` +
-                `Симпатия: ${relDisplay.affection}% [${relDisplay.bars.affection}]\n` +
-                `Доверие: ${relDisplay.trust}% [${relDisplay.bars.trust}]\n` +
-                `Напряжение: ${relDisplay.irritation}% [${relDisplay.bars.irritation}]\n` +
+                `Симпатия: ${relDisplay.affection}% <code>[${relDisplay.bars.affection}]</code>\n` +
+                `Доверие: ${relDisplay.trust}% <code>[${relDisplay.bars.trust}]</code>\n` +
+                `Напряжение: ${relDisplay.irritation}% <code>[${relDisplay.bars.irritation}]</code>\n` +
                 `Статус: <b>${relDisplay.status}</b>\n\n` +
                 `✉️ Сообщений: <b>${freeMode ? 'Безлимит 🔥' : (user.free_requests_left ?? 0)}</b>\n` +
                 `📸 Фото: <b>${user.image_balance ?? 0}</b>`;
