@@ -602,15 +602,15 @@ async function recordAiTransaction(userId, usage) {
 
 // --- 4. ДЕКЛАРАТИВНЫЙ ЕДИНЫЙ ДВИЖОК ---
 
-async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', isVoiceRequest = false, classifierResult = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null } = {}) {
+async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', isVoiceRequest = false, classifierResult = null, actionRouting = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null } = {}) {
     const user = await getUser(userId);
     if (!user) return null;
 
-    // 0. Маршрутизация действий (RADIANT Action Router + Needle)
-    let actionRouting = null;
-    if (!isInitiative && userText && !isVoiceRequest) {
+    // 0. Маршрутизация действий (если не была вычислена ранее в generateResponse)
+    let resolvedActionRouting = actionRouting;
+    if (!resolvedActionRouting && !isInitiative && userText && !isVoiceRequest) {
         try {
-            actionRouting = await actionRouter.routeAndExecute({
+            resolvedActionRouting = await actionRouter.routeAndExecute({
                 userText,
                 userId,
                 context: { routingMode, isInitiative: false }
@@ -628,7 +628,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     } = await buildMessagePayload(user, userId, {
         userText, photoUrls, isInitiative, routingMode, initiativeReason,
         initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds,
-        firstMessageAt, actionResult: actionRouting?.actionResult || null
+        firstMessageAt, actionResult: resolvedActionRouting?.actionResult || null
     });
     const routingSettings = await getRoutingSettings();
     const generationParams = getModeGenerationParams(routingMode, routingSettings);
@@ -659,7 +659,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                 latencyMs: classifierResult.latencyMs,
                 usage: classifierResult.usage
             } : null,
-            actionTrace: actionRouting?.trace || null,
+            actionTrace: resolvedActionRouting?.trace || null,
             profileVersion: extra.profileVersion,
             surface: isInitiative ? 'INITIATIVE' : 'CHAT',
             judgeMode: extra.judgeMode || (isInitiative ? routingSettings?.initiativeJudgeMode : routingSettings?.judgeMode),
@@ -1055,27 +1055,72 @@ export async function generateResponse(userId, text, envelope = {}) {
 
     let routingMode = 'CASUAL';
     let classifierResult = null;
+    let actionRouting = null;
+
+    const events = await getRecentConversationEvents(userId, 3).catch(() => []);
+    const history = events
+        .filter(event => event.status === 'COMPLETED'
+            && event.content
+            && (event.event_type === 'MESSAGE' || event.event_type === 'INITIATIVE'))
+        .map(event => ({
+            role: event.role === 'lera' || event.role === 'assistant' ? 'assistant' : 'user',
+            content: event.content
+        }));
+
+    // 1. Попытка быстрой единой маршрутизации через Needle 2 (~10-25 мс)
     try {
-        const events = await getRecentConversationEvents(userId, 3).catch(() => []);
-        const history = events
-            .filter(event => event.status === 'COMPLETED'
-                && event.content
-                && (event.event_type === 'MESSAGE' || event.event_type === 'INITIATIVE'))
-            .map(event => ({
-                role: event.role === 'lera' || event.role === 'assistant' ? 'assistant' : 'user',
-                content: event.content
-            }));
-        classifierResult = await classifyIntent({ userId, userText: text, history });
-        routingMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(classifierResult.mode)
-            ? classifierResult.mode
-            : 'CASUAL';
-        const usage = classifierResult.usage || {};
-        const classifierCost = (Number(usage.prompt_tokens || 0) * 0.13 / 1000000)
-            + (Number(usage.completion_tokens || 0) * 0.28 / 1000000);
-        if (classifierCost > 0) await addApiCost(userId, classifierCost);
-    } catch (routingError) {
-        console.error('[INTENT ROUTER] fallback to CASUAL:', routingError.message);
-        classifierResult = { mode: 'CASUAL', error: routingError.message };
+        actionRouting = await actionRouter.routeAndExecute({
+            userText: text,
+            userId,
+            history
+        });
+
+        if (actionRouting && actionRouting.mode) {
+            routingMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(actionRouting.mode)
+                ? actionRouting.mode
+                : (actionRouting.mode === 'REACTION' ? 'REACTION' : 'CASUAL');
+
+            classifierResult = {
+                mode: actionRouting.mode,
+                providerName: 'needle-router-2',
+                model: 'Needle-2-45M',
+                reactionEmoji: actionRouting.reactionEmoji || '',
+                latencyMs: Math.round(actionRouting.trace?.routerLatencyMs || actionRouting.trace?.latencyMs || 15),
+                usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+            };
+
+            // Логируем быстрый вызов Needle Router в DevTools
+            savePromptLog({
+                userId,
+                kind: 'NEEDLE_ROUTER',
+                mode: routingMode,
+                userText: text,
+                rawResponse: `MODE:${routingMode}` + (actionRouting.actionResult ? ` | ACTION:${actionRouting.actionResult.action}` : ''),
+                parsedResponse: { mode: routingMode, action: actionRouting.actionResult?.action || null, trace: actionRouting.trace },
+                model: 'Needle-2-45M',
+                providerName: 'needle-router-2',
+                latencyMs: classifierResult.latencyMs
+            }).catch(() => null);
+        }
+    } catch (needleErr) {
+        console.warn('[NEEDLE ROUTER ERROR]:', needleErr.message);
+    }
+
+    // 2. Fallback на классический Intent Router (DeepSeek), если Needle не дал режим
+    if (!classifierResult) {
+        try {
+            classifierResult = await classifyIntent({ userId, userText: text, history });
+            routingMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(classifierResult.mode)
+                ? classifierResult.mode
+                : 'CASUAL';
+            const usage = classifierResult.usage || {};
+            const classifierCost = (Number(usage.prompt_tokens || 0) * 0.13 / 1000000)
+                + (Number(usage.completion_tokens || 0) * 0.28 / 1000000);
+            if (classifierCost > 0) await addApiCost(userId, classifierCost);
+        } catch (routingError) {
+            console.error('[INTENT ROUTER] fallback to CASUAL:', routingError.message);
+            classifierResult = { mode: 'CASUAL', error: routingError.message };
+        }
     }
 
     const hasIncomingPhoto = Array.isArray(envelope.photoUrls) && envelope.photoUrls.length > 0;
@@ -1133,6 +1178,7 @@ export async function generateResponse(userId, text, envelope = {}) {
         routingMode,
         isVoiceRequest,
         classifierResult,
+        actionRouting,
         contentCandidates,
         commandGate: command.isCommand ? command : null,
         batchId: envelope.batchId,

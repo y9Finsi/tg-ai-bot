@@ -4,6 +4,8 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    environment:
+      NEEDLE_ENDPOINT: http://needle:8000/v1/route
     ports:
       - "3000:3000"
     deploy:

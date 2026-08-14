@@ -1,13 +1,13 @@
 /**
  * Needle Router Adapter
  * Клиент к легковесному локальному сервису маршрутизации Needle 2.
- * Передает схемы доступных инструментов и возвращает решение (action/no_action/low_confidence).
+ * Передает схемы доступных инструментов и возвращает решение (mode, action, confidence).
  */
 
 export class NeedleAdapter {
     constructor(options = {}) {
         this.endpoint = options.endpoint || process.env.NEEDLE_ENDPOINT || 'http://127.0.0.1:8000/v1/route';
-        this.timeoutMs = Number(options.timeoutMs || process.env.NEEDLE_TIMEOUT_MS || 150);
+        this.timeoutMs = Number(options.timeoutMs || process.env.NEEDLE_TIMEOUT_MS || 250);
     }
 
     /**
@@ -15,22 +15,11 @@ export class NeedleAdapter {
      * @param {Object} params
      * @param {string} params.message Сообщение пользователя
      * @param {Array} params.schemas Схемы разрешенных действий
+     * @param {Array} params.history История диалога
      * @param {Object} params.context Контекст диалога
      */
-    async route({ message, schemas = [], context = {} }) {
+    async route({ message, schemas = [], history = [], context = {} }) {
         const start = Date.now();
-
-        // Если нет активных инструментов, сразу выходим
-        if (!schemas || schemas.length === 0) {
-            return {
-                status: 'NO_ACTION',
-                decision: 'no_action',
-                action: null,
-                arguments: {},
-                confidence: 1.0,
-                latencyMs: Date.now() - start
-            };
-        }
 
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -45,6 +34,7 @@ export class NeedleAdapter {
                 body: JSON.stringify({
                     message,
                     tools: schemas,
+                    history,
                     context: {
                         userId: context.userId || null
                     }
@@ -58,6 +48,7 @@ export class NeedleAdapter {
                 return {
                     status: 'ROUTER_ERROR',
                     decision: 'fallback',
+                    mode: 'CASUAL',
                     action: null,
                     arguments: {},
                     confidence: 0,
@@ -69,18 +60,20 @@ export class NeedleAdapter {
             const data = await response.json();
             const latencyMs = Date.now() - start;
 
-            // Обработка стандартного контракта Needle
-            // { type: "action" | "no_action", action?: string, arguments?: object, confidence?: number }
+            const mode = data.mode || 'CASUAL';
             const type = data.type || (data.action ? 'action' : 'no_action');
             const confidence = typeof data.confidence === 'number' ? data.confidence : 1.0;
+            const reactionEmoji = data.reaction_emoji || null;
 
             if (type === 'action' && data.action) {
                 return {
                     status: 'SUCCESS',
                     decision: 'action',
+                    mode,
                     action: data.action,
                     arguments: data.arguments || data.args || {},
                     confidence,
+                    reactionEmoji,
                     latencyMs
                 };
             }
@@ -88,9 +81,11 @@ export class NeedleAdapter {
             return {
                 status: 'NO_ACTION',
                 decision: 'no_action',
+                mode,
                 action: null,
                 arguments: {},
                 confidence,
+                reactionEmoji,
                 latencyMs
             };
         } catch (err) {
@@ -101,6 +96,7 @@ export class NeedleAdapter {
                 return {
                     status: 'ROUTER_TIMEOUT',
                     decision: 'fallback',
+                    mode: 'CASUAL',
                     action: null,
                     arguments: {},
                     confidence: 0,
@@ -109,10 +105,10 @@ export class NeedleAdapter {
                 };
             }
 
-            // Оффлайн (сервис не запущен на машине) или сетевой сбой
             return {
                 status: 'ROUTER_OFFLINE',
                 decision: 'fallback',
+                mode: 'CASUAL',
                 action: null,
                 arguments: {},
                 confidence: 0,

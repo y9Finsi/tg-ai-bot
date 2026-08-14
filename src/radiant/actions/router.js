@@ -14,43 +14,36 @@ export class ActionRouter {
     }
 
     /**
-     * Анализирует сообщение пользователя, решает нужен ли Action и выполняет его при необходимости
+     * Анализирует сообщение пользователя, определяет режим диалога (mode) и выполняет Action при необходимости
      * @param {Object} params
      * @param {string} params.userText Текст сообщения
      * @param {number} params.userId ID пользователя
+     * @param {Array} params.history История диалога
      * @param {Object} params.context Дополнительный контекст
      */
-    async routeAndExecute({ userText, userId, context = {} }) {
+    async routeAndExecute({ userText, userId, history = [], context = {} }) {
         const start = Date.now();
         const routingContext = { ...context, userId };
 
         // 1. Policy: отбор доступных схем ДО обращения к роутеру
         const enabledSchemas = actionRegistry.getSchemas(routingContext);
-        if (!enabledSchemas || enabledSchemas.length === 0) {
-            return {
-                decision: 'NO_ACTION',
-                actionResult: null,
-                trace: {
-                    status: 'NO_ACTIONS_AVAILABLE',
-                    latencyMs: Date.now() - start,
-                    schemasCount: 0
-                }
-            };
-        }
 
-        // 2. Обращение к Needle Router
+        // 2. Обращение к Needle Router (возвращает и mode, и action за ~10-30 мс)
         const needleResponse = await needleAdapter.route({
             message: userText,
             schemas: enabledSchemas,
+            history,
             context: routingContext
         });
 
         const routerLatencyMs = Date.now() - start;
 
-        // 3. Обработка сетевых сбоев и оффлайн режима Needle
+        // 3. Обработка оффлайн режима Needle (fallback на старый intent router)
         if (needleResponse.status === 'ROUTER_OFFLINE' || needleResponse.status === 'ROUTER_TIMEOUT' || needleResponse.status === 'ROUTER_ERROR') {
             return {
                 decision: 'FALLBACK_TO_LLM',
+                mode: null,
+                reactionEmoji: null,
                 actionResult: null,
                 trace: {
                     status: needleResponse.status,
@@ -62,13 +55,19 @@ export class ActionRouter {
             };
         }
 
+        const mode = needleResponse.mode || 'CASUAL';
+        const reactionEmoji = needleResponse.reactionEmoji || null;
+
         // 4. Штатный NO_ACTION (инструменты не требуются)
         if (needleResponse.decision === 'no_action' || !needleResponse.action) {
             return {
                 decision: 'NO_ACTION',
+                mode,
+                reactionEmoji,
                 actionResult: null,
                 trace: {
                     status: 'NO_ACTION',
+                    mode,
                     confidence: needleResponse.confidence,
                     latencyMs: routerLatencyMs,
                     routerLatencyMs: needleResponse.latencyMs
@@ -80,9 +79,12 @@ export class ActionRouter {
         if (needleResponse.confidence < this.minConfidence) {
             return {
                 decision: 'LOW_CONFIDENCE_FALLBACK',
+                mode,
+                reactionEmoji,
                 actionResult: null,
                 trace: {
                     status: 'LOW_CONFIDENCE',
+                    mode,
                     actionProposed: needleResponse.action,
                     confidence: needleResponse.confidence,
                     minConfidence: this.minConfidence,
@@ -103,9 +105,12 @@ export class ActionRouter {
 
         return {
             decision: 'ACTION_EXECUTED',
+            mode,
+            reactionEmoji,
             actionResult,
             trace: {
                 status: actionResult.status === 'success' ? 'ACTION_SUCCESS' : 'ACTION_ERROR',
+                mode,
                 action: needleResponse.action,
                 arguments: needleResponse.arguments,
                 confidence: needleResponse.confidence,

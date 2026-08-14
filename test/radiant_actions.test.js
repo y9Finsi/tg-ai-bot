@@ -133,11 +133,31 @@ async function runTests() {
         assert.strictEqual(res.decision, 'fallback');
     });
 
-    await test('Needle Adapter: returns NO_ACTION when no schemas provided', async () => {
-        const deadAdapter = new NeedleAdapter();
-        const res = await deadAdapter.route({ message: 'привет', schemas: [] });
-        assert.strictEqual(res.status, 'NO_ACTION');
-        assert.strictEqual(res.decision, 'no_action');
+    await test('Needle Adapter: correctly parses unified response with mode and action', async () => {
+        const adapter = new NeedleAdapter({ endpoint: 'http://mock-needle/v1/route' });
+        const originalFetch = global.fetch;
+        global.fetch = async () => ({
+            ok: true,
+            json: async () => ({
+                type: 'action',
+                mode: 'CASUAL',
+                action: 'weather',
+                arguments: { city: 'Санкт-Петербург' },
+                confidence: 0.95,
+                latency_ms: 12.5
+            })
+        });
+
+        try {
+            const res = await adapter.route({ message: 'какая погода?', schemas: [{ name: 'weather' }] });
+            assert.strictEqual(res.status, 'SUCCESS');
+            assert.strictEqual(res.mode, 'CASUAL');
+            assert.strictEqual(res.action, 'weather');
+            assert.strictEqual(res.arguments.city, 'Санкт-Петербург');
+            assert.strictEqual(res.confidence, 0.95);
+        } finally {
+            global.fetch = originalFetch;
+        }
     });
 
     // 4. Router tests
