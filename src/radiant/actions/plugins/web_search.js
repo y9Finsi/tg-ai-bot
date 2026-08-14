@@ -164,11 +164,12 @@ export class GeminiSearchProvider {
                 }
             }
 
+            const cleanText = text.trim() || 'По данному запросу точной информации в открытых источниках не найдено.';
+
             return {
-                text,
-                sources,
-                searchQueries: groundingMetadata.webSearchQueries || [queryText],
-                groundingMetadata
+                text: cleanText,
+                sources: sources.slice(0, 5),
+                searchQueries: groundingMetadata.webSearchQueries || [queryText]
             };
         }
 

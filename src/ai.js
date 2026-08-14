@@ -718,7 +718,27 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                 args: funcArgs,
                 context: { userId, userText }
             });
-            const toolResultContent = execRes.status === 'success' ? (execRes.data?.text || JSON.stringify(execRes.data)) : `Ошибка: ${execRes.error?.message}`;
+            let toolResultContent = '';
+            if (execRes.status === 'success') {
+                const d = execRes.data;
+                if (typeof d === 'string') {
+                    toolResultContent = d;
+                } else if (d?.text) {
+                    toolResultContent = d.text;
+                    if (Array.isArray(d.sources) && d.sources.length > 0) {
+                        toolResultContent += '\nИсточники: ' + d.sources.map(s => `${s.title}: ${s.url}`).join(', ');
+                    }
+                } else if (d?.summary) {
+                    toolResultContent = d.summary;
+                } else {
+                    const cleanObj = { ...d };
+                    delete cleanObj.groundingMetadata;
+                    toolResultContent = JSON.stringify(cleanObj);
+                }
+            } else {
+                toolResultContent = `Ошибка: ${execRes.error?.message || 'Действие недоступно'}`;
+            }
+
             return {
                 name: funcName,
                 content: toolResultContent,
