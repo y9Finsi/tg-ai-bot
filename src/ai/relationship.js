@@ -131,8 +131,8 @@ export function getRelationshipDisplay(state = DEFAULT_RELATIONSHIP) {
         status,
         bars: {
             affection: renderBar(affection, '❤️', '🖤', 8),
-            trust: renderBar(trust, '🤝', '░', 8),
-            irritation: renderBar(irritation, '⚡', '░', 8)
+            trust: renderBar(trust, '🤝', '🖤', 8),
+            irritation: renderBar(irritation, '⚡', '🖤', 8)
         }
     };
 }
