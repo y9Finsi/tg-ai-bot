@@ -40,6 +40,15 @@ class ActionRegistry {
     }
 
     /**
+     * Удаление действия из реестра
+     */
+    unregister(name) {
+        this.actions.delete(name);
+        this.overrides.delete(name);
+        return this;
+    }
+
+    /**
      * Получить действие по имени
      */
     get(name) {

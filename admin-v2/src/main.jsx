@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Command, Search, Copy, Check, Pause, Trash2, Clock, Coins, Cpu, Layers, AlertTriangle, XCircle, Filter, Activity, ChevronRight, ChevronDown, User, SlidersHorizontal } from 'lucide-react';
+import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Command, Search, Copy, Check, Pause, Trash2, Clock, Coins, Cpu, Layers, AlertTriangle, XCircle, Filter, Activity, ChevronRight, ChevronDown, User, SlidersHorizontal, Plus, Globe, Server } from 'lucide-react';
 import './styles.css';
 import { Button } from './components/ui/button.jsx';
 import { Badge } from './components/ui/badge.jsx';
@@ -2711,6 +2711,26 @@ function ActionsManagerPanel({ toast }) {
     const [testLoading, setTestLoading] = useState(false);
     const [editingTimeouts, setEditingTimeouts] = useState({});
 
+    // Состояния модалки добавления
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [addTab, setAddTab] = useState('mcp'); // 'mcp' | 'webhook'
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Поля MCP
+    const [mcpUrl, setMcpUrl] = useState('');
+    const [mcpHeaders, setMcpHeaders] = useState('');
+    const [mcpDiscoveredTools, setMcpDiscoveredTools] = useState([]);
+    const [mcpSelectedTools, setMcpSelectedTools] = useState({});
+    const [isDiscoveringMcp, setIsDiscoveringMcp] = useState(false);
+
+    // Поля Webhook
+    const [webhookName, setWebhookName] = useState('');
+    const [webhookDesc, setWebhookDesc] = useState('');
+    const [webhookUrl, setWebhookUrl] = useState('');
+    const [webhookMethod, setWebhookMethod] = useState('POST');
+    const [webhookHeaders, setWebhookHeaders] = useState('');
+    const [webhookSchema, setWebhookSchema] = useState('{\n  "type": "object",\n  "properties": {\n    "query": { "type": "string", "description": "Поисковый запрос" }\n  }\n}');
+
     const loadTools = async () => {
         setLoading(true);
         try {
@@ -2738,6 +2758,19 @@ function ActionsManagerPanel({ toast }) {
             if (res?.tool) {
                 setTools(prev => prev.map(t => t.name === name ? res.tool : t));
                 toast?.(`Навык ${name} ${res.tool.enabled ? 'включен' : 'выключен'}`);
+            }
+        } catch (err) {
+            toast?.(err.message, 'error');
+        }
+    };
+
+    const deleteTool = async (name) => {
+        if (!window.confirm(`Точно удалить пользовательский навык ${name}?`)) return;
+        try {
+            const res = await api(`/api/admin/tools/${name}`, { method: 'DELETE' });
+            if (res?.success) {
+                setTools(prev => prev.filter(t => t.name !== name));
+                toast?.(`Навык ${name} удален`);
             }
         } catch (err) {
             toast?.(err.message, 'error');
@@ -2803,6 +2836,119 @@ function ActionsManagerPanel({ toast }) {
         }
     };
 
+    const handleDiscoverMcp = async () => {
+        if (!mcpUrl.trim()) {
+            toast?.('Укажите URL MCP сервера', 'error');
+            return;
+        }
+        setIsDiscoveringMcp(true);
+        setMcpDiscoveredTools([]);
+        try {
+            let headers = {};
+            if (mcpHeaders.trim()) {
+                headers = JSON.parse(mcpHeaders);
+            }
+            const res = await api('/api/admin/tools/mcp/discover', {
+                method: 'POST',
+                body: JSON.stringify({ endpoint: mcpUrl.trim(), headers })
+            });
+            if (res?.tools) {
+                setMcpDiscoveredTools(res.tools);
+                const selected = {};
+                res.tools.forEach(t => { selected[t.name] = true; });
+                setMcpSelectedTools(selected);
+                toast?.(`Найдено инструментов: ${res.tools.length}`);
+            }
+        } catch (err) {
+            toast?.(err.message || 'Ошибка подключения к MCP серверу', 'error');
+        } finally {
+            setIsDiscoveringMcp(false);
+        }
+    };
+
+    const handleImportMcpTools = async () => {
+        const toolsToImport = mcpDiscoveredTools.filter(t => mcpSelectedTools[t.name]);
+        if (!toolsToImport.length) {
+            toast?.('Выберите хотя бы один инструмент для импорта', 'error');
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            let headers = {};
+            if (mcpHeaders.trim()) headers = JSON.parse(mcpHeaders);
+
+            for (const t of toolsToImport) {
+                await api('/api/admin/tools/custom', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        name: t.name,
+                        type: 'MCP',
+                        description: t.description,
+                        inputSchema: t.inputSchema,
+                        config: {
+                            url: mcpUrl.trim(),
+                            originalToolName: t.name,
+                            headers
+                        },
+                        timeoutMs: 12000,
+                        enabled: true
+                    })
+                });
+            }
+            toast?.(`Успешно импортировано инструментов: ${toolsToImport.length}`);
+            setIsAddModalOpen(false);
+            setMcpDiscoveredTools([]);
+            setMcpUrl('');
+            loadTools();
+        } catch (err) {
+            toast?.(err.message, 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleCreateWebhook = async () => {
+        if (!webhookName.trim() || !webhookUrl.trim()) {
+            toast?.('Заполните имя и URL вебхука', 'error');
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            let headers = {};
+            if (webhookHeaders.trim()) headers = JSON.parse(webhookHeaders);
+            let inputSchema = {};
+            if (webhookSchema.trim()) inputSchema = JSON.parse(webhookSchema);
+
+            await api('/api/admin/tools/custom', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: webhookName.trim(),
+                    type: 'WEBHOOK',
+                    description: webhookDesc.trim() || `Пользовательский вебхук ${webhookName}`,
+                    inputSchema,
+                    config: {
+                        url: webhookUrl.trim(),
+                        method: webhookMethod,
+                        headers
+                    },
+                    timeoutMs: 10000,
+                    enabled: true
+                })
+            });
+
+            toast?.(`Вебхук-навык ${webhookName} успешно создан`);
+            setIsAddModalOpen(false);
+            setWebhookName('');
+            setWebhookUrl('');
+            setWebhookDesc('');
+            loadTools();
+        } catch (err) {
+            toast?.(err.message, 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     return (
         <div className="actions-manager-panel" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2811,12 +2957,17 @@ function ActionsManagerPanel({ toast }) {
                         <Zap size={18} /> Навыки и действия Леры (RADIANT Actions)
                     </h2>
                     <p style={{ margin: '4px 0 0', fontSize: 13, opacity: 0.7 }}>
-                        Модульные инструменты с единым контрактом и маршрутизацией через Needle Router
+                        Модульные инструменты: SYSTEM, MCP (Model Context Protocol) и кастомные Webhooks
                     </p>
                 </div>
-                <Button size="sm" onClick={loadTools} loading={loading}>
-                    <RefreshCw size={14} /> Обновить
-                </Button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <Button size="sm" variant="primary" onClick={() => setIsAddModalOpen(true)}>
+                        <Plus size={14} /> Добавить навык
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={loadTools} loading={loading}>
+                        <RefreshCw size={14} /> Обновить
+                    </Button>
+                </div>
             </div>
 
             {loading && !tools.length ? (
@@ -2825,6 +2976,14 @@ function ActionsManagerPanel({ toast }) {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
                     {tools.map(tool => {
                         const isEnabled = tool.enabled !== false;
+                        const isSystem = tool.type === 'SYSTEM';
+                        const isMcp = tool.type === 'MCP';
+                        const isWebhook = tool.type === 'WEBHOOK';
+
+                        let badgeVariant = 'primary';
+                        if (isMcp) badgeVariant = 'outline';
+                        if (isWebhook) badgeVariant = 'green';
+
                         return (
                             <Card key={tool.name} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', border: isEnabled ? '1px solid var(--border-color, #333)' : '1px dashed #555' }}>
                                 <CardHeader style={{ paddingBottom: 8 }}>
@@ -2832,15 +2991,26 @@ function ActionsManagerPanel({ toast }) {
                                         <div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                                 <strong style={{ fontSize: 16 }}>{tool.name}</strong>
-                                                <Badge variant={tool.type === 'SYSTEM' ? 'primary' : 'outline'}>{tool.type || 'SYSTEM'}</Badge>
+                                                <Badge variant={badgeVariant}>{tool.type || 'SYSTEM'}</Badge>
                                             </div>
                                             <div style={{ fontSize: 13, marginTop: 6, minHeight: 38, opacity: 0.85 }}>
                                                 {tool.description}
                                             </div>
                                         </div>
-                                        <Badge variant={isEnabled ? 'green' : 'gray'}>
-                                            {isEnabled ? 'АКТИВЕН' : 'ОТКЛЮЧЕН'}
-                                        </Badge>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <Badge variant={isEnabled ? 'green' : 'gray'}>
+                                                {isEnabled ? 'АКТИВЕН' : 'ОТКЛЮЧЕН'}
+                                            </Badge>
+                                            {!isSystem && (
+                                                <button
+                                                    onClick={() => deleteTool(tool.name)}
+                                                    style={{ background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', opacity: 0.8, padding: 4 }}
+                                                    title="Удалить навык"
+                                                >
+                                                    <Trash2 size={15} />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </CardHeader>
                                 <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -2880,6 +3050,171 @@ function ActionsManagerPanel({ toast }) {
                             </Card>
                         );
                     })}
+                </div>
+            )}
+
+            {/* Modal: Добавить навык (MCP / Webhook) */}
+            {isAddModalOpen && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.7)', zIndex: 1000,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16
+                }}>
+                    <div style={{
+                        background: 'var(--card-bg, #1a1a1a)', borderRadius: 12, border: '1px solid var(--border-color, #333)',
+                        width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 16
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ margin: 0, fontSize: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Plus size={18} /> Добавить новый навык
+                            </h3>
+                            <button onClick={() => setIsAddModalOpen(false)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', opacity: 0.7 }}>
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Переключатель табов MCP / Webhook */}
+                        <div style={{ display: 'flex', gap: 8, borderBottom: '1px solid var(--border-color, #333)', paddingBottom: 10 }}>
+                            <Button
+                                size="sm"
+                                variant={addTab === 'mcp' ? 'primary' : 'outline'}
+                                onClick={() => setAddTab('mcp')}
+                                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                            >
+                                <Server size={14} /> MCP Server (JSON-RPC)
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant={addTab === 'webhook' ? 'primary' : 'outline'}
+                                onClick={() => setAddTab('webhook')}
+                                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                            >
+                                <Globe size={14} /> Custom Webhook (HTTP)
+                            </Button>
+                        </div>
+
+                        {addTab === 'mcp' ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div>
+                                    <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>URL MCP Сервера (HTTP / SSE endpoint):</label>
+                                    <input
+                                        type="text"
+                                        placeholder="http://mcp-server:3000/sse или http://127.0.0.1:8080/mcp"
+                                        value={mcpUrl}
+                                        onChange={e => setMcpUrl(e.target.value)}
+                                        style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-color, #444)', background: 'transparent', color: 'inherit' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>Заголовки (JSON, опционально, например Authorization):</label>
+                                    <input
+                                        type="text"
+                                        placeholder='{"Authorization": "Bearer my_secret_token"}'
+                                        value={mcpHeaders}
+                                        onChange={e => setMcpHeaders(e.target.value)}
+                                        style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-color, #444)', background: 'transparent', color: 'inherit' }}
+                                    />
+                                </div>
+                                <Button size="sm" variant="secondary" onClick={handleDiscoverMcp} loading={isDiscoveringMcp}>
+                                    <Search size={14} /> Найти инструменты (tools/list)
+                                </Button>
+
+                                {mcpDiscoveredTools.length > 0 && (
+                                    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        <div style={{ fontSize: 13, fontWeight: 'bold' }}>Найденные инструменты ({mcpDiscoveredTools.length}):</div>
+                                        <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, border: '1px solid var(--border-color, #333)', padding: 8, borderRadius: 6 }}>
+                                            {mcpDiscoveredTools.map(t => (
+                                                <label key={t.name} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, cursor: 'pointer', padding: 4, background: 'rgba(255,255,255,0.03)', borderRadius: 4 }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={Boolean(mcpSelectedTools[t.name])}
+                                                        onChange={e => setMcpSelectedTools({ ...mcpSelectedTools, [t.name]: e.target.checked })}
+                                                        style={{ marginTop: 3 }}
+                                                    />
+                                                    <div>
+                                                        <strong>{t.name}</strong>
+                                                        <div style={{ fontSize: 12, opacity: 0.7 }}>{t.description}</div>
+                                                    </div>
+                                                </label>
+                                            ))}
+                                        </div>
+                                        <Button size="sm" variant="primary" onClick={handleImportMcpTools} loading={isSubmitting}>
+                                            Импортировать выбранные инструменты
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div>
+                                    <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>Имя действия (латиница, без пробелов):</label>
+                                    <input
+                                        type="text"
+                                        placeholder="currency_rate"
+                                        value={webhookName}
+                                        onChange={e => setWebhookName(e.target.value)}
+                                        style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-color, #444)', background: 'transparent', color: 'inherit' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>Описание для Needle (когда вызывать):</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Узнать курс валют ЦБ РФ или криптовалюты"
+                                        value={webhookDesc}
+                                        onChange={e => setWebhookDesc(e.target.value)}
+                                        style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-color, #444)', background: 'transparent', color: 'inherit' }}
+                                    />
+                                </div>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <div style={{ width: 100 }}>
+                                        <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>Метод:</label>
+                                        <select
+                                            value={webhookMethod}
+                                            onChange={e => setWebhookMethod(e.target.value)}
+                                            style={{ width: '100%', padding: '8px 6px', borderRadius: 6, border: '1px solid var(--border-color, #444)', background: '#222', color: 'inherit' }}
+                                        >
+                                            <option value="POST">POST</option>
+                                            <option value="GET">GET</option>
+                                            <option value="PUT">PUT</option>
+                                        </select>
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>URL Вебхука:</label>
+                                        <input
+                                            type="text"
+                                            placeholder="https://my-webhook.service/api/currency"
+                                            value={webhookUrl}
+                                            onChange={e => setWebhookUrl(e.target.value)}
+                                            style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-color, #444)', background: 'transparent', color: 'inherit' }}
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>Заголовки (JSON, опционально):</label>
+                                    <input
+                                        type="text"
+                                        placeholder='{"X-Api-Key": "secret"}'
+                                        value={webhookHeaders}
+                                        onChange={e => setWebhookHeaders(e.target.value)}
+                                        style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-color, #444)', background: 'transparent', color: 'inherit' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>JSON Schema входных аргументов:</label>
+                                    <textarea
+                                        rows={4}
+                                        value={webhookSchema}
+                                        onChange={e => setWebhookSchema(e.target.value)}
+                                        style={{ width: '100%', padding: 8, borderRadius: 6, fontFamily: 'monospace', fontSize: 12, border: '1px solid var(--border-color, #444)', background: 'rgba(0,0,0,0.3)', color: 'inherit' }}
+                                    />
+                                </div>
+                                <Button size="sm" variant="primary" onClick={handleCreateWebhook} loading={isSubmitting}>
+                                    Создать вебхук-навык
+                                </Button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 

@@ -281,6 +281,103 @@ async function runTests() {
         assert.ok(res.data.text.includes('не найдено'));
     });
 
+    // 9. SSRF Guard Tests
+    await test('SsrfGuard: validates safe public URLs and rejects invalid protocols', async () => {
+        const { SsrfGuard } = await import('../src/radiant/actions/security/ssrf_guard.js');
+        const valid = SsrfGuard.validateUrl('https://api.weather.com/v1/forecast');
+        assert.strictEqual(valid.protocol, 'https:');
+        assert.throws(() => SsrfGuard.validateUrl('ftp://example.com/file'), /Запрещенный протокол/);
+    });
+
+    await test('SsrfGuard: blocks cloud metadata IP', async () => {
+        const { SsrfGuard } = await import('../src/radiant/actions/security/ssrf_guard.js');
+        // Simulate production mode
+        const oldEnv = process.env.NODE_ENV;
+        process.env.NODE_ENV = 'production';
+        try {
+            assert.throws(() => SsrfGuard.validateUrl('http://169.254.169.254/latest/meta-data'), /заблокировано/);
+        } finally {
+            process.env.NODE_ENV = oldEnv;
+        }
+    });
+
+    // 10. MCP Client Tests (JSON-RPC tools/list and tools/call)
+    await test('McpClient: discovers tools via tools/list', async () => {
+        const { McpClient } = await import('../src/radiant/actions/adapters/mcp_client.js');
+        const originalFetch = global.fetch;
+        global.fetch = async () => ({
+            ok: true,
+            json: async () => ({
+                jsonrpc: '2.0',
+                id: 1,
+                result: {
+                    tools: [
+                        {
+                            name: 'get_crypto_price',
+                            description: 'Получить курс криптовалюты',
+                            inputSchema: { type: 'object', properties: { symbol: { type: 'string' } } }
+                        }
+                    ]
+                }
+            })
+        });
+
+        try {
+            const tools = await McpClient.discoverTools('http://fake-mcp:3000/sse');
+            assert.strictEqual(tools.length, 1);
+            assert.strictEqual(tools[0].name, 'get_crypto_price');
+            assert.strictEqual(tools[0].description, 'Получить курс криптовалюты');
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    await test('McpClient: calls tool via tools/call', async () => {
+        const { McpClient } = await import('../src/radiant/actions/adapters/mcp_client.js');
+        const originalFetch = global.fetch;
+        global.fetch = async () => ({
+            ok: true,
+            json: async () => ({
+                jsonrpc: '2.0',
+                id: 1,
+                result: {
+                    content: [{ type: 'text', text: 'BTC: $98,500' }]
+                }
+            })
+        });
+
+        try {
+            const res = await McpClient.callTool('http://fake-mcp:3000/sse', 'get_crypto_price', { symbol: 'BTC' });
+            assert.strictEqual(res.text, 'BTC: $98,500');
+            assert.strictEqual(res.isError, false);
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
+    // 11. Webhook Client Tests
+    await test('WebhookClient: executes HTTP POST and parses response', async () => {
+        const { WebhookClient } = await import('../src/radiant/actions/adapters/webhook_client.js');
+        const originalFetch = global.fetch;
+        global.fetch = async () => ({
+            ok: true,
+            headers: new Headers({ 'content-type': 'application/json' }),
+            json: async () => ({ status: 'ok', rate: 101.5 })
+        });
+
+        try {
+            const res = await WebhookClient.executeWebhook({
+                url: 'https://api.example.com/rates',
+                method: 'POST',
+                args: { currency: 'USD' }
+            });
+            assert.strictEqual(res.data.rate, 101.5);
+            assert.strictEqual(res.status, 200);
+        } finally {
+            global.fetch = originalFetch;
+        }
+    });
+
     console.log(`\n--- TEST RESULTS: ${passed} passed, ${failed} failed ---`);
     if (failed > 0) {
         process.exit(1);

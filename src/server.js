@@ -1389,6 +1389,47 @@ export function startAdminServer() {
         }
     });
 
+    app.post('/api/admin/tools/mcp/discover', async (req, res) => {
+        try {
+            const { endpoint, headers = {} } = req.body || {};
+            if (!endpoint) {
+                return res.status(400).json({ error: 'URL MCP сервера обязателен' });
+            }
+            const { McpClient } = await import('./radiant/actions/adapters/mcp_client.js');
+            const tools = await McpClient.discoverTools(endpoint, headers);
+            res.json({ success: true, tools });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/tools/custom', async (req, res) => {
+        try {
+            const { name, type, description, inputSchema, config, timeoutMs, enabled } = req.body || {};
+            const created = await ToolsRepository.createCustomTool({
+                name,
+                type,
+                description,
+                inputSchema,
+                config,
+                timeoutMs,
+                enabled
+            });
+            res.json({ success: true, tool: created });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.delete('/api/admin/tools/:name', async (req, res) => {
+        try {
+            const result = await ToolsRepository.deleteCustomTool(req.params.name);
+            res.json({ success: true, ...result });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.patch('/api/admin/tools/:name', async (req, res) => {
         try {
             const updated = await ToolsRepository.updateTool(req.params.name, req.body || {});
