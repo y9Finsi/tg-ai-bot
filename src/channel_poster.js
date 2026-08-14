@@ -7,7 +7,8 @@ import {
     getLeraProfile,
     getLeraProfileProjection,
     getRandomChannelContent,
-    getLeraContent
+    getLeraContent,
+    getChannelSubscriberCount
 } from './database.js';
 import { getOpenAIClientAndModel } from './ai.js';
 import { getCachedOpenAIClient, logLlmTrace } from './ai/llm_client.js';
@@ -122,7 +123,12 @@ export async function generateChannelPostDraft(overrideSettings = null) {
         }
     }
     const messagesCount = '1';
-    const publicFacts = settings.public_facts_enabled ? (settings.public_facts || []) : [];
+    let publicFacts = settings.public_facts_enabled ? (settings.public_facts || []) : [];
+    const subscribers = await getChannelSubscriberCount().catch(() => null);
+    if (subscribers !== null && subscribers !== undefined) {
+        publicFacts = publicFacts.filter(f => !/подписчик/i.test(f));
+        publicFacts.push(`В Telegram-канале Леры сейчас ${subscribers} подписчиков`);
+    }
     const baseProvenance = safeProvenance({
         topic, timeOfDay, messagesCount,
         settings: { ...settings, public_facts: publicFacts, profile_version: profile.version },
@@ -220,7 +226,12 @@ export async function publishChannelDraft(bot, { text, topic, provenance = {}, m
     if (!cleanedText || cleanedText.length > 4000) throw new Error('Черновик пустой или слишком длинный.');
     const profile = await getLeraProfile();
     const recentPosts = await getChannelPostHistory(5);
-    const publicFacts = settings.public_facts_enabled ? (settings.public_facts || []) : [];
+    let publicFacts = settings.public_facts_enabled ? (settings.public_facts || []) : [];
+    const subscribers = await getChannelSubscriberCount(bot).catch(() => null);
+    if (subscribers !== null && subscribers !== undefined) {
+        publicFacts = publicFacts.filter(f => !/подписчик/i.test(f));
+        publicFacts.push(`В Telegram-канале Леры сейчас ${subscribers} подписчиков`);
+    }
     const judge = await judgeChannelText({ text: cleanedText, topic, publicFacts, recentPosts, profile, settings });
     if (judge.passed === false && settings.judge_mode === 'ENFORCE') {
         const rejectedProvenance = {

@@ -1752,6 +1752,47 @@ export async function deleteChannelPostLog(id) {
     return result.rows[0] || null;
 }
 
+let cachedSubscriberCount = null;
+let lastSubscriberFetchTime = 0;
+const SUBSCRIBER_CACHE_TTL_MS = 3 * 60 * 1000;
+
+export async function getChannelSubscriberCount(bot = null) {
+    if (cachedSubscriberCount !== null && Date.now() - lastSubscriberFetchTime < SUBSCRIBER_CACHE_TTL_MS) {
+        return cachedSubscriberCount;
+    }
+
+    try {
+        const settings = await getChannelPosterSettings();
+        const channelId = String(settings.channel_id || '').trim();
+        if (!channelId) return cachedSubscriberCount;
+
+        if (bot?.telegram?.getChatMemberCount) {
+            const count = await bot.telegram.getChatMemberCount(channelId);
+            if (Number.isFinite(count) && count >= 0) {
+                cachedSubscriberCount = count;
+                lastSubscriberFetchTime = Date.now();
+                return count;
+            }
+        }
+
+        const token = process.env.BOT_TOKEN;
+        if (token) {
+            const res = await fetch(`https://api.telegram.org/bot${token}/getChatMemberCount?chat_id=${encodeURIComponent(channelId)}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.ok && Number.isFinite(data.result)) {
+                    cachedSubscriberCount = data.result;
+                    lastSubscriberFetchTime = Date.now();
+                    return data.result;
+                }
+            }
+        }
+    } catch (err) {
+        console.warn('[CHANNEL STATS] Ошибка получения подписчиков канала:', err.message);
+    }
+    return cachedSubscriberCount;
+}
+
 export const DEFAULT_LERA_PROFILE = Object.freeze({
     age_bio: 'Лере 19 лет. Она из Санкт-Петербурга, учится на 2 курсе СПбГИК и подрабатывает в SMM, хорошо разбирается во frontend и программировании.',
     character: 'Живая, тёплая, немного рассеянная, иногда вредная и дерзкая. Наблюдательная, с самоиронией.',
