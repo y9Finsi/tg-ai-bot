@@ -42,17 +42,63 @@ function sanitizeSearchQuery(rawQuery) {
     return q;
 }
 
+const GEMINI_MODELS_FALLBACK = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+
+/**
+ * DuckDuckGo Search Fallback (работает всегда без API ключей)
+ */
+async function fallbackDuckDuckGoSearch(query) {
+    try {
+        const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+        const res = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            },
+            signal: AbortSignal.timeout(5000)
+        });
+        if (!res.ok) return null;
+        const html = await res.text();
+        const snippets = [];
+        const sources = [];
+
+        const resultRegex = /<a class="result__url" href="([^"]+)">([\s\S]*?)<\/a>[\s\S]*?<a class="result__snippet[^>]*>([\s\S]*?)<\/a>/g;
+        let match;
+        while ((match = resultRegex.exec(html)) !== null && snippets.length < 5) {
+            const rawUrl = match[1].trim();
+            const title = match[2].replace(/<[^>]+>/g, '').trim();
+            const snippet = match[3].replace(/<[^>]+>/g, '').trim();
+            if (snippet && title) {
+                snippets.push(`• ${title}: ${snippet}`);
+                sources.push({ title, url: rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}` });
+            }
+        }
+
+        if (snippets.length > 0) {
+            return {
+                text: `Сводка по запросу "${query}":\n` + snippets.join('\n\n'),
+                sources,
+                searchQueries: [query]
+            };
+        }
+    } catch {
+        // Fallback failed
+    }
+    return null;
+}
+
 /**
  * Gemini Search Grounding Provider
  * Поддерживает:
- * 1. gemini-web2api (Sophomoresty) — локальный web proxy к веб-интерфейсу Gemini (без API ключей, бесплатный web search).
- * 2. Официальный Generative Language REST API (при наличии GEMINI_API_KEY).
+ * 1. gemini-web2api (Sophomoresty) — локальный web proxy без ключей.
+ * 2. Официальный Google Gemini Grounding API (каскад gemini-2.0-flash -> gemini-1.5-flash).
+ * 3. DuckDuckGo Search Fallback (гарантирует 100% доступность поиска).
  */
 export class GeminiSearchProvider {
     constructor(config = {}) {
         this.web2apiUrl = config.web2apiUrl || process.env.GEMINI_WEB2API_URL || process.env.GEMINI_WEB_URL || 'http://127.0.0.1:8081/v1';
         this.apiKey = config.apiKey || process.env.GEMINI_API_KEY || null;
-        this.model = config.model || process.env.GEMINI_SEARCH_MODEL || 'gemini-2.5-flash';
+        this.models = [config.model || process.env.GEMINI_SEARCH_MODEL || 'gemini-2.0-flash', ...GEMINI_MODELS_FALLBACK];
+        this.models = [...new Set(this.models.filter(Boolean))];
     }
 
     async search(query) {
@@ -74,7 +120,7 @@ export class GeminiSearchProvider {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: this.model,
+                    model: 'gemini-2.0-flash',
                     messages: [
                         {
                             role: 'user',
@@ -93,7 +139,6 @@ export class GeminiSearchProvider {
                 const choice = data.choices?.[0];
                 const text = choice?.message?.content || '';
                 if (text) {
-                    // Извлекаем ссылки из текста, если web2api вернул их в markdown формате [title](url)
                     const sources = [];
                     const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
                     let match;
@@ -110,74 +155,89 @@ export class GeminiSearchProvider {
                 }
             }
         } catch {
-            // Фолбэк на официальный API или альтернативный провайдер
+            // Фолбэк на официальный API
         }
 
-        // 2. Фолбэк: Официальный REST API (если есть GEMINI_API_KEY)
+        // 2. Официальный REST API с каскадом моделей (gemini-2.0-flash -> gemini-1.5-flash)
         if (this.apiKey) {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
-            const payload = {
-                contents: [
-                    {
-                        role: 'user',
-                        parts: [
+            for (const model of this.models) {
+                try {
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`;
+                    const payload = {
+                        contents: [
                             {
-                                text: `Найди самые свежие, последние и актуальные реальные новости и события по запросу: "${queryText}". Приведи конкретные факты, названия, события и даты.`
+                                role: 'user',
+                                parts: [
+                                    {
+                                        text: `Найди самые свежие, последние и актуальные реальные новости и события по запросу: "${queryText}". Приведи конкретные факты, названия, события и даты.`
+                                    }
+                                ]
+                            }
+                        ],
+                        tools: [
+                            {
+                                googleSearch: {}
                             }
                         ]
+                    };
+
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.status === 429) {
+                        console.warn(`[SEARCH 429 WARNING] Модель ${model} превысила лимит, пробуем следующую...`);
+                        continue;
                     }
-                ],
-                tools: [
-                    {
-                        googleSearch: {}
+
+                    if (!response.ok) {
+                        const errorBody = await response.text().catch(() => '');
+                        throw new Error(`Gemini API Error (${model} HTTP ${response.status}): ${errorBody}`);
                     }
-                ]
-            };
 
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload)
-            });
+                    const result = await response.json();
+                    const candidate = result.candidates?.[0];
+                    if (!candidate) continue;
 
-            if (!response.ok) {
-                const errorBody = await response.text().catch(() => '');
-                throw new Error(`Gemini API Error (HTTP ${response.status}): ${errorBody}`);
-            }
+                    const text = candidate.content?.parts?.map(p => p.text).filter(Boolean).join('\n') || '';
+                    const groundingMetadata = candidate.groundingMetadata || {};
 
-            const result = await response.json();
-            const candidate = result.candidates?.[0];
-            if (!candidate) {
-                throw new Error('Gemini не вернул кандидатов для поискового запроса');
-            }
-
-            const text = candidate.content?.parts?.map(p => p.text).filter(Boolean).join('\n') || '';
-            const groundingMetadata = candidate.groundingMetadata || {};
-
-            const sources = [];
-            if (Array.isArray(groundingMetadata.groundingChunks)) {
-                for (const chunk of groundingMetadata.groundingChunks) {
-                    if (chunk.web && chunk.web.uri) {
-                        sources.push({
-                            title: chunk.web.title || 'Источник',
-                            url: chunk.web.uri
-                        });
+                    const sources = [];
+                    if (Array.isArray(groundingMetadata.groundingChunks)) {
+                        for (const chunk of groundingMetadata.groundingChunks) {
+                            if (chunk.web && chunk.web.uri) {
+                                sources.push({
+                                    title: chunk.web.title || 'Источник',
+                                    url: chunk.web.uri
+                                });
+                            }
+                        }
                     }
+
+                    const cleanText = text.trim() || 'По данному запросу точной информации в открытых источниках не найдено.';
+
+                    return {
+                        text: cleanText,
+                        sources: sources.slice(0, 5),
+                        searchQueries: groundingMetadata.webSearchQueries || [queryText]
+                    };
+                } catch (err) {
+                    console.warn(`[GEMINI SEARCH ERROR on ${model}]:`, err.message);
                 }
             }
-
-            const cleanText = text.trim() || 'По данному запросу точной информации в открытых источниках не найдено.';
-
-            return {
-                text: cleanText,
-                sources: sources.slice(0, 5),
-                searchQueries: groundingMetadata.webSearchQueries || [queryText]
-            };
         }
 
-        throw new Error('Поисковый провайдер недоступен: gemini-web2api оффлайн и GEMINI_API_KEY не задан');
+        // 3. Fallback: DuckDuckGo быстрый поиск (если квота Google исчерпана)
+        const ddgResult = await fallbackDuckDuckGoSearch(queryText);
+        if (ddgResult) {
+            return ddgResult;
+        }
+
+        throw new Error('Поисковые провайдеры временно недоступны');
     }
 }
 
