@@ -98,7 +98,8 @@ export async function showProfile(ctx, userState, themeConfig = {}) {
                 `Напряжение: ${relDisplay.irritation}% <code>[${relDisplay.bars.irritation}]</code>\n` +
                 `Статус: <b>${relDisplay.status}</b>\n\n` +
                 `✉️ Сообщений: <b>${freeMode ? 'Безлимит 🔥' : (user.free_requests_left ?? 0)}</b>\n` +
-                `📸 Фото: <b>${user.image_balance ?? 0}</b>`;
+                `📸 Фото: <b>${user.image_balance ?? 0}</b>\n` +
+                `🎙️ Голосовых: <b>${user.voice_balance ?? 0}</b>`;
 
     const kb = Markup.inlineKeyboard([
         [Markup.button.callback('⭐️ Пополнить баланс', 'trigger_buy')],

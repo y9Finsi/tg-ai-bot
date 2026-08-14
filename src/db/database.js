@@ -102,6 +102,7 @@ export async function initDatabaseTables() {
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_requests_left INT DEFAULT 10;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS image_balance INT DEFAULT 0;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS voice_balance INT DEFAULT 0;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN DEFAULT FALSE;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS current_prompt TEXT;",
@@ -1001,8 +1002,16 @@ export async function reserveImageRequest(userId) {
     return res.rows[0] || null;
 }
 
+export async function reserveVoiceRequest(userId) {
+    const res = await query(`UPDATE users SET voice_balance = voice_balance - 1
+        WHERE telegram_id = $1 AND voice_balance > 0 RETURNING voice_balance`, [userId]);
+    return res.rows[0] || null;
+}
+
 export async function refundReservedRequest(userId, resource) {
-    const column = resource === 'image' ? 'image_balance' : 'free_requests_left';
+    let column = 'free_requests_left';
+    if (resource === 'image') column = 'image_balance';
+    else if (resource === 'voice') column = 'voice_balance';
     const res = await query(`UPDATE users SET ${column} = ${column} + 1 WHERE telegram_id = $1 RETURNING *`, [userId]);
     return res.rows[0] || null;
 }
@@ -1016,6 +1025,17 @@ export async function decrementImageBalance(userId) {
         [userId]
     );
     return res.rows[0]?.image_balance ?? 0;
+}
+
+export async function decrementVoiceBalance(userId) {
+    const res = await query(
+        `UPDATE users 
+         SET voice_balance = GREATEST(0, voice_balance - 1) 
+         WHERE telegram_id = $1 
+         RETURNING voice_balance`,
+        [userId]
+    );
+    return res.rows[0]?.voice_balance ?? 0;
 }
 
 export async function addApiCost(userId, cost) {
@@ -1195,6 +1215,14 @@ export async function adminSetTextBalance(userId, balance) {
 export async function adminSetImageBalance(userId, balance) {
     const res = await query(
         'UPDATE users SET image_balance = $1 WHERE telegram_id = $2 RETURNING *',
+        [balance, userId]
+    );
+    return res.rows[0];
+}
+
+export async function adminSetVoiceBalance(userId, balance) {
+    const res = await query(
+        'UPDATE users SET voice_balance = $1 WHERE telegram_id = $2 RETURNING *',
         [balance, userId]
     );
     return res.rows[0];
@@ -1630,7 +1658,7 @@ export async function getImageGenerationSettings() {
     ] = await Promise.all([
         getSetting('image_provider_id', ''),
         getSetting('image_model', 'gemini-2.5-flash'),
-        getSetting('image_style_prompt', 'Realistic candid photo of Lera, a 19-year-old Russian student girl from Saint Petersburg, natural lighting, authentic skin texture, casual cute outfit, subtle film grain, amateur iPhone selfie style, strictly preserving the face, haircut and identity from the reference photo.'),
+        getSetting('image_style_prompt', 'Candid authentic amateur photo of Lera, a 19-year-old Russian student girl from Saint Petersburg. Appearance: fair skin with natural freckles across cheeks and nose bridge, distinct grey-green almond-shaped eyes with subtle thin winged eyeliner, soft natural brows, full natural lips. Shoulder-length messy textured dirty-blonde hair with wispy curtain bangs framing her face. Vibe & Aesthetic: cute, natural, expressive, genuine real-life iPhone camera photo, natural skin texture with subtle pores, warm ambient lighting, filmic grain, no CGI, no 3D render, no plastic AI smoothing.'),
         getSetting('image_master_reference_dataurl', ''),
         getSetting('image_auto_channel', 'true'),
         getSetting('image_auto_save_catalog', 'true')
@@ -1662,6 +1690,51 @@ export async function saveImageGenerationSettings(settings = {}) {
     if (settings.auto_generate_channel !== undefined) await setSetting('image_auto_channel', settings.auto_generate_channel ? 'true' : 'false');
     if (settings.auto_save_catalog !== undefined) await setSetting('image_auto_save_catalog', settings.auto_save_catalog ? 'true' : 'false');
     return getImageGenerationSettings();
+}
+
+export async function getVoiceGenerationSettings() {
+    const [
+        providerId,
+        model,
+        voice,
+        promptText,
+        audioSampleDataUrl,
+        voiceEnabled
+    ] = await Promise.all([
+        getSetting('voice_provider_id', ''),
+        getSetting('voice_model', 'cosyvoice3'),
+        getSetting('voice_name', 'female'),
+        getSetting('voice_prompt_text', ''),
+        getSetting('voice_audio_sample_dataurl', ''),
+        getSetting('voice_enabled', 'true')
+    ]);
+
+    return {
+        provider_id: providerId ? Number(providerId) : null,
+        model: model || 'cosyvoice3',
+        voice: voice || 'female',
+        prompt_text: promptText || '',
+        audio_sample_dataurl: audioSampleDataUrl || null,
+        master_reference_dataurl: audioSampleDataUrl || null,
+        auto_voice_messages: voiceEnabled === 'true',
+        voice_enabled: voiceEnabled === 'true'
+    };
+}
+
+export async function saveVoiceGenerationSettings(settings = {}) {
+    if (settings.provider_id !== undefined) await setSetting('voice_provider_id', settings.provider_id ? String(settings.provider_id) : '');
+    if (settings.model !== undefined) await setSetting('voice_model', String(settings.model || 'cosyvoice3'));
+    if (settings.voice !== undefined) await setSetting('voice_name', String(settings.voice || 'female'));
+    if (settings.prompt_text !== undefined) await setSetting('voice_prompt_text', String(settings.prompt_text || ''));
+    if (settings.audio_sample_dataurl !== undefined || settings.master_reference_dataurl !== undefined) {
+        const sampleUrl = settings.audio_sample_dataurl !== undefined ? settings.audio_sample_dataurl : settings.master_reference_dataurl;
+        await setSetting('voice_audio_sample_dataurl', String(sampleUrl || ''));
+    }
+    if (settings.auto_voice_messages !== undefined || settings.voice_enabled !== undefined) {
+        const enabled = settings.auto_voice_messages !== undefined ? settings.auto_voice_messages : settings.voice_enabled;
+        await setSetting('voice_enabled', enabled ? 'true' : 'false');
+    }
+    return getVoiceGenerationSettings();
 }
 
 export async function getActiveAiProvider() {
