@@ -58,7 +58,55 @@ export class ContextBuilder {
 
     static async buildTelegramContextDetailed(userId, options = {}) {
         const snapshot = await this.buildSnapshot({ ...(options.overrides || {}), userId });
-        return { text: this.toPrompt(snapshot), analysis: this.toAnalysis(snapshot), layers: { physics: { needs: snapshot.state.needs, physiology: snapshot.state.physiology, active_modifiers: snapshot.state.active_modifiers || [], mood: snapshot.mood }, location: snapshot.location, active_task: snapshot.activeTask, transit: snapshot.transit, weather: snapshot.weather, willingness: snapshot.willingness, outfit: this.describeOutfit(snapshot.inventory, snapshot.activeTask), factual_events: snapshot.facts, observer_digests: snapshot.observerDigests, commitments: snapshot.commitments, missed_commitments: snapshot.missedCommitments, user: snapshot.user, relationship: snapshot.relationship } };
+        const actionPrompt = options.actionResult ? this.formatActionResultPrompt(options.actionResult) : '';
+        const baseText = this.toPrompt(snapshot);
+        const fullText = actionPrompt ? `${baseText}\n\n${actionPrompt}` : baseText;
+        return {
+            text: fullText,
+            analysis: this.toAnalysis(snapshot),
+            actionResultPrompt: actionPrompt,
+            layers: {
+                physics: { needs: snapshot.state.needs, physiology: snapshot.state.physiology, active_modifiers: snapshot.state.active_modifiers || [], mood: snapshot.mood },
+                location: snapshot.location,
+                active_task: snapshot.activeTask,
+                transit: snapshot.transit,
+                weather: snapshot.weather,
+                willingness: snapshot.willingness,
+                outfit: this.describeOutfit(snapshot.inventory, snapshot.activeTask),
+                factual_events: snapshot.facts,
+                observer_digests: snapshot.observerDigests,
+                commitments: snapshot.commitments,
+                missed_commitments: snapshot.missedCommitments,
+                user: snapshot.user,
+                relationship: snapshot.relationship,
+                actionResult: options.actionResult || null
+            }
+        };
+    }
+
+    static formatActionResultPrompt(actionResult) {
+        if (!actionResult || typeof actionResult !== 'object') return '';
+        if (actionResult.status === 'error') {
+            return `=== ⚡ ВНЕШНЕЕ ДЕЙСТВИЕ (ОШИБКА) ===\nДействие: ${actionResult.action}\nСтатус: ошибка (${actionResult.error?.message || 'сбой выполнения'})\n(Действие не удалось, отвечай обычным образом без технических подробностей).`;
+        }
+
+        const data = actionResult.data || {};
+        let textContent = '';
+        if (typeof data === 'string') {
+            textContent = data;
+        } else if (data.text) {
+            textContent = data.text;
+        } else {
+            textContent = JSON.stringify(data, null, 2);
+        }
+
+        let sourcesText = '';
+        if (Array.isArray(data.sources) && data.sources.length > 0) {
+            const sourceLines = data.sources.slice(0, 5).map(s => `- ${s.title}: ${s.url}`).join('\n');
+            sourcesText = `\nИсточники:\n${sourceLines}`;
+        }
+
+        return `=== ⚡ АКТУАЛЬНЫЕ ДАННЫЕ (ACTION RESULT) ===\nДействие: ${actionResult.action}\nДанные:\n${textContent}${sourcesText}\n(Используй эту информацию органично в своей реплике, сохраняя тон и характер Леры).`;
     }
 
     static async buildTelegramContext(userId, options = {}) { return (await this.buildTelegramContextDetailed(userId, options)).text; }

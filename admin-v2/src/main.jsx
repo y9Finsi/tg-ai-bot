@@ -2702,14 +2702,290 @@ function CommentsPromptStudioPanel({ toast }) {
     );
 }
 
+function ActionsManagerPanel({ toast }) {
+    const [tools, setTools] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [testingTool, setTestingTool] = useState(null);
+    const [testArgs, setTestArgs] = useState('{}');
+    const [testResult, setTestResult] = useState(null);
+    const [testLoading, setTestLoading] = useState(false);
+    const [editingTimeouts, setEditingTimeouts] = useState({});
+
+    const loadTools = async () => {
+        setLoading(true);
+        try {
+            const data = await api('/api/admin/tools');
+            if (data && data.tools) {
+                setTools(data.tools);
+                const timeouts = {};
+                data.tools.forEach(t => { timeouts[t.name] = t.timeoutMs || 10000; });
+                setEditingTimeouts(timeouts);
+            }
+        } catch (err) {
+            toast?.(err.message || 'Ошибка загрузки навыков', 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadTools();
+    }, []);
+
+    const toggleTool = async (name) => {
+        try {
+            const res = await api(`/api/admin/tools/${name}/toggle`, { method: 'POST' });
+            if (res?.tool) {
+                setTools(prev => prev.map(t => t.name === name ? res.tool : t));
+                toast?.(`Навык ${name} ${res.tool.enabled ? 'включен' : 'выключен'}`);
+            }
+        } catch (err) {
+            toast?.(err.message, 'error');
+        }
+    };
+
+    const saveTimeout = async (name) => {
+        const timeoutMs = Number(editingTimeouts[name]);
+        if (!timeoutMs || timeoutMs < 500) {
+            toast?.('Таймаут должен быть не менее 500 мс', 'error');
+            return;
+        }
+        try {
+            const res = await api(`/api/admin/tools/${name}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ timeoutMs })
+            });
+            if (res?.tool) {
+                setTools(prev => prev.map(t => t.name === name ? res.tool : t));
+                toast?.(`Таймаут для ${name} обновлен (${timeoutMs} мс)`);
+            }
+        } catch (err) {
+            toast?.(err.message, 'error');
+        }
+    };
+
+    const openTestModal = (tool) => {
+        setTestingTool(tool);
+        setTestResult(null);
+        let defaultArgs = {};
+        if (tool.name === 'web_search') defaultArgs = { query: 'Севкабель Порт события' };
+        else if (tool.name === 'weather') defaultArgs = { city: 'Санкт-Петербург' };
+        else if (tool.name === 'spb_places') defaultArgs = { query: 'Слой' };
+        else if (tool.inputSchema?.properties) {
+            Object.keys(tool.inputSchema.properties).forEach(k => { defaultArgs[k] = ''; });
+        }
+        setTestArgs(JSON.stringify(defaultArgs, null, 2));
+    };
+
+    const runTest = async () => {
+        if (!testingTool) return;
+        setTestLoading(true);
+        setTestResult(null);
+        let parsedArgs = {};
+        try {
+            parsedArgs = JSON.parse(testArgs);
+        } catch {
+            toast?.('Невалидный JSON аргументов', 'error');
+            setTestLoading(false);
+            return;
+        }
+
+        try {
+            const data = await api(`/api/admin/tools/${testingTool.name}/test`, {
+                method: 'POST',
+                body: JSON.stringify({ args: parsedArgs })
+            });
+            setTestResult(data?.result || null);
+        } catch (err) {
+            toast?.(err.message, 'error');
+        } finally {
+            setTestLoading(false);
+        }
+    };
+
+    return (
+        <div className="actions-manager-panel" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                    <h2 style={{ fontSize: 18, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Zap size={18} /> Навыки и действия Леры (RADIANT Actions)
+                    </h2>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, opacity: 0.7 }}>
+                        Модульные инструменты с единым контрактом и маршрутизацией через Needle Router
+                    </p>
+                </div>
+                <Button size="sm" onClick={loadTools} loading={loading}>
+                    <RefreshCw size={14} /> Обновить
+                </Button>
+            </div>
+
+            {loading && !tools.length ? (
+                <div style={{ padding: 32, textAlign: 'center', opacity: 0.6 }}>Загрузка навыков…</div>
+            ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+                    {tools.map(tool => {
+                        const isEnabled = tool.enabled !== false;
+                        return (
+                            <Card key={tool.name} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', border: isEnabled ? '1px solid var(--border-color, #333)' : '1px dashed #555' }}>
+                                <CardHeader style={{ paddingBottom: 8 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <strong style={{ fontSize: 16 }}>{tool.name}</strong>
+                                                <Badge variant={tool.type === 'SYSTEM' ? 'primary' : 'outline'}>{tool.type || 'SYSTEM'}</Badge>
+                                            </div>
+                                            <div style={{ fontSize: 13, marginTop: 6, minHeight: 38, opacity: 0.85 }}>
+                                                {tool.description}
+                                            </div>
+                                        </div>
+                                        <Badge variant={isEnabled ? 'green' : 'gray'}>
+                                            {isEnabled ? 'АКТИВЕН' : 'ОТКЛЮЧЕН'}
+                                        </Badge>
+                                    </div>
+                                </CardHeader>
+                                <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                                        <Clock size={14} style={{ opacity: 0.6 }} />
+                                        <span>Таймаут (мс):</span>
+                                        <input
+                                            type="number"
+                                            value={editingTimeouts[tool.name] ?? tool.timeoutMs ?? 10000}
+                                            onChange={e => setEditingTimeouts({ ...editingTimeouts, [tool.name]: e.target.value })}
+                                            style={{ width: 80, padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border-color, #444)', background: 'transparent', color: 'inherit' }}
+                                        />
+                                        <Button size="xs" variant="outline" onClick={() => saveTimeout(tool.name)}>
+                                            Сохранить
+                                        </Button>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                                        <Button
+                                            size="sm"
+                                            variant={isEnabled ? 'outline' : 'primary'}
+                                            onClick={() => toggleTool(tool.name)}
+                                            style={{ flex: 1 }}
+                                        >
+                                            {isEnabled ? 'Выключить' : 'Включить'}
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="secondary"
+                                            onClick={() => openTestModal(tool)}
+                                            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                                        >
+                                            <Play size={13} /> Тестировать
+                                        </Button>
+                                    </div>
+                                </div>
+                            </Card>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* Test Modal / Dialog */}
+            {testingTool && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.7)', zIndex: 1000,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16
+                }}>
+                    <div style={{
+                        background: 'var(--card-bg, #1a1a1a)', borderRadius: 12, border: '1px solid var(--border-color, #333)',
+                        width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 16
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ margin: 0, fontSize: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Play size={16} /> Тест навыка: <code>{testingTool.name}</code>
+                            </h3>
+                            <button onClick={() => setTestingTool(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', opacity: 0.7 }}>
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div>
+                            <div style={{ fontSize: 13, marginBottom: 6, opacity: 0.8 }}>Входные аргументы (JSON):</div>
+                            <textarea
+                                value={testArgs}
+                                onChange={e => setTestArgs(e.target.value)}
+                                rows={4}
+                                style={{
+                                    width: '100%', padding: 10, borderRadius: 6,
+                                    fontFamily: 'monospace', fontSize: 13, background: 'rgba(0,0,0,0.3)',
+                                    border: '1px solid var(--border-color, #444)', color: 'inherit', resize: 'vertical'
+                                }}
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                            <Button variant="outline" onClick={() => setTestingTool(null)}>Закрыть</Button>
+                            <Button variant="primary" loading={testLoading} onClick={runTest}>
+                                <Play size={14} /> Выполнить действие
+                            </Button>
+                        </div>
+
+                        {testResult && (
+                            <div style={{
+                                marginTop: 8, padding: 14, borderRadius: 8,
+                                background: testResult.status === 'success' ? 'rgba(46, 204, 113, 0.1)' : 'rgba(231, 76, 60, 0.1)',
+                                border: `1px solid ${testResult.status === 'success' ? '#2ecc71' : '#e74c3c'}`
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                    <Badge variant={testResult.status === 'success' ? 'green' : 'red'}>
+                                        {testResult.status === 'success' ? 'SUCCESS' : 'ERROR'}
+                                    </Badge>
+                                    <span style={{ fontSize: 12, opacity: 0.7 }}>
+                                        {testResult.meta?.durationMs || 0} мс {testResult.meta?.cached ? '• КЭШ' : ''}
+                                    </span>
+                                </div>
+
+                                {testResult.error ? (
+                                    <div style={{ color: '#e74c3c', fontSize: 13 }}>
+                                        <strong>{testResult.error.code}:</strong> {testResult.error.message}
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        <div style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>
+                                            {typeof testResult.data === 'string' ? testResult.data : testResult.data?.text || JSON.stringify(testResult.data, null, 2)}
+                                        </div>
+                                        {Array.isArray(testResult.data?.sources) && testResult.data.sources.length > 0 && (
+                                            <div style={{ fontSize: 12, opacity: 0.85, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 6 }}>
+                                                <strong>Источники:</strong>
+                                                <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                                                    {testResult.data.sources.map((s, i) => (
+                                                        <li key={i}><a href={s.url} target="_blank" rel="noreferrer" style={{ color: '#3498db' }}>{s.title || s.url}</a></li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                <details style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+                                    <summary style={{ cursor: 'pointer' }}>Показать полный JSON ответ</summary>
+                                    <pre style={{ margin: '6px 0 0', padding: 8, background: 'rgba(0,0,0,0.4)', borderRadius: 4, overflowX: 'auto' }}>
+                                        {JSON.stringify(testResult, null, 2)}
+                                    </pre>
+                                </details>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 function AiSandboxPromptStudio({ toast }) {
     return <Tabs.Root className="llm-super-panel studio-area-tabs" defaultValue="sandbox">
         <Tabs.List className="studio-area-tablist" aria-label="Рабочая зона AI">
             <Tabs.Trigger value="sandbox"><WandSparkles size={15} />Тест ответов и публикация (DM)</Tabs.Trigger>
+            <Tabs.Trigger value="actions"><Zap size={15} />Навыки Леры (Actions)</Tabs.Trigger>
             <Tabs.Trigger value="comments"><MessageSquare size={15} />Комменты ТГК</Tabs.Trigger>
             <Tabs.Trigger value="production"><ShieldAlert size={15} />Система: провайдеры и правила</Tabs.Trigger>
         </Tabs.List>
         <Tabs.Content value="sandbox"><SandboxPanel toast={toast} /></Tabs.Content>
+        <Tabs.Content value="actions"><ActionsManagerPanel toast={toast} /></Tabs.Content>
         <Tabs.Content value="comments"><CommentsPromptStudioPanel toast={toast} /></Tabs.Content>
         <Tabs.Content value="production"><LlmSettingsPanel toast={toast} /></Tabs.Content>
     </Tabs.Root>;

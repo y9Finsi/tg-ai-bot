@@ -11,6 +11,8 @@ import { coordinateAtProgress } from './radiant/world_map.js';
 import { MemorySummarizer } from './memory/summarizer.js';
 import { ContextBuilder } from './ai/context_builder.js';
 import { generateLeraVoice } from './services/voice_generator.js';
+import { ToolsRepository } from './db/tools_repository.js';
+import { executeAction } from './radiant/actions/index.js';
 import {
     getAdminStats,
     getAiProviders,
@@ -213,6 +215,11 @@ export function startAdminServer() {
     const app = express();
     const PORT = process.env.ADMIN_PORT || 3000;
     const ADMIN_KEY = process.env.ADMIN_WEB_KEY;
+
+    // Синхронизация сохранённых настроек навыков (Actions) из БД
+    ToolsRepository.syncRegistryFromDb().catch(err => {
+        console.error('⚠️ [TOOLS SYNC ERROR]:', err.message);
+    });
     const withTimeout = (promise, ms = 2000) => Promise.race([
         promise,
         new Promise((_, reject) => setTimeout(() => reject(new Error(`Операция превысила ${ms} мс`)), ms))
@@ -1367,6 +1374,48 @@ export function startAdminServer() {
             if (!userId) return res.status(400).json({ error: 'ADMIN_ID не задан' });
             await enqueueTestInitiative(userId);
             res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // --- RADIANT ACTIONS (НАВЫКИ ЛЕРЫ) API ---
+    app.get('/api/admin/tools', async (req, res) => {
+        try {
+            const tools = await ToolsRepository.getTools();
+            res.json({ success: true, tools });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.patch('/api/admin/tools/:name', async (req, res) => {
+        try {
+            const updated = await ToolsRepository.updateTool(req.params.name, req.body || {});
+            res.json({ success: true, tool: updated });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/tools/:name/toggle', async (req, res) => {
+        try {
+            const updated = await ToolsRepository.toggleTool(req.params.name);
+            res.json({ success: true, tool: updated });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/tools/:name/test', async (req, res) => {
+        try {
+            const { args = {}, context = {} } = req.body || {};
+            const result = await executeAction({
+                name: req.params.name,
+                args,
+                context
+            });
+            res.json({ success: true, result });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }

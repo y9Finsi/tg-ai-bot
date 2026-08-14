@@ -20,6 +20,7 @@ import { judgeLeraReply } from './ai/response_judge.js';
 import { cleanResponseText } from './utils/response_text.js';
 import { generateLeraPhoto } from './services/image_generator.js';
 import { generateLeraVoice } from './services/voice_generator.js';
+import { actionRouter } from './radiant/actions/index.js';
 // --- 1. КОНСТАНТЫ И ДИНАМИЧЕСКИЙ КЛИЕНТ ИИ ---
 
 const rateLimitMap = new Map();
@@ -263,7 +264,7 @@ async function generateVoiceForText(user, voiceText) {
 
 // --- 3. ПАЙПЛАЙН AI ДВИЖКА ---
 
-async function buildMessagePayload(user, userId, { userText, photoUrls = [], isInitiative, routingMode = 'CASUAL', initiativeReason = null, initiativeKind = null, contentCandidates = [], batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null }) {
+async function buildMessagePayload(user, userId, { userText, photoUrls = [], isInitiative, routingMode = 'CASUAL', initiativeReason = null, initiativeKind = null, contentCandidates = [], batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, actionResult = null }) {
     const productionRoutingSettings = await getRoutingSettings();
     const productionIntentConfig = getModeIntentConfig(routingMode, productionRoutingSettings);
     const [baseSystemPromptText, conversationEvents, memories] = await Promise.all([
@@ -356,7 +357,8 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     let radiantLayers = {};
     try {
         const detailedContext = await ContextBuilder.buildTelegramContextDetailed(userId, {
-            overrides: { preMessageGapSeconds: gapSeconds, previousActivityAt: lastEvent?.occurred_at, currentTime }
+            overrides: { preMessageGapSeconds: gapSeconds, previousActivityAt: lastEvent?.occurred_at, currentTime },
+            actionResult
         });
         const radiantContext = detailedContext.text;
         radiantContextText = radiantContext;
@@ -604,12 +606,30 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     const user = await getUser(userId);
     if (!user) return null;
 
+    // 0. Маршрутизация действий (RADIANT Action Router + Needle)
+    let actionRouting = null;
+    if (!isInitiative && userText && !isVoiceRequest) {
+        try {
+            actionRouting = await actionRouter.routeAndExecute({
+                userText,
+                userId,
+                context: { routingMode, isInitiative: false }
+            });
+        } catch (routeErr) {
+            console.error('[ACTION ROUTER RUN ERROR]:', routeErr.message);
+        }
+    }
+
     // 1. Формирование контекста сообщений (с параллельными запросами БД)
     const {
         messages, isPhotoRequest, recommendationPost, preselectedPhoto, lastLeraText,
         recentReplyTexts, memories, leraState, systemPrompt, radiantContext, judgeLeraRules,
         hasRecentGreeting
-    } = await buildMessagePayload(user, userId, { userText, photoUrls, isInitiative, routingMode, initiativeReason, initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds, firstMessageAt });
+    } = await buildMessagePayload(user, userId, {
+        userText, photoUrls, isInitiative, routingMode, initiativeReason,
+        initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds,
+        firstMessageAt, actionResult: actionRouting?.actionResult || null
+    });
     const routingSettings = await getRoutingSettings();
     const generationParams = getModeGenerationParams(routingMode, routingSettings);
 
@@ -639,6 +659,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                 latencyMs: classifierResult.latencyMs,
                 usage: classifierResult.usage
             } : null,
+            actionTrace: actionRouting?.trace || null,
             profileVersion: extra.profileVersion,
             surface: isInitiative ? 'INITIATIVE' : 'CHAT',
             judgeMode: extra.judgeMode || (isInitiative ? routingSettings?.initiativeJudgeMode : routingSettings?.judgeMode),
