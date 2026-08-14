@@ -65,7 +65,16 @@ export function buildJudgeMessages({
     const isChannel = String(surface).toUpperCase() === 'CHANNEL';
     const relationshipContract = isChannel
         ? ''
-        : ' Дополнительно верни relationship_event по последней реплике пользователя: тип NEUTRAL, SUPPORT, COMPLIMENT, AFFECTION, INSULT, DISRESPECT или APOLOGY и intensity 0.0–1.0. Для обычного сообщения NEUTRAL с intensity 0. Не меняй verdict из-за relationship_event. Формат результата: JSON {"verdict":"PASS","relationship_event":{"type":"NEUTRAL","intensity":0}}.';
+        : '\n\n[RELATIONSHIP JUDGE - ОЦЕНКА ОТНОШЕНИЙ]:' +
+          '\nОцени последнюю реплику пользователя по отношению к Лере и обязательно верни объект relationship_event:' +
+          '\n- COMPLIMENT (интенсивность 0.4–0.8): похвала внешности, чувства юмора, ума или стиля Леры.' +
+          '\n- AFFECTION (интенсивность 0.5–1.0): романтический флирт, нежность, признания, теплые подкаты.' +
+          '\n- SUPPORT (интенсивность 0.5–0.9): искренняя забота, сочувствие, поддержка, вопросы о самочувствии.' +
+          '\n- APOLOGY (интенсивность 0.4–0.8): извинения за грубость или прошлую резкость.' +
+          '\n- INSULT (интенсивность 0.6–1.0): прямые оскорбления, мат в адрес Леры, агрессия, унижение.' +
+          '\n- DISRESPECT (интенсивность 0.4–0.8): токсичность, пренебрежение, навязчивая грубая пошлость без взаимности.' +
+          '\n- NEUTRAL (интенсивность 0.0): обычные бытовые вопросы, факты, приветствия, нейтральный разговор.' +
+          '\nНе меняй вердикт проверки (verdict) из-за отношения пользователя.';
     const channelContract = isChannel
         ? `\nТы проверяешь публичный пост. Отклоняй любой конкретный факт, которого нет в подтвержденных публичных фактах. Отклоняй личные переписки, пользователей, встречи, приватные детали, техно-слова и служебные теги. Отклоняй уход от темы, повтор последних постов, бессвязность и неверный формат. Для отказа используй только channel-коды. Если факт не доказан, это отказ, а не PASS.`
         : '';
@@ -87,7 +96,7 @@ export function buildJudgeMessages({
                 `Диалог:\n${compactConversation(messages) || 'нет предыдущих сообщений'}`,
                 `Последняя реплика пользователя:\n${String(userText || '').slice(0, 600)}`,
                 `Кандидат-ответ Леры:\n${String(reply || '').slice(0, 800)}`,
-                `Верни только JSON вида {"verdict":"PASS"} или {"verdict":"REJECT:CODE"${isChannel ? '' : ',"relationship_event":{"type":"NEUTRAL|SUPPORT|COMPLIMENT|AFFECTION|INSULT|DISRESPECT|APOLOGY","intensity":0.0}}'}.`
+                `Формат ответа СТРОГО один JSON-объект:${isChannel ? ' {"verdict":"PASS" или "REJECT:CODE"}' : ' {"verdict":"PASS" (или "REJECT:CODE"),"relationship_event":{"type":"NEUTRAL|COMPLIMENT|AFFECTION|SUPPORT|APOLOGY|INSULT|DISRESPECT","intensity":0.0}}'}`
             ].filter(Boolean).join('\n\n')
         }
     ];
@@ -98,12 +107,13 @@ export function parseJudgeVerdict(rawText) {
     try {
         const parsed = parseLlmJson(raw);
         const verdictText = String(parsed?.verdict || '').toUpperCase().replace(/\s/g, '');
+        const eventPayload = parsed?.relationship_event || parsed?.relationshipEvent || parsed?.event || {};
         if (verdictText === 'PASS') {
-            return { verdict: 'PASS', passed: true, code: null, relationshipEvent: normalizeRelationshipEvent(parsed.relationship_event || parsed.relationshipEvent || {}) };
+            return { verdict: 'PASS', passed: true, code: null, relationshipEvent: normalizeRelationshipEvent(eventPayload) };
         }
         const jsonMatch = verdictText.match(/^REJECT:([A-Z_]+)$/);
         if (jsonMatch && JUDGE_CODES.includes(jsonMatch[1])) {
-            return { verdict: `REJECT:${jsonMatch[1]}`, passed: false, code: jsonMatch[1], relationshipEvent: normalizeRelationshipEvent(parsed.relationship_event || parsed.relationshipEvent || {}) };
+            return { verdict: `REJECT:${jsonMatch[1]}`, passed: false, code: jsonMatch[1], relationshipEvent: normalizeRelationshipEvent(eventPayload) };
         }
     } catch {
         // Backward-compatible compact verdicts are still accepted below.
