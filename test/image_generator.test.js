@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pickImageProvider } from '../src/services/image_generator.js';
+import { pickImageProvider, buildImagePrompt } from '../src/services/image_generator.js';
 
 test('pickImageProvider selects preferred provider when requested', () => {
     const providers = [
@@ -32,4 +32,29 @@ test('pickImageProvider falls back to active provider when no image provider is 
 
     const picked = pickImageProvider(providers, null);
     assert.equal(picked?.id, 10);
+});
+
+test('buildImagePrompt includes identity preservation rules when hasReference is true', () => {
+    const prompt = buildImagePrompt({
+        prompt: 'sitting in a cafe with coffee',
+        baseStyle: 'Lera 19yo student from SPb',
+        hasReference: true
+    });
+
+    assert.ok(prompt.includes('EXACT FACE MATCH'));
+    assert.ok(prompt.includes('sitting in a cafe with coffee'));
+    assert.ok(prompt.includes('Lera 19yo student from SPb'));
+    assert.ok(prompt.includes('![image](data:image/jpeg;base64,...)'));
+});
+
+test('buildImagePrompt formats text-only prompt when hasReference is false', () => {
+    const prompt = buildImagePrompt({
+        prompt: 'walking on Nevsky prospect',
+        baseStyle: 'Lera',
+        hasReference: false
+    });
+
+    assert.ok(prompt.includes('REALISTIC PHOTO GENERATION'));
+    assert.ok(prompt.includes('walking on Nevsky prospect'));
+    assert.ok(!prompt.includes('EXACT FACE MATCH'));
 });

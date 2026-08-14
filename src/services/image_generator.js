@@ -6,6 +6,44 @@ import {
 } from '../database.js';
 
 /**
+ * Строит точный и строгий промпт для генерации с сохранением лица референса
+ */
+export function buildImagePrompt({ prompt, baseStyle, hasReference }) {
+    const defaultBaseStyle = 'Candid authentic iPhone photo of a 19-year-old Russian student girl named Lera from Saint Petersburg. Natural skin texture with real pores and subtle imperfections, authentic eye contact, natural lighting, raw photography style, filmic grain, casual relaxed atmosphere, no CGI/3D look, no plastic AI smoothing.';
+    const style = String(baseStyle || '').trim() || defaultBaseStyle;
+    const cleanPrompt = String(prompt || '').trim();
+
+    if (hasReference) {
+        return [
+            `[TASK: CHARACTER-CONSISTENT IMAGE GENERATION]`,
+            `The attached image is the EXACT facial and identity master-reference of the character (Lera).`,
+            `CRITICAL IDENTITY & FACE PRESERVATION RULES:`,
+            `1. EXACT FACE MATCH: You MUST keep the EXACT same face, identical facial structure, eye shape, eye color, nose, lips, jawline, eyebrows, and natural expression style as shown in the attached reference photo.`,
+            `2. HAIR: Preserve the exact same natural hair color, length, texture, and look as in the reference photo.`,
+            `3. NO OTHER PERSON: Do NOT generate a different girl or a generic model face. The output must be recognizably the SAME person from the reference image.`,
+            `4. PHOTOREALISM: Generate a genuine, realistic photograph (iPhone camera look, natural ambient lighting, real depth of field, natural skin texture). Strictly forbid 3D render, digital painting, excessive makeup, or airbrushed AI plastic skin.`,
+            `[CHARACTER STYLE & AESTHETIC]:`,
+            style,
+            `[NEW SCENE / SITUATION]:`,
+            cleanPrompt,
+            `[OUTPUT INSTRUCTION]:`,
+            `Generate the new photograph of this EXACT same person in the described scene. Return ONLY the markdown image: ![image](data:image/jpeg;base64,...)`
+        ].join('\n\n');
+    }
+
+    return [
+        `[TASK: REALISTIC PHOTO GENERATION]`,
+        `[CHARACTER STYLE]:`,
+        style,
+        `[SCENE / ACTION]:`,
+        cleanPrompt,
+        `[REQUIREMENTS]:`,
+        `Candid authentic photograph, natural ambient lighting, real skin texture, subtle grain, real camera look.`,
+        `Return the image in markdown format: ![image](data:image/jpeg;base64,...)`
+    ].join('\n\n');
+}
+
+/**
  * Извлекает мастер-референс Леры в виде data:image/...;base64,...
  */
 export async function getMasterReferenceDataUrl(bot = null) {
@@ -16,15 +54,28 @@ export async function getMasterReferenceDataUrl(bot = null) {
         }
 
         const masterPhoto = settings.master_reference_photo || await getMasterReferencePhoto();
-        if (masterPhoto?.file_id && bot) {
+        if (masterPhoto?.file_id) {
             try {
-                const link = await bot.telegram.getFileLink(masterPhoto.file_id);
-                const fileUrl = typeof link === 'string' ? link : (link?.href || String(link));
-                const res = await fetch(fileUrl);
-                if (res.ok) {
-                    const buf = Buffer.from(await res.arrayBuffer());
-                    const contentType = res.headers.get('content-type') || 'image/jpeg';
-                    return `data:${contentType};base64,${buf.toString('base64')}`;
+                let fileUrl = null;
+                if (bot?.telegram?.getFileLink) {
+                    const link = await bot.telegram.getFileLink(masterPhoto.file_id);
+                    fileUrl = typeof link === 'string' ? link : (link?.href || String(link));
+                } else if (process.env.BOT_TOKEN) {
+                    const getFileRes = await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/getFile?file_id=${masterPhoto.file_id}`);
+                    if (getFileRes.ok) {
+                        const fileInfo = await getFileRes.json();
+                        if (fileInfo?.result?.file_path) {
+                            fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${fileInfo.result.file_path}`;
+                        }
+                    }
+                }
+                if (fileUrl) {
+                    const res = await fetch(fileUrl);
+                    if (res.ok) {
+                        const buf = Buffer.from(await res.arrayBuffer());
+                        const contentType = res.headers.get('content-type') || 'image/jpeg';
+                        return `data:${contentType};base64,${buf.toString('base64')}`;
+                    }
                 }
             } catch (err) {
                 console.warn('[IMAGE GENERATOR] Не удалось скачать фото-референс из Telegram:', err.message);
@@ -125,22 +176,19 @@ export async function generateLeraPhoto({
 
     const selectedModel = String(settings.model || provider.model_name || 'gemini-2.5-flash').trim();
     const referenceDataUrl = await getMasterReferenceDataUrl(bot);
+    const isReferenceMode = Boolean(referenceDataUrl);
 
     // Сборка составного промпта
-    const baseStyle = String(settings.style_prompt || '').trim();
-    const fullPrompt = [
-        baseStyle || 'Realistic candid iPhone selfie of a 19-year-old Russian student girl named Lera from Saint Petersburg, natural lighting, authentic skin texture, subtle grain, real photo look, casual atmosphere.',
-        `[SCENE]: ${normalizedPrompt}`,
-        referenceDataUrl
-            ? '[STRICT REQUIREMENT]: Strictly match and preserve the face, facial structure, eye shape, haircut, and identity of the girl shown in the reference image. Real camera look, authentic lighting, no 3D/AI plastic look.'
-            : 'Real camera look, authentic lighting, no 3D/AI plastic look. Return the generated photo.'
-    ].filter(Boolean).join('\n\n');
+    const fullPrompt = buildImagePrompt({
+        prompt: normalizedPrompt,
+        baseStyle: settings.style_prompt,
+        hasReference: isReferenceMode
+    });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-        const isReferenceMode = Boolean(referenceDataUrl);
         const endpoint = isReferenceMode
             ? `${String(provider.base_url).replace(/\/+$/, '')}/chat/completions`
             : `${String(provider.base_url).replace(/\/+$/, '')}/images/generations`;
@@ -151,11 +199,11 @@ export async function generateLeraPhoto({
                 messages: [{
                     role: 'user',
                     content: [
-                        { type: 'text', text: `${fullPrompt}\n\nСгенерируй изображение и верни его в формате: ![image](data:image/jpeg;base64,...)` },
-                        { type: 'image_url', image_url: { url: referenceDataUrl } }
+                        { type: 'image_url', image_url: { url: referenceDataUrl } },
+                        { type: 'text', text: fullPrompt }
                     ]
                 }],
-                max_tokens: 1500
+                max_tokens: 2000
             }
             : {
                 model: selectedModel,
@@ -165,7 +213,7 @@ export async function generateLeraPhoto({
                 response_format: 'b64_json'
             };
 
-        console.log(`🎨 [IMAGE GENERATOR] Старт генерации фото (${isReferenceMode ? 'с референсом' : 'текст-ту-фото'}) через ${provider.name} (${selectedModel})...`);
+        console.log(`🎨 [IMAGE GENERATOR] Старт генерации фото (${isReferenceMode ? 'с референсом лица' : 'текст-ту-фото'}) через ${provider.name} (${selectedModel})...`);
 
         const response = await fetch(endpoint, {
             method: 'POST',

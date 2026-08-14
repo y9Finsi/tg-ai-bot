@@ -117,7 +117,7 @@ import {
     generateSandboxAbTest,
     migratePresetToCurrent
 } from './ai/sandbox_service.js';
-import { generateLeraPhoto, getMasterReferenceDataUrl } from './services/image_generator.js';
+import { generateLeraPhoto, getMasterReferenceDataUrl, buildImagePrompt } from './services/image_generator.js';
 
 const DEFAULT_CONTENT_CHANNEL_ID = '-1003729264804';
 
@@ -1469,21 +1469,28 @@ export function startAdminServer() {
                 const endpoint = effectiveDataUrl
                     ? `${String(provider.base_url).replace(/\/+$/, '')}/chat/completions`
                     : `${String(provider.base_url).replace(/\/+$/, '')}/images/generations`;
+                const settings = await getImageGenerationSettings();
+                const fullPrompt = buildImagePrompt({
+                    prompt: normalizedPrompt,
+                    baseStyle: settings.style_prompt,
+                    hasReference: Boolean(effectiveDataUrl)
+                });
+
                 const payload = effectiveDataUrl
                     ? {
                         model: selectedModel,
                         messages: [{
                             role: 'user',
                             content: [
-                                { type: 'text', text: `${normalizedPrompt}\n\nВерни именно сгенерированное изображение в формате markdown ![image](data:image/jpeg;base64,...), а не только описание.` },
-                                { type: 'image_url', image_url: { url: effectiveDataUrl } }
+                                { type: 'image_url', image_url: { url: effectiveDataUrl } },
+                                { type: 'text', text: fullPrompt }
                             ]
                         }],
-                        max_tokens: 1500
+                        max_tokens: 2000
                     }
                     : {
                         model: selectedModel,
-                        prompt: normalizedPrompt,
+                        prompt: fullPrompt,
                         size,
                         n: 1,
                         response_format: 'b64_json'
