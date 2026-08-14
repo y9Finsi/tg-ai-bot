@@ -100,11 +100,13 @@ test('CASUAL fallback repairs a clarification instead of repeating a generic mis
 });
 
 test('quality fallback avoids a recent identical fallback reply', () => {
+    const firstFallback = getQualityFallback('CASUAL');
     const fallback = getQualityFallback('CASUAL', {
-        recentReplies: ['не поняла, что ты имеешь в виду — скажи ещё раз нормально']
+        recentReplies: [firstFallback]
     });
 
-    assert.equal(fallback, 'я не догнала. скажи чуть понятнее');
+    assert.notEqual(fallback, firstFallback);
+    assert.equal(evaluateLeraReply(fallback, '?', null, { mode: 'CASUAL' }).passed, true);
 });
 
 test('intent router accepts Cyrillic lookalikes in an intent label', () => {
@@ -144,7 +146,7 @@ test('a valid media-only reply is not rejected after the IMAGE tag is parsed', (
 
     assert.match(engine, /const isMediaOnlyReply = Boolean\(photo\) && !text/);
     assert.match(engine, /Boolean\(userText\) && !isMediaOnlyReply/);
-    assert.match(engine, /!\(photo && !text\) && !finalQuality\.passed/);
+    assert.match(engine, /!\(photo && !text\)( && !\(voice && !text\))? && !finalQuality\.passed/);
 });
 
 test('a photo is recorded only after Telegram accepts it', () => {
@@ -152,7 +154,7 @@ test('a photo is recorded only after Telegram accepts it', () => {
     const queue = fs.readFileSync(path.join(root, 'src', 'queue.js'), 'utf8');
 
     assert.doesNotMatch(engine, /recordPhotoSent/);
-    assert.match(queue, /await bot\.telegram\.sendPhoto\(chatId, response\.photo\);[\s\S]{0,300}recordPhotoSent\(userId, response\.photoRecordId\)/);
+    assert.match(queue, /await bot\.telegram\.sendPhoto\(chatId, (response\.photo|photoPayload)\);[\s\S]{0,300}recordPhotoSent\(userId, response\.photoRecordId\)/);
 });
 
 test('clearing history invalidates stale queued responses and excludes older events', () => {

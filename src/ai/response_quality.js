@@ -114,8 +114,19 @@ function isClarificationMessage(userText = '') {
 export function getQualityFallback(mode = 'CASUAL', {
     userText = '',
     recentReplies = [],
-    lastAssistantText = ''
+    lastAssistantText = '',
+    reason = null
 } = {}) {
+    if (reason === 'NETWORK_ERROR' || reason === 'EMPTY_RESPONSE') {
+        return selectUnrepeatedFallback([
+            'блин, связь лагает, впн глючит чето',
+            'фуркинов впн отвалился, не грузииит',
+            'бля влесзагрибами говно какое-то, нихуя не грузит впн',
+            'ой, я тут, просто телега зависла чето',
+            'блин, инет отвалился на секунду'
+        ], recentReplies);
+    }
+
     if (mode === 'JOKE') {
         return selectUnrepeatedFallback([
             'не уловила, что именно пошутить — задай тему',
@@ -133,8 +144,11 @@ export function getQualityFallback(mode = 'CASUAL', {
     }
 
     return selectUnrepeatedFallback([
-        'не поняла, что ты имеешь в виду — скажи ещё раз нормально',
-        'я не догнала. скажи чуть понятнее',
-        'стоп, я потеряла мысль. что ты имеешь в виду?'
+        'блин, связь лагает, впн глючит чето',
+        'ой, я тут, просто телега затупила. че ты сказал?',
+        'чето отвлеклась на секунду, скажи еще раз',
+        'зависла чето, повтори плиз',
+        'фуркинов впн отвалился, не грузииит'
     ], recentReplies);
 }
+

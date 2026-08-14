@@ -10,6 +10,7 @@ import { WeatherService } from './radiant/weather_service.js';
 import { coordinateAtProgress } from './radiant/world_map.js';
 import { MemorySummarizer } from './memory/summarizer.js';
 import { ContextBuilder } from './ai/context_builder.js';
+import { generateLeraVoice } from './services/voice_generator.js';
 import {
     getAdminStats,
     getAiProviders,
@@ -34,6 +35,8 @@ import {
     setMasterReferencePhoto,
     getImageGenerationSettings,
     saveImageGenerationSettings,
+    getVoiceGenerationSettings,
+    saveVoiceGenerationSettings,
     getRecentConversationEvents,
     formatConversationEvent,
     appendConversationEvent,
@@ -55,6 +58,7 @@ import {
     setBlockStatus,
     adminSetTextBalance,
     adminSetImageBalance,
+    adminSetVoiceBalance,
     grantPackage,
     getPaymentHistory,
     getUserRelationshipAdmin,
@@ -1260,6 +1264,60 @@ export function startAdminServer() {
         }
     });
 
+    app.get('/api/admin/voice-settings', async (req, res) => {
+        try {
+            const settings = await getVoiceGenerationSettings();
+            res.json({ success: true, settings });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/voice-settings', async (req, res) => {
+        try {
+            const settings = await saveVoiceGenerationSettings(req.body || {});
+            res.json({ success: true, settings });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/voice-generation/test', async (req, res) => {
+        try {
+            const { text, sendToTelegram = false } = req.body || {};
+            if (!text || typeof text !== 'string' || !text.trim()) {
+                return res.status(400).json({ error: 'Текст для озвучки не передан' });
+            }
+            const voiceResult = await generateLeraVoice({ text: text.trim() });
+            if (!voiceResult || !voiceResult.buffer) {
+                return res.status(500).json({ error: 'Не удалось сгенерировать голос' });
+            }
+
+            let telegramSent = false;
+            if (sendToTelegram && botInstance) {
+                const targetChatId = Number(process.env.ADMIN_ID);
+                if (targetChatId) {
+                    await botInstance.telegram.sendVoice(targetChatId, {
+                        source: voiceResult.buffer,
+                        filename: voiceResult.filename || 'voice.ogg'
+                    }, {
+                        caption: `🎙️ [Тест голоса Леры]: ${text.trim().slice(0, 200)}`
+                    }).catch(e => console.error('[TEST VOICE TG SEND ERROR]', e.message));
+                    telegramSent = true;
+                }
+            }
+
+            const audioBase64 = voiceResult.buffer.toString('base64');
+            res.json({
+                success: true,
+                audioDataUrl: `data:audio/ogg;base64,${audioBase64}`,
+                telegramSent
+            });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     app.get('/api/admin/content', async (req, res) => {
         try {
             const [items, sent, contentChannelId] = await Promise.all([
@@ -2261,8 +2319,10 @@ export function startAdminServer() {
             if (action === 'set_balances') {
                 const text = Math.max(0, Math.min(1000000, parseInt(req.body.textBalance, 10) || 0));
                 const images = Math.max(0, Math.min(100000, parseInt(req.body.imageBalance, 10) || 0));
+                const voice = Math.max(0, Math.min(100000, parseInt(req.body.voiceBalance, 10) || 0));
                 await adminSetTextBalance(userId, text);
-                user = await adminSetImageBalance(userId, images);
+                await adminSetImageBalance(userId, images);
+                user = await adminSetVoiceBalance(userId, voice);
             } else if (action === 'block') {
                 user = await setBlockStatus(userId, true);
             } else if (action === 'unblock') {

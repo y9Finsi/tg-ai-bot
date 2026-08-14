@@ -609,14 +609,52 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         llmResult = await requestLlmCompletion(user, messages, isPhotoRequest, getOpenAIClientAndModel, generationParams);
     } catch (llmErr) {
         writePromptLog({ errorText: llmErr.message });
-        throw llmErr;
+        if (isInitiative) {
+            return { text: "", photo: null, recommendationPost: null, blockedByJudge: true };
+        }
+        // Попытка быстрого повторного запроса для чата
+        try {
+            llmResult = await requestLlmCompletion(user, messages, isPhotoRequest, getOpenAIClientAndModel, generationParams);
+        } catch (retryErr) {
+            writePromptLog({ errorText: `Chat LLM retry failed: ${retryErr.message}` });
+            const fallbackText = getQualityFallback(routingMode, {
+                userText,
+                recentReplies: recentReplyTexts,
+                lastAssistantText: lastLeraText,
+                reason: 'NETWORK_ERROR'
+            });
+            return { text: fallbackText, photo: null, recommendationPost: null };
+        }
     }
 
     let { rawText, usage } = llmResult;
     let { model, providerName, latencyMs } = llmResult;
-    if (!rawText) {
-        writePromptLog({ model, providerName, latencyMs, errorText: 'Пустой ответ от LLM' });
-        return { text: "❌ Произошла ошибка на стороне нейросети.", photo: null, recommendationPost: null };
+    if (!rawText || !rawText.trim()) {
+        if (isInitiative) {
+            writePromptLog({ model, providerName, latencyMs, errorText: 'Пустой ответ от LLM (инициатива пропущена)' });
+            return { text: "", photo: null, recommendationPost: null, blockedByJudge: true };
+        }
+        // Попытка быстрого повторного запроса для чата
+        try {
+            llmResult = await requestLlmCompletion(user, messages, isPhotoRequest, getOpenAIClientAndModel, generationParams);
+            rawText = llmResult?.rawText || '';
+            usage = llmResult?.usage || usage;
+            model = llmResult?.model || model;
+            providerName = llmResult?.providerName || providerName;
+            latencyMs = llmResult?.latencyMs || latencyMs;
+        } catch (retryErr) {
+            // ignore
+        }
+        if (!rawText || !rawText.trim()) {
+            writePromptLog({ model, providerName, latencyMs, errorText: 'Пустой ответ от LLM' });
+            const fallbackText = getQualityFallback(routingMode, {
+                userText,
+                recentReplies: recentReplyTexts,
+                lastAssistantText: lastLeraText,
+                reason: 'EMPTY_RESPONSE'
+            });
+            return { text: fallbackText, photo: null, recommendationPost: null };
+        }
     }
 
     // 3. Чистка текста и генерация/выборка фото и голоса
@@ -690,6 +728,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             : needsQualityRetry
             ? qualityIssues.includes('format') ? 'response_format' : 'recent_repeat'
             : repeatsGreeting ? 'repeated_greeting' : 'exact_repeat';
+        const forbiddenPhrase = text || lastLeraText || '';
         const retryInstruction = qualityIssues.includes('format')
             ? 'СТОП: в предыдущем ответе склеились две отдельные фразы. Перепиши ответ заново. Между каждой отдельной короткой репликой поставь буквальный разделитель ||| с пробелами по краям: первая реплика ||| вторая реплика. Не склеивай слова, не используй переносы строк и не добавляй пояснений.'
             : judgeNeedsRetry
@@ -697,8 +736,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             : needsQualityRetry
             ? qualityIssues.includes('nonEmpty')
                 ? 'СТОП: предыдущий ответ оказался пустым после обработки медиа-тегов. Ответь текстом именно на последнюю реплику пользователя. Фото можно добавлять только после нормальной текстовой подписи.'
-                : 'СТОП: предыдущий ответ повторяет недавнюю фразу. Перепиши ответ именно на последнюю реплику и не повторяй недавний текст.'
-            : 'СТОП: предыдущий ответ совпал с прошлой репликой. Сгенерируй новый ответ именно на последнюю CURRENT_MESSAGE. Не повторяй приветствие и прошлый текст.';
+                : `СТОП: фраза «${forbiddenPhrase}» уже была отправлена недавно. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО повторять её дословно! Ответь на вопрос другими словами, добавь новую деталь о том, что делаешь/чувствуешь, либо слегка подколи собеседника («ты уже спрашивал ахах / я ж только что сказала»), если он переспрашивает то же самое.`
+            : `СТОП: предыдущий ответ совпал с прошлой репликой «${forbiddenPhrase}». Сгенерируй новый живой ответ именно на последнюю CURRENT_MESSAGE другими словами. Не повторяй приветствие и прошлый текст.`;
         const retryMessages = [
             messages[0],
             { role: 'system', content: retryInstruction },

@@ -9,36 +9,35 @@ import {
  * Строит точный и строгий промпт для генерации с сохранением лица референса
  */
 export function buildImagePrompt({ prompt, baseStyle, hasReference }) {
-    const defaultBaseStyle = 'Candid authentic iPhone photo of a 19-year-old Russian student girl named Lera from Saint Petersburg. Natural skin texture with real pores and subtle imperfections, authentic eye contact, natural lighting, raw photography style, filmic grain, casual relaxed atmosphere, no CGI/3D look, no plastic AI smoothing.';
+    const defaultBaseStyle = 'Candid authentic amateur photo of Lera, a 19-year-old Russian student girl from Saint Petersburg. Appearance: fair skin with natural freckles across cheeks and nose bridge, distinct grey-green almond-shaped eyes with subtle thin winged eyeliner, soft natural brows, full natural lips. Shoulder-length messy textured dirty-blonde hair with wispy curtain bangs framing her face. Vibe & Aesthetic: cute, natural, expressive, genuine real-life iPhone camera photo, natural skin texture with subtle pores, warm ambient lighting, filmic grain, no CGI, no 3D render, no plastic AI smoothing.';
     const style = String(baseStyle || '').trim() || defaultBaseStyle;
     const cleanPrompt = String(prompt || '').trim();
 
     if (hasReference) {
         return [
-            `[TASK: CHARACTER-CONSISTENT IMAGE GENERATION]`,
-            `The attached image is the EXACT facial and identity master-reference of the character (Lera).`,
-            `CRITICAL IDENTITY & FACE PRESERVATION RULES:`,
-            `1. EXACT FACE MATCH: You MUST keep the EXACT same face, identical facial structure, eye shape, eye color, nose, lips, jawline, eyebrows, and natural expression style as shown in the attached reference photo.`,
-            `2. HAIR: Preserve the exact same natural hair color, length, texture, and look as in the reference photo.`,
-            `3. NO OTHER PERSON: Do NOT generate a different girl or a generic model face. The output must be recognizably the SAME person from the reference image.`,
-            `4. PHOTOREALISM: Generate a genuine, realistic photograph (iPhone camera look, natural ambient lighting, real depth of field, natural skin texture). Strictly forbid 3D render, digital painting, excessive makeup, or airbrushed AI plastic skin.`,
-            `[CHARACTER STYLE & AESTHETIC]:`,
+            `[TASK: CHARACTER-CONSISTENT PHOTO GENERATION - EXACT FACE MATCH]`,
+            `The attached image is the EXACT facial reference of the character (Lera).`,
+            `[CHARACTER FACE & IDENTITY SPECIFICATION]:`,
             style,
-            `[NEW SCENE / SITUATION]:`,
+            `[SCENE / CONTEXT / EMOTION / ACTION]:`,
             cleanPrompt,
-            `[OUTPUT INSTRUCTION]:`,
-            `Generate the new photograph of this EXACT same person in the described scene. Return ONLY the markdown image: ![image](data:image/jpeg;base64,...)`
+            `[STRICT RULES]:`,
+            `1. FACE & IDENTITY: Strictly preserve the exact face structure, features, freckles, eye color/shape, and hair from the reference and character specification.`,
+            `2. DYNAMIC SCENE: Follow the requested scene, outfit, pose, expression, and environment described above. Do NOT hardcode unrelated poses or rooms.`,
+            `3. REALISM: Photorealistic candid shot, natural lighting, real depth of field, unedited phone camera quality, zero CGI or plastic smoothing.`,
+            `[OUTPUT FORMAT]:`,
+            `Return the generated image as markdown: ![image](data:image/jpeg;base64,...)`
         ].join('\n\n');
     }
 
     return [
         `[TASK: REALISTIC PHOTO GENERATION]`,
-        `[CHARACTER STYLE]:`,
+        `[CHARACTER SPECIFICATION]:`,
         style,
-        `[SCENE / ACTION]:`,
+        `[SCENE / ACTION / CONTEXT]:`,
         cleanPrompt,
         `[REQUIREMENTS]:`,
-        `Candid authentic photograph, natural ambient lighting, real skin texture, subtle grain, real camera look.`,
+        `Candid authentic photograph, natural ambient lighting, real skin texture, subtle film grain, real smartphone camera look.`,
         `Return the image in markdown format: ![image](data:image/jpeg;base64,...)`
     ].join('\n\n');
 }
@@ -280,6 +279,7 @@ export async function generateLeraPhoto({
         return {
             success: true,
             buffer: extracted.buffer,
+            filename: 'photo.jpg',
             dataUrl: extracted.dataUrl,
             mimeType: extracted.mimeType,
             file_id: telegramFileId,

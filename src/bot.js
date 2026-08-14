@@ -5,13 +5,13 @@ import {
     getUser, createUser, isFreeModeEnabled, toggleFreeMode,
     resetAllFreeRequests, getAdminStats, setUserPrompt, getAllUserIds, clearHistory,
     getSetting, setSetting, logPayment, addFreeRequests,
-    setBlockStatus, adminSetTextBalance, adminSetImageBalance,
+    setBlockStatus, adminSetTextBalance, adminSetImageBalance, adminSetVoiceBalance,
     getUsersTotal, getUsersPage, grantPackage, updateUserMeta,
     processPlategaPayment, updateLastActive, setStoreOpened, getUsersForRetargetingStore, markStorePromoSent,
     createPromocode, activatePromocode, getPaymentHistory,
     getAllPromocodes, getPromocodeById, togglePromoStatus, togglePromoNewUsersOnly, deletePromocode, updatePromoField, getUsersForBonusNotify, markBonusNotified,
     addLeraPhoto, addLeraContent, findDuplicateLeraContent, appendConversationEvent, updateConversationEventStatus,
-    reserveFreeRequest, reserveImageRequest, refundReservedRequest
+    reserveFreeRequest, reserveImageRequest, reserveVoiceRequest, refundReservedRequest
 } from './database.js';
 import { createPlategaInvoice, checkPlategaInvoice } from './platega.js';
 import { processReferral } from './referral.js';
@@ -24,7 +24,7 @@ import { promptTemplates } from './prompts.js';
 import { setupHelp } from './handlers/help.js';
 import { setupProfile } from './handlers/profile.js';
 import { setupAi } from './handlers/ai_menu.js';
-import { PHOTO_INTENT_REGEX } from './ai.js';
+import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX } from './constants/intents.js';
 import { SimulationWorker } from './workers/simulation_worker.js';
 import { StateRepository } from './db/state_repository.js';
 import { MemorySummarizer } from './memory/summarizer.js';
@@ -107,20 +107,40 @@ async function flushUserBuffer(userId) {
     }
 
     const isPhoto = PHOTO_INTENT_REGEX.test(combinedText);
+    const isVoice = !isPhoto && VOICE_INTENT_REGEX.test(combinedText);
     const freeModeActive = await isFreeModeEnabled();
     let reservedResource = null;
     if (!freeModeActive && userId !== ADMIN_ID) {
-        const reservation = isPhoto
-            ? await reserveImageRequest(userId)
-            : await reserveFreeRequest(userId);
+        let reservation = null;
+        if (isPhoto) {
+            reservation = await reserveImageRequest(userId);
+        } else if (isVoice) {
+            reservation = await reserveVoiceRequest(userId);
+            // Если закончились голосовые, пробуем списать обычное текстовое
+            if (!reservation) {
+                reservation = await reserveFreeRequest(userId);
+                if (reservation) reservedResource = 'text';
+            } else {
+                reservedResource = 'voice';
+            }
+        } else {
+            reservation = await reserveFreeRequest(userId);
+            if (reservation) reservedResource = 'text';
+        }
+
         if (!reservation) {
             stopBufferedTyping();
-            await failPendingEvents(isPhoto ? 'image balance exhausted' : 'text balance exhausted');
-            return ctx.reply(isPhoto ? "У вас закончились фото 📸\nПополните баланс в магазине 💎" : "У вас закончились сообщения 😔\nВыберите удобный пакет в магазине 💎", {
+            await failPendingEvents(isPhoto ? 'image balance exhausted' : isVoice ? 'voice balance exhausted' : 'text balance exhausted');
+            const emptyMsg = isPhoto
+                ? "У вас закончились фото 📸\nПополните баланс в магазине 💎"
+                : isVoice
+                ? "У вас закончились голосовые сообщения 🎙️\nПополните баланс в магазине 💎"
+                : "У вас закончились сообщения 😔\nВыберите удобный пакет в магазине 💎";
+            return ctx.reply(emptyMsg, {
                 reply_markup: { inline_keyboard: [[{ text: '⭐️ Магазин', callback_data: 'trigger_buy' }]] }
             });
         }
-        reservedResource = isPhoto ? 'image' : 'text';
+        if (isPhoto) reservedResource = 'image';
     }
 
     try {
@@ -129,6 +149,10 @@ async function flushUserBuffer(userId) {
         if (isPhoto) {
             stopBufferedTyping();
             const tempMsg = await ctx.reply("📸 _Делаю фоточку, подожди секунду..._", { parse_mode: 'Markdown' });
+            tempMsgId = tempMsg.message_id;
+        } else if (isVoice) {
+            stopBufferedTyping();
+            const tempMsg = await ctx.reply("🎙️ _Записываю голосовое, секунду..._", { parse_mode: 'Markdown' });
             tempMsgId = tempMsg.message_id;
         }
 
@@ -631,13 +655,14 @@ async function renderUserManagePanel(ctx, targetId) {
 
     const msg = `👤 <b>Карточка юзера:</b> <code>${targetId}</code>\n` +
         `📝 <b>Имя:</b> ${nameStr} (${userStr})\n\n` +
-        `💬 <b>Баланс сообщений:</b> ${tUser.text_balance || 0}\n` +
+        `💬 <b>Баланс сообщений:</b> ${tUser.text_balance || tUser.free_requests_left || 0}\n` +
         `📸 <b>Баланс фото:</b> ${tUser.image_balance || 0}\n` +
+        `🎙️ <b>Баланс голосовых:</b> ${tUser.voice_balance || 0}\n` +
         `💎 <b>Статус (Has Purchased):</b> ${tUser.has_purchased ? '✅ Да' : '❌ Нет'}\n` +
         `🚫 <b>Блокировка:</b> ${tUser.is_blocked ? 'Заблокирован' : 'Активен'}`;
 
     const kb = Markup.inlineKeyboard([
-        [Markup.button.callback('💬 Ред. Сообщения', 'mu_edit_text'), Markup.button.callback('📸 Ред. Фото', 'mu_edit_img')],
+        [Markup.button.callback('💬 Ред. Текст', 'mu_edit_text'), Markup.button.callback('📸 Ред. Фото', 'mu_edit_img'), Markup.button.callback('🎙️ Ред. Голос', 'mu_edit_voice')],
         [Markup.button.callback('📦 Выдать пакет', 'mu_set_package')],
         [Markup.button.callback('👑 Выдать VIP', 'mu_give_vip'), Markup.button.callback('💳 Платежи', 'mu_payments')],
         [Markup.button.callback(tUser.is_blocked ? '✅ Разблокировать' : '🚫 Заблокировать', 'mu_block')],
@@ -674,6 +699,12 @@ bot.action('mu_edit_img', async (ctx) => {
     userState[ctx.from.id] = 'WAITING_MU_IMG';
     await ctx.answerCbQuery();
     return ctx.reply("📸 Введите новое количество фото (число):", { reply_markup: { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'cancel_input' }]] } });
+});
+
+bot.action('mu_edit_voice', async (ctx) => {
+    userState[ctx.from.id] = 'WAITING_MU_VOICE';
+    await ctx.answerCbQuery();
+    return ctx.reply("🎙️ Введите новое количество голосовых (число):", { reply_markup: { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'cancel_input' }]] } });
 });
 
 // Меню выдачи пакета из админки
@@ -1456,6 +1487,16 @@ bot.on('text', async (ctx) => {
 
                 delete userState[userId];
                 await ctx.reply("✅ Количество фото изменено!");
+                return renderUserManagePanel(ctx, targetId);
+            }
+            if (userState[userId] === 'WAITING_MU_VOICE') {
+                const count = parseInt(text.trim(), 10);
+                if (isNaN(count) || count < 0) return ctx.reply("❌ Введите положительное число.");
+
+                await adminSetVoiceBalance(targetId, count);
+
+                delete userState[userId];
+                await ctx.reply("✅ Количество голосовых изменено!");
                 return renderUserManagePanel(ctx, targetId);
             }
             if (userState[userId] === 'WAITING_MU_MSG') {

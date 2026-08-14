@@ -181,13 +181,13 @@ async function processInitiativeJob(bot, job) {
         anchorEventId,
         contentCandidates: candidates
     });
-    if (response?.blockedByJudge) {
-        console.warn(`[INITIATIVE JUDGE] user ${userId}, kind ${initiativeKind}: отправка заблокирована`);
+    if (response?.blockedByJudge || !response?.text || response.text.startsWith('❌')) {
+        console.warn(`[INITIATIVE SKIPPED] user ${userId}, kind ${initiativeKind}: отправка пропущена (blockedByJudge=${response?.blockedByJudge}, empty=${!response?.text})`);
         return;
     }
-    if (!response?.text) throw new Error('AI returned empty initiative');
     if (initiativeKind === 'content_4h' && !response.contentId) {
-        throw new Error('AI did not select content for content_4h initiative');
+        console.warn(`[INITIATIVE SKIPPED] user ${userId}: AI did not select content for content_4h initiative`);
+        return;
     }
     await sendTextLadder(bot, chatId, response.text);
     const initiativeEvent = await appendConversationEvent({
@@ -374,19 +374,6 @@ async function processAiJob(bot, job) {
                     await markInputEvents('COMPLETED', imgError.message);
                 }
             } else {
-                if (response.voice && !response.text) {
-                    if (tempMsgId) {
-                        await bot.telegram.deleteMessage(chatId, tempMsgId).catch(() => {});
-                    }
-                } else {
-                    const extraOptions = { parse_mode: 'Markdown' };
-                    if (response.showBuyButton) {
-                        extraOptions.reply_markup = {
-                            inline_keyboard: [[{ text: '⭐️ Перейти в магазин', callback_data: 'trigger_buy' }]]
-                        };
-                    }
-
-                    const safeSendMessage = async (text, options) => {
                 const extraOptions = { parse_mode: 'Markdown' };
                 if (response.showBuyButton) {
                     extraOptions.reply_markup = {
@@ -443,10 +430,7 @@ async function processAiJob(bot, job) {
                     // 2. Последующие сообщения "лесенкой" с реальной имитацией набора текста
                     for (let i = 1; i < messages.length; i++) {
                         const msg = messages[i];
-                        // Расчет паузы печати (500мс - 1600мс)
                         const delay = Math.min(Math.max(msg.length * 35, 500), 1600);
-
-                        // Статус "печатает..." в Telegram отправляем асинхронно без блокировки потока
                         void sendTypingAction(bot, chatId);
                         await sleep(delay);
 
