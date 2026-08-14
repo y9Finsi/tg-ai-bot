@@ -4151,7 +4151,15 @@ function ContentPanel({ toast }) {
                     </Card>
 
                     <Card>
-                        <CardHeader eyebrow="Песочница" title="Тест генерации фото Леры" description="Проверка генерации изображения через Gemini с текущим референсом." />
+                        <CardHeader
+                            eyebrow="Песочница"
+                            title="Тест генерации фото Леры"
+                            description={
+                                (imageSettings?.master_reference_dataurl || imageSettings?.master_reference_photo?.id)
+                                    ? '🟢 Мастер-референс активен — лицо будет скопировано из эталона'
+                                    : '⚠️ Мастер-референс не задан — будет сгенерировано случайное лицо'
+                            }
+                        />
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12 }}>
                             <div style={{ display: 'flex', gap: 8 }}>
                                 <input
@@ -4165,10 +4173,17 @@ function ContentPanel({ toast }) {
                                     {testingImage ? 'Генерация...' : 'Сгенерировать'}
                                 </Button>
                             </div>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-                                <input type="checkbox" checked={testSaveToCatalog} onChange={e => setTestSaveToCatalog(e.target.checked)} />
-                                Автоматически сохранить результат в каталог фото
-                            </label>
+                            <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                                    <input type="checkbox" checked={testSaveToCatalog} onChange={e => setTestSaveToCatalog(e.target.checked)} />
+                                    Автоматически сохранить результат в каталог фото
+                                </label>
+                                <span style={{ fontSize: 12, color: (imageSettings?.master_reference_dataurl || imageSettings?.master_reference_photo?.id) ? '#4ade80' : '#fbbf24' }}>
+                                    {(imageSettings?.master_reference_dataurl || imageSettings?.master_reference_photo?.id)
+                                        ? '👑 Референс передаётся в Vision-слой'
+                                        : '⚠️ Без референса'}
+                                </span>
+                            </div>
 
                             {testResult && (
                                 <div style={{ background: 'rgba(0,0,0,0.3)', padding: 14, borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', marginTop: 8 }}>
@@ -4176,7 +4191,9 @@ function ContentPanel({ toast }) {
                                         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                                             <img src={testResult.imageDataUrl} alt="Generated" style={{ maxWidth: 280, maxHeight: 280, borderRadius: 8, objectFit: 'cover', border: '1px solid rgba(255,255,255,0.15)' }} />
                                             <div style={{ flex: 1, minWidth: 200 }}>
-                                                <div style={{ color: '#4ade80', fontWeight: 600, fontSize: 14 }}>✅ Изображение успешно сгенерировано!</div>
+                                                <div style={{ color: '#4ade80', fontWeight: 600, fontSize: 14 }}>
+                                                    ✅ Фото готово ({testResult.mode === 'reference' ? 'С сохранением лица референса' : 'Текст-генерация без референса'})
+                                                </div>
                                                 <pre style={{ marginTop: 8, fontSize: 11, background: 'rgba(0,0,0,0.5)', padding: 8, borderRadius: 6, maxHeight: 180, overflow: 'auto' }}>
                                                     {JSON.stringify({ model: testResult.model, mode: testResult.mode, savedPhotoId: testResult.savedPhoto?.id }, null, 2)}
                                                 </pre>

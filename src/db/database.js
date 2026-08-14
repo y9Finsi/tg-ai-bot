@@ -1613,6 +1613,7 @@ export async function setMasterReferencePhoto(photoId) {
     await query('UPDATE lera_photos SET is_reference = FALSE');
     if (photoId) {
         const res = await query('UPDATE lera_photos SET is_reference = TRUE WHERE id = $1 RETURNING *', [photoId]);
+        await setSetting('image_master_reference_dataurl', '');
         return res.rows[0] || null;
     }
     return null;
@@ -1629,7 +1630,7 @@ export async function getImageGenerationSettings() {
     ] = await Promise.all([
         getSetting('image_provider_id', ''),
         getSetting('image_model', 'gemini-2.5-flash'),
-        getSetting('image_style_prompt', 'Realistic candid photo of Lera, a 19-year-old Russian student girl from Saint Petersburg, brunette hair, lively expressive eyes, natural lighting, authentic skin texture, casual cute outfit, subtle film grain, amateur iPhone selfie style, strictly preserving the face, haircut and identity from the reference photo.'),
+        getSetting('image_style_prompt', 'Realistic candid photo of Lera, a 19-year-old Russian student girl from Saint Petersburg, natural lighting, authentic skin texture, casual cute outfit, subtle film grain, amateur iPhone selfie style, strictly preserving the face, haircut and identity from the reference photo.'),
         getSetting('image_master_reference_dataurl', ''),
         getSetting('image_auto_channel', 'true'),
         getSetting('image_auto_save_catalog', 'true')
@@ -1652,7 +1653,12 @@ export async function saveImageGenerationSettings(settings = {}) {
     if (settings.provider_id !== undefined) await setSetting('image_provider_id', settings.provider_id ? String(settings.provider_id) : '');
     if (settings.model !== undefined) await setSetting('image_model', String(settings.model || ''));
     if (settings.style_prompt !== undefined) await setSetting('image_style_prompt', String(settings.style_prompt || ''));
-    if (settings.master_reference_dataurl !== undefined) await setSetting('image_master_reference_dataurl', String(settings.master_reference_dataurl || ''));
+    if (settings.master_reference_dataurl !== undefined) {
+        await setSetting('image_master_reference_dataurl', String(settings.master_reference_dataurl || ''));
+        if (settings.master_reference_dataurl) {
+            await query('UPDATE lera_photos SET is_reference = FALSE');
+        }
+    }
     if (settings.auto_generate_channel !== undefined) await setSetting('image_auto_channel', settings.auto_generate_channel ? 'true' : 'false');
     if (settings.auto_save_catalog !== undefined) await setSetting('image_auto_save_catalog', settings.auto_save_catalog ? 'true' : 'false');
     return getImageGenerationSettings();
