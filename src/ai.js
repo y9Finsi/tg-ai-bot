@@ -250,6 +250,7 @@ async function generateVoiceForText(user, voiceText) {
                     buffer: generated.buffer,
                     filename: generated.filename || 'voice.ogg',
                     mimeType: generated.mimeType,
+                    text: voiceText.trim(),
                     isGenerated: true
                 };
             }
@@ -537,6 +538,7 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         photoRecordId,
         photoCaption,
         voice: voicePayload,
+        voiceText: targetVoiceText || null,
         recommendationPost: existingRecommendationPost,
         showBuyButton,
         contentId
@@ -807,7 +809,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         mode: routingMode,
         recentReplies: recentReplyTexts
     });
-    if (!isInitiative && userText && !(photo && !text) && !finalQuality.passed) {
+    if (!isInitiative && userText && !(photo && !text) && !(voice && !text) && !finalQuality.passed) {
         text = getQualityFallback(routingMode, {
             userText,
             recentReplies: recentReplyTexts,
@@ -815,6 +817,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         });
         photo = null;
         photoCaption = null;
+        voice = null;
         finalRecPost = null;
         generationTrace.push({
             step: 'fallback',

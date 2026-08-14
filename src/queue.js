@@ -387,27 +387,41 @@ async function processAiJob(bot, job) {
                     }
 
                     const safeSendMessage = async (text, options) => {
-                        try {
-                            return await bot.telegram.sendMessage(chatId, text, options);
-                        } catch (e) {
-                            const noMdOptions = { ...options };
-                            delete noMdOptions.parse_mode;
-                            return await bot.telegram.sendMessage(chatId, text, noMdOptions);
-                        }
+                const extraOptions = { parse_mode: 'Markdown' };
+                if (response.showBuyButton) {
+                    extraOptions.reply_markup = {
+                        inline_keyboard: [[{ text: '⭐️ Перейти в магазин', callback_data: 'trigger_buy' }]]
                     };
+                }
 
-                    const safeEditMessage = async (msgId, text, options) => {
-                        try {
-                            return await bot.telegram.editMessageText(chatId, msgId, null, text, options);
-                        } catch (e) {
-                            const noMdOptions = { ...options };
-                            delete noMdOptions.parse_mode;
-                            return await bot.telegram.editMessageText(chatId, msgId, null, text, noMdOptions);
-                        }
-                    };
+                const safeSendMessage = async (text, options) => {
+                    try {
+                        return await bot.telegram.sendMessage(chatId, text, options);
+                    } catch (e) {
+                        const noMdOptions = { ...options };
+                        delete noMdOptions.parse_mode;
+                        return await bot.telegram.sendMessage(chatId, text, noMdOptions);
+                    }
+                };
 
-                    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+                const safeEditMessage = async (msgId, text, options) => {
+                    try {
+                        return await bot.telegram.editMessageText(chatId, msgId, null, text, options);
+                    } catch (e) {
+                        const noMdOptions = { ...options };
+                        delete noMdOptions.parse_mode;
+                        return await bot.telegram.editMessageText(chatId, msgId, null, text, noMdOptions);
+                    }
+                };
 
+                const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+                if (!response.text && response.voice) {
+                    // Чисто голосовой ответ: удаляем временное сообщение-плейсхолдер
+                    if (tempMsgId) {
+                        await bot.telegram.deleteMessage(chatId, tempMsgId).catch(() => {});
+                    }
+                } else if (response.text) {
                     let messages = splitResponseMessages(response.text);
                     if (messages.length === 0 || messages.length > 10) {
                         messages = [response.text || "..."];
@@ -417,30 +431,30 @@ async function processAiJob(bot, job) {
                     const firstMsg = messages[0];
                     const firstOptions = messages.length === 1 ? extraOptions : { parse_mode: 'Markdown' };
 
-                if (tempMsgId) {
-                    await safeEditMessage(tempMsgId, firstMsg, firstOptions)
-                        .catch(async () => {
-                            await safeSendMessage(firstMsg, firstOptions);
-                        });
-                } else {
-                    await safeSendMessage(firstMsg, firstOptions);
-                }
+                    if (tempMsgId) {
+                        await safeEditMessage(tempMsgId, firstMsg, firstOptions)
+                            .catch(async () => {
+                                await safeSendMessage(firstMsg, firstOptions);
+                            });
+                    } else {
+                        await safeSendMessage(firstMsg, firstOptions);
+                    }
 
-                // 2. Последующие сообщения "лесенкой" с реальной имитацией набора текста
-                for (let i = 1; i < messages.length; i++) {
-                    const msg = messages[i];
-                    // Расчет паузы печати (500мс - 1600мс)
-                    const delay = Math.min(Math.max(msg.length * 35, 500), 1600);
+                    // 2. Последующие сообщения "лесенкой" с реальной имитацией набора текста
+                    for (let i = 1; i < messages.length; i++) {
+                        const msg = messages[i];
+                        // Расчет паузы печати (500мс - 1600мс)
+                        const delay = Math.min(Math.max(msg.length * 35, 500), 1600);
 
-                    // Статус "печатает..." в Telegram отправляем асинхронно без блокировки потока
-                    void sendTypingAction(bot, chatId);
-                    await sleep(delay);
+                        // Статус "печатает..." в Telegram отправляем асинхронно без блокировки потока
+                        void sendTypingAction(bot, chatId);
+                        await sleep(delay);
 
-                    const isLast = (i === messages.length - 1);
-                    const currentOptions = isLast ? extraOptions : { parse_mode: 'Markdown' };
-                    await safeSendMessage(msg, currentOptions);
-                }
-                await saveLeraEvent(response.text, 'MESSAGE', { message_count: messages.length });
+                        const isLast = (i === messages.length - 1);
+                        const currentOptions = isLast ? extraOptions : { parse_mode: 'Markdown' };
+                        await safeSendMessage(msg, currentOptions);
+                    }
+                    await saveLeraEvent(response.text, 'MESSAGE', { message_count: messages.length });
                 }
             }
 
@@ -452,7 +466,9 @@ async function processAiJob(bot, job) {
                     const voicePayload = { source: voiceBuffer, filename: response.voice.filename || 'voice.ogg' };
                     const sentVoiceMsg = await bot.telegram.sendVoice(chatId, voicePayload);
                     const sentVoiceFileId = sentVoiceMsg?.voice?.file_id || 'ai_generated_voice';
-                    await saveLeraEvent('', 'VOICE', { file_id: sentVoiceFileId });
+                    const spokenVoiceText = response.voiceText || response.voice.text || '';
+                    const eventContent = spokenVoiceText ? `[Лера отправила голосовое сообщение: "${spokenVoiceText}"]` : '[Лера отправила голосовое сообщение]';
+                    await saveLeraEvent(eventContent, 'VOICE', { file_id: sentVoiceFileId, text: spokenVoiceText });
                 } catch (voiceSendErr) {
                     console.error(`[TELEGRAM VOICE ERROR] Не удалось отправить голосовое юзеру ${userId}:`, voiceSendErr.message);
                 }
