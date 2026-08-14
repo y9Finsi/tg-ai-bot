@@ -1,7 +1,7 @@
 """
 Needle 3.0 Neural ONNX Router Sidecar Service
-Нейросетевой векторный роутер на базе ruBERT-tiny2 (ONNX Runtime, 28MB),
-производящий моментальное семантическое сопоставление (Cosine Similarity)
+Нейросетевой векторный роутер на базе ruBERT-tiny2 (ONNX Runtime, 21MB),
+производящий моментальное семантическое сопоставление (Cosine Similarity Margin)
 любых зарегистрированных инструментов и классификацию диалоговых намерений.
 """
 
@@ -15,7 +15,6 @@ import numpy as np
 
 app = FastAPI(title="Needle 3.0 Neural ONNX Router", version="3.0.0")
 
-# 1. Загрузка ONNX Runtime и токенизатора ruBERT-tiny2
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "model", "model.onnx")
 TOKENIZER_PATH = os.path.join(os.path.dirname(__file__), "model", "tokenizer.json")
 
@@ -39,13 +38,12 @@ try:
 except Exception as e:
     print(f"⚠️ [ONNX NEURAL ROUTER ERROR]: {e}")
 
-# In-memory кэш эмбеддингов для инструментов
 TOOL_EMBEDDINGS_CACHE = {}
 
 def get_text_embedding(text: str) -> np.ndarray:
-    """Вычисляет 312-мерный семантический вектор предложения через ruBERT-tiny2 ONNX"""
+    """Вычисляет семантический вектор предложения через ONNX Runtime"""
     if not HAS_ONNX or not session or not tokenizer:
-        return np.zeros(312, dtype=np.float32)
+        return np.zeros(384, dtype=np.float32)
     
     encoded = tokenizer.encode(text)
     input_ids = np.array([encoded.ids], dtype=np.int64)
@@ -61,14 +59,12 @@ def get_text_embedding(text: str) -> np.ndarray:
     sess_inputs = {inp.name: inputs[inp.name] for inp in session.get_inputs() if inp.name in inputs}
     outputs = session.run(None, sess_inputs)
     
-    # Mean-pooling по длине последовательности с учетом attention mask
     last_hidden_state = outputs[0]
     mask_expanded = np.expand_dims(attention_mask, -1)
     sum_embeddings = np.sum(last_hidden_state * mask_expanded, axis=1)
     sum_mask = np.clip(np.sum(mask_expanded, axis=1), 1e-9, None)
     embedding = sum_embeddings / sum_mask
     
-    # L2-нормализация для быстрого косинусного сходства через скалярное произведение
     norm = np.linalg.norm(embedding, axis=1, keepdims=True)
     return (embedding / np.clip(norm, 1e-9, None))[0]
 
@@ -93,7 +89,6 @@ JOKE_REGEX = re.compile(r'\b(анекдот|шутк[ауи]|пошути|рас
 REACTION_ONLY_REGEX = re.compile(r'^(ок|оки|пон|понял|ага|да|нет|хз|лол|кек|пхах|ахах|хаха|\)+|\(+|👍|❤️|🔥|😂|🥰|😘|😴|🌚)$', re.IGNORECASE)
 
 def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, Any]:
-    """Автоматически извлекает параметры из сообщения в соответствии с inputSchema инструмента"""
     properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
     if not properties:
         return {}
@@ -101,11 +96,9 @@ def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, 
     args = {}
     msg_cleaned = message.strip()
 
-    # Поиск временных меток
     time_match = re.search(r'\b(завтра|сегодня|вечером|утром|днем|ночью|через\s+\d+\s+(?:минут[а-я]*|час[а-я]*|сек[а-я]*|дн[еяй]*)|в\s+\d{1,2}(?::\d{2})?)\b', msg_cleaned, re.IGNORECASE)
     time_val = time_match.group(0) if time_match else None
 
-    # Очищенный поисковый запрос (удаление вводных глаголов)
     clean_query = re.sub(r'^(ну\s+)?(поищи|найди|загугли|погугли|прогугли|ищи|скажи|узнай|проверь|глянь|посмотри|напомни|поставь)\s+(в\s+инете|в\s+интернете|в\s+гугле|мне|тебе|плиз|пожалуйста)?\s*(кто\s+такой|что\s+такое|где\s+находится|как)?\s*', '', msg_cleaned, flags=re.IGNORECASE).strip()
     if not clean_query:
         clean_query = msg_cleaned
@@ -115,7 +108,6 @@ def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, 
         prop_desc = (prop_meta.get("description") or "").lower()
         name_lower = prop_name.lower()
 
-        # Поле времени
         if any(k in name_lower or k in prop_desc for k in ("when", "time", "date", "delay", "время", "когда", "срок")):
             if time_val:
                 args[prop_name] = time_val
@@ -123,19 +115,16 @@ def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, 
                 args[prop_name] = "скоро"
             continue
 
-        # Числовые поля
         if prop_type in ("integer", "number"):
             num_match = re.search(r'\b\d+(?:\.\d+)?\b', msg_cleaned)
             if num_match:
                 args[prop_name] = float(num_match.group(0)) if '.' in num_match.group(0) else int(num_match.group(0))
             continue
 
-        # Булевые поля
         if prop_type == "boolean":
             args[prop_name] = True
             continue
 
-        # Основной текстовый аргумент (query, text, message, prompt, reminder_text, etc.)
         if any(k in name_lower or k in prop_desc for k in ("query", "text", "search", "reminder", "prompt", "msg", "content", "поиск", "текст", "запрос", "название", "город", "city")):
             if "city" in name_lower or "город" in prop_desc:
                 city_match = re.search(r'\b(санкт-петербург|петербург|питер|москв[аеу]|спб)\b', msg_cleaned, re.IGNORECASE)
@@ -191,9 +180,11 @@ async def route_message(req: RouteRequest):
     # 2. Нейросетевой векторный роутинг (ONNX Embeddings)
     best_tool = None
     best_similarity = 0.0
+    second_similarity = 0.0
 
     if HAS_ONNX and req.tools:
         user_vector = get_text_embedding(msg)
+        scores = []
 
         for tool in req.tools:
             tool_name = tool.get("name", "")
@@ -205,7 +196,6 @@ async def route_message(req: RouteRequest):
 
             tool_signature = f"{tool_title}. {tool_desc}. Параметры: {props_text}"
             
-            # Кэширование вектора инструмента
             if tool_name not in TOOL_EMBEDDINGS_CACHE or TOOL_EMBEDDINGS_CACHE[tool_name].get("sig") != tool_signature:
                 tool_vector = get_text_embedding(tool_signature)
                 TOOL_EMBEDDINGS_CACHE[tool_name] = {
@@ -215,21 +205,22 @@ async def route_message(req: RouteRequest):
             else:
                 tool_vector = TOOL_EMBEDDINGS_CACHE[tool_name]["vector"]
 
-            # Косинусное сходство между нормализованными векторами ruBERT-tiny2
             similarity = float(np.dot(user_vector, tool_vector))
+            scores.append((similarity, tool))
 
-            if similarity > best_similarity:
-                best_similarity = similarity
-                best_tool = tool
+        scores.sort(key=lambda x: x[0], reverse=True)
+        if scores:
+            best_similarity, best_tool = scores[0]
+            second_similarity = scores[1][0] if len(scores) > 1 else 0.0
 
-    # 3. Принятие решения по векторному сходству
-    # Порог для ruBERT-tiny2: >= 0.58 означает семантическое совпадение намерения
-    if best_tool and best_similarity >= 0.58:
+    # 3. Принятие решения по векторному отрыву (Margin >= 0.05 и сходство >= 0.60)
+    margin = best_similarity - second_similarity
+    if best_tool and best_similarity >= 0.60 and margin >= 0.05:
         action_name = best_tool.get("name")
         input_schema = best_tool.get("inputSchema", {})
         extracted_args = extract_schema_arguments(msg, input_schema)
 
-        confidence = min(0.99, round(0.70 + (best_similarity * 0.3), 2))
+        confidence = min(0.99, round(0.75 + (margin * 1.5), 2))
 
         return RouteResponse(
             type="action",
@@ -240,7 +231,6 @@ async def route_message(req: RouteRequest):
             latency_ms=round((time.time() - start) * 1000, 2)
         )
 
-    # 4. Если нет явного соответствия инструментам — обычный диалог
     return RouteResponse(
         type="no_action",
         mode=mode,
