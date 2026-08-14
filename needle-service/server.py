@@ -1,7 +1,7 @@
 """
-Needle 2.6 Robust Semantic Router Sidecar Service
-Высокоскоростная Zero-Shot маршрутизация инструментов с русской лемматизацией,
-стеммингом корней и поддержкой синонимов (поищи/инет/гугл/найди/напомни/погода).
+Needle 2 Unified Neural & Semantic Router Sidecar Service
+Интеграция официальной нейросети Cactus-Compute/needle2 (45M)
+с гибридным семантическим фаллбэком для русской разговорной речи.
 """
 
 from fastapi import FastAPI
@@ -10,7 +10,16 @@ from typing import List, Dict, Any, Optional, Set
 import re
 import time
 
-app = FastAPI(title="Needle 2.6 Semantic Router", version="2.6.0")
+app = FastAPI(title="Needle 2 Neural Router", version="2.7.0")
+
+# Попытка загрузки оригинальной нейросети cactus-needle
+HAS_NEURAL_NEEDLE = False
+try:
+    import needle
+    HAS_NEURAL_NEEDLE = True
+    print("✅ [NEEDLE NEURAL ENGINE] cactus-needle успешно загружен!")
+except Exception as e:
+    print(f"⚠️ [NEEDLE NEURAL ENGINE] cactus-needle fallback mode: {e}")
 
 class RouteRequest(BaseModel):
     message: str
@@ -32,7 +41,7 @@ EROTIC_REGEX = re.compile(r'\b(секс[а-я]*|трах[а-я]*|соси[а-я]
 JOKE_REGEX = re.compile(r'\b(анекдот|шутк[ауи]|пошути|рассмеши|мем|прикол|рофл)\b', re.IGNORECASE)
 REACTION_ONLY_REGEX = re.compile(r'^(ок|оки|пон|понял|ага|да|нет|хз|лол|кек|пхах|ахах|хаха|\)+|\(+|👍|❤️|🔥|😂|🥰|😘|😴|🌚)$', re.IGNORECASE)
 
-# 2. Стоп-слова
+# 2. Стоп-слова и синонимы
 STOP_WORDS = {
     'и', 'в', 'во', 'не', 'что', 'он', 'на', 'я', 'с', 'со', 'как', 'а', 'то', 'все', 'она',
     'так', 'его', 'но', 'да', 'ты', 'к', 'у', 'же', 'вы', 'за', 'бы', 'по', 'только', 'ее',
@@ -50,7 +59,6 @@ STOP_WORDS = {
     'между', 'пожалуйста', 'плиз', 'слушай', 'лера', 'говорю', 'гворю', 'скажи', 'подскажи'
 }
 
-# 3. Нормализация синонимов и корней
 SYNONYM_MAP = {
     'инет': 'интернет',
     'инте': 'интернет',
@@ -96,7 +104,6 @@ RUSSIAN_SUFFIXES = (
 )
 
 def stem_word(word: str) -> str:
-    """Усекает окончания русского слова для выделения корня"""
     w = word.lower()
     if w in SYNONYM_MAP:
         return SYNONYM_MAP[w]
@@ -109,23 +116,19 @@ def stem_word(word: str) -> str:
     return w
 
 def extract_stems(text: str) -> Set[str]:
-    """Извлекает нормализованные корни слов из текста"""
     words = re.findall(r'[a-zA-Zа-яА-Я0-9_]{2,}', text.lower())
     stems = set()
     for raw in words:
         if raw in STOP_WORDS:
             continue
-        # Проверяем прямой маппинг синонимов
         normalized = SYNONYM_MAP.get(raw, raw)
         stems.add(normalized)
         stems.add(stem_word(raw))
-        # Добавляем префикс корня (4 буквы)
         if len(raw) >= 4:
             stems.add(raw[:4])
     return stems
 
 def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, Any]:
-    """Автоматически извлекает параметры из сообщения в соответствии с inputSchema инструмента"""
     properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
     if not properties:
         return {}
@@ -133,11 +136,9 @@ def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, 
     args = {}
     msg_cleaned = message.strip()
 
-    # Паттерны времени
     time_match = re.search(r'\b(завтра|сегодня|вечером|утром|днем|ночью|через\s+\d+\s+(?:минут[а-я]*|час[а-я]*|сек[а-я]*|дн[еяй]*)|в\s+\d{1,2}(?::\d{2})?)\b', msg_cleaned, re.IGNORECASE)
     time_val = time_match.group(0) if time_match else None
 
-    # Очищенный поисковый запрос (удаляем команды поиска)
     clean_query = re.sub(r'^(ну\s+)?(поищи|найди|загугли|погугли|прогугли|ищи|скажи|узнай|проверь|глянь|посмотри|напомни|поставь)\s+(в\s+инете|в\s+интернете|в\s+гугле|мне|тебе|плиз|пожалуйста)?\s*(кто\s+такой|что\s+такое|где\s+находится|как)?\s*', '', msg_cleaned, flags=re.IGNORECASE).strip()
     if not clean_query:
         clean_query = msg_cleaned
@@ -147,7 +148,6 @@ def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, 
         prop_desc = (prop_meta.get("description") or "").lower()
         name_lower = prop_name.lower()
 
-        # Поле времени
         if any(k in name_lower or k in prop_desc for k in ("when", "time", "date", "delay", "время", "когда", "срок")):
             if time_val:
                 args[prop_name] = time_val
@@ -155,19 +155,16 @@ def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, 
                 args[prop_name] = "скоро"
             continue
 
-        # Числовые поля
         if prop_type in ("integer", "number"):
             num_match = re.search(r'\b\d+(?:\.\d+)?\b', msg_cleaned)
             if num_match:
                 args[prop_name] = float(num_match.group(0)) if '.' in num_match.group(0) else int(num_match.group(0))
             continue
 
-        # Булевые поля
         if prop_type == "boolean":
             args[prop_name] = True
             continue
 
-        # Основной текстовый аргумент (query, text, message, prompt, reminder_text, etc.)
         if any(k in name_lower or k in prop_desc for k in ("query", "text", "search", "reminder", "prompt", "msg", "content", "поиск", "текст", "запрос", "название", "город", "city")):
             if "city" in name_lower or "город" in prop_desc:
                 city_match = re.search(r'\b(санкт-петербург|петербург|питер|москв[аеу]|спб)\b', msg_cleaned, re.IGNORECASE)
@@ -182,16 +179,47 @@ def extract_schema_arguments(message: str, schema: Dict[str, Any]) -> Dict[str, 
 
     return args
 
+def try_neural_needle_route(msg: str, tools: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Вызов нативной нейросети cactus-needle, если пакет установлен"""
+    if not HAS_NEURAL_NEEDLE or not tools:
+        return None
+    try:
+        # Динамическое создание функций для Needle
+        tool_callables = []
+        for t in tools:
+            name = t.get("name")
+            desc = t.get("description", "")
+            def _fn(**kw): return kw
+            _fn.__name__ = name
+            _fn.__doc__ = desc
+            tool_callables.append(_fn)
+
+        agent = needle.Needle(tools=tool_callables)
+        result = agent.run(msg)
+        if hasattr(result, "tool_name") and result.tool_name:
+            return {
+                "action": result.tool_name,
+                "arguments": getattr(result, "arguments", {}) or getattr(result, "args", {}),
+                "confidence": getattr(result, "confidence", 0.95)
+            }
+    except Exception as err:
+        print(f"[NEURAL NEEDLE RUN ERROR]: {err}")
+    return None
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "needle-semantic-router-2.6"}
+    return {
+        "status": "ok",
+        "service": "needle-neural-router-2.7",
+        "neural_engine": HAS_NEURAL_NEEDLE
+    }
 
 @app.post("/v1/route", response_model=RouteResponse)
 async def route_message(req: RouteRequest):
     start = time.time()
     msg = req.message.strip()
 
-    # 1. Определение диалогового режима (Mode)
+    # 1. Диалоговый режим (Mode)
     mode = "CASUAL"
     reaction_emoji = None
 
@@ -203,7 +231,6 @@ async def route_message(req: RouteRequest):
         mode = "REACTION"
         reaction_emoji = "❤️" if ("❤" in msg or "люблю" in msg) else "👍"
 
-    # Если режим REACTION или короткое бытовое приветствие — сразу no_action
     if mode == "REACTION" or (len(msg.split()) <= 2 and re.match(r'^(привет|хай|ку|добрый день|споки|спокойной ночи|как дела|что делаешь)$', msg, re.IGNORECASE)):
         return RouteResponse(
             type="no_action",
@@ -215,7 +242,19 @@ async def route_message(req: RouteRequest):
             latency_ms=round((time.time() - start) * 1000, 2)
         )
 
-    # 2. Семантический скоринг инструментов (Tools Matching)
+    # 2. Попытка инференса через нейросеть Cactus-Compute/needle2
+    neural_res = try_neural_needle_route(msg, req.tools)
+    if neural_res and neural_res.get("action"):
+        return RouteResponse(
+            type="action",
+            mode=mode,
+            action=neural_res["action"],
+            arguments=neural_res.get("arguments", {}),
+            confidence=neural_res.get("confidence", 0.95),
+            latency_ms=round((time.time() - start) * 1000, 2)
+        )
+
+    # 3. Семантическое сопоставление (Fast Semantic Route)
     msg_stems = extract_stems(msg)
     best_tool = None
     best_score = 0.0
@@ -231,12 +270,10 @@ async def route_message(req: RouteRequest):
         tool_signature = f"{tool_name} {tool_title} {tool_desc} {props_text}"
         tool_stems = extract_stems(tool_signature)
 
-        # Вычисляем покрытие корней пользователя в сигнатуре инструмента
         common_stems = msg_stems.intersection(tool_stems)
         if not common_stems:
             continue
 
-        # Score = количество совпавших корней + отношение к числу значимых слов пользователя
         overlap_ratio = len(common_stems) / max(1, len(msg_stems))
         score = len(common_stems) * 0.35 + overlap_ratio * 0.65
 
@@ -244,8 +281,6 @@ async def route_message(req: RouteRequest):
             best_score = score
             best_tool = tool
 
-    # 3. Принятие решения по confidence threshold
-    # Если найден хотя бы один четкий совпадающий корень (score >= 0.35)
     if best_tool and best_score >= 0.35:
         action_name = best_tool.get("name")
         input_schema = best_tool.get("inputSchema", {})
@@ -262,7 +297,6 @@ async def route_message(req: RouteRequest):
             latency_ms=round((time.time() - start) * 1000, 2)
         )
 
-    # 4. Если нет инструментов или явного соответствия — обычный диалог
     return RouteResponse(
         type="no_action",
         mode=mode,
