@@ -19,6 +19,7 @@ import { classifyIntent, getModeGenerationParams, getModeIntentConfig, getRoutin
 import { judgeLeraReply } from './ai/response_judge.js';
 import { cleanResponseText } from './utils/response_text.js';
 import { generateLeraPhoto } from './services/image_generator.js';
+import { generateLeraVoice } from './services/voice_generator.js';
 // --- 1. КОНСТАНТЫ И ДИНАМИЧЕСКИЙ КЛИЕНТ ИИ ---
 
 const rateLimitMap = new Map();
@@ -214,6 +215,7 @@ async function generatePhotoForPrompt(user, imagePrompt, preselectedPhoto = null
             if (generated && generated.buffer) {
                 return {
                     source: generated.buffer,
+                    filename: generated.filename || 'photo.jpg',
                     file_id: generated.file_id || null,
                     id: generated.savedPhoto?.id || null,
                     caption: generated.caption,
@@ -235,6 +237,26 @@ async function generatePhotoForPrompt(user, imagePrompt, preselectedPhoto = null
         return dbPhoto;
     }
 
+    return null;
+}
+
+async function generateVoiceForText(user, voiceText) {
+    if (voiceText && typeof voiceText === 'string' && voiceText.trim()) {
+        try {
+            const generated = await generateLeraVoice({ text: voiceText });
+            if (generated && generated.buffer) {
+                return {
+                    source: generated.buffer,
+                    buffer: generated.buffer,
+                    filename: generated.filename || 'voice.ogg',
+                    mimeType: generated.mimeType,
+                    isGenerated: true
+                };
+            }
+        } catch (vErr) {
+            console.warn('[AI CHAT VOICE] Сбой динамической генерации голоса:', vErr.message);
+        }
+    }
     return null;
 }
 
@@ -287,7 +309,12 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     let modeInstruction = `\n\n[ИНСТРУКЦИЯ ПО ФОТОГРАФИЯМ И КИНУТЫМ МЕДИА]:
 Добавляй в конец ответа тег [IMAGE: краткое описание фото на английском] только если пользователь просит фото или ты уже естественно предложила/пообещала прислать его в тексте.
 - Не присылай несвязанное фото сама по себе и никогда не отвечай одним тегом [IMAGE: ...] без обычной текстовой реплики.
-- Если пользователь просит фото, или если ты сама в тексте говоришь «ща скину», «держи фотку», «покажусь», «глянь фотку» и т.п., ты ОБЯЗАНА ДОБАВИТЬ ТЕГ [IMAGE: ...] в самый конец сообщения! Без этого тега фото не отправится!`;
+- Если пользователь просит фото, или если ты сама в тексте говоришь «ща скину», «держи фотку», «покажусь», «глянь фотку» и т.п., ты ОБЯЗАНА ДОБАВИТЬ ТЕГ [IMAGE: ...] в самый конец сообщения! Без этого тега фото не отправится!
+
+[ИНСТРУКЦИЯ ПО ГОЛОСОВЫМ СООБЩЕНИЯМ]:
+Если пользователь просит голосовое («скажи голосом», «наговори гс», «хочу услышать твой голос»), или если ты сама в особо живой, милый, ленивый или эмоциональный момент хочешь сказать фразу голосом, добавь тег [VOICE: текст реплики на русском].
+- Текст внутри [VOICE: ...] будет озвучен твоим живым голосом.
+- Ты можешь прислать текстовую реплику и следом войс (например: «слушай, ща наговорю [VOICE: Привет, ну как твои дела?]»), либо ответить только голосовым без лишнего текста (например: «[VOICE: Ой, мне так лень сейчас печатать, слушай...]»).`;
 
     if (preselectedPhoto) {
         const photoDesc = preselectedPhoto.caption || (preselectedPhoto.tags && preselectedPhoto.tags.length > 0 ? preselectedPhoto.tags.join(', ') : 'Твое личное фото');
@@ -436,9 +463,10 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     };
 }
 
-async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingRecommendationPost = null, preselectedPhoto = null, contentCandidates = []) {
+async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingRecommendationPost = null, preselectedPhoto = null, contentCandidates = [], isVoiceRequest = false) {
     let workingText = rawText || '';
     let imagePrompt = null;
+    let voiceText = null;
     let contentId = null;
 
     const contentMatch = workingText.match(/\[CONTENT:\s*(\d+)\s*\]/i);
@@ -460,9 +488,22 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         }
     }
 
+    const fullVoiceMatch = workingText.match(/\[VOICE:([\s\S]*?)\]/i);
+    if (fullVoiceMatch) {
+        voiceText = fullVoiceMatch[1].trim();
+        workingText = workingText.replace(/\[VOICE:[\s\S]*?\]/gi, '').trim();
+    } else {
+        const unclosedVoiceMatch = workingText.match(/\[VOICE:([\s\S]*)/i);
+        if (unclosedVoiceMatch) {
+            voiceText = unclosedVoiceMatch[1].trim();
+            workingText = workingText.replace(/\[VOICE:[\s\S]*/gi, '').trim();
+        }
+    }
+
     let photoSendPayload = null;
     let photoRecordId = null;
     let photoCaption = null;
+    let voicePayload = null;
     let showBuyButton = false;
     let finalAiText = cleanResponseText(workingText);
 
@@ -477,9 +518,17 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
                 photoRecordId = photoObj.id || photoObj.file_id;
                 photoCaption = photoObj.caption;
             } else if (photoObj && photoObj.source) {
-                photoSendPayload = photoObj;
+                photoSendPayload = { source: photoObj.source, filename: photoObj.filename || 'photo.jpg' };
+                photoRecordId = photoObj.id || null;
+                photoCaption = photoObj.caption || null;
             }
         }
+    }
+
+    // Озвучка: если есть тег [VOICE] или прямой запрос на голосовое
+    const targetVoiceText = voiceText || (isVoiceRequest ? finalAiText : null);
+    if (targetVoiceText) {
+        voicePayload = await generateVoiceForText(user, targetVoiceText);
     }
 
     return {
@@ -487,6 +536,7 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         photo: photoSendPayload,
         photoRecordId,
         photoCaption,
+        voice: voicePayload,
         recommendationPost: existingRecommendationPost,
         showBuyButton,
         contentId
@@ -504,7 +554,7 @@ async function recordAiTransaction(userId, usage) {
 
 // --- 4. ДЕКЛАРАТИВНЫЙ ЕДИНЫЙ ДВИЖОК ---
 
-async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', classifierResult = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null } = {}) {
+async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', isVoiceRequest = false, classifierResult = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null } = {}) {
     const user = await getUser(userId);
     if (!user) return null;
 
@@ -567,8 +617,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         return { text: "❌ Произошла ошибка на стороне нейросети.", photo: null, recommendationPost: null };
     }
 
-    // 3. Чистка текста и генерация/выборка фото
-    let { text, photo, photoRecordId, photoCaption, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates);
+    // 3. Чистка текста и генерация/выборка фото и голоса
+    let { text, photo, photoRecordId, photoCaption, voice, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates, isVoiceRequest);
     const generationTrace = [{
         step: 'first',
         response: text,
@@ -685,8 +735,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         model = retry.model || model;
         providerName = retry.providerName || providerName;
         latencyMs = retry.latencyMs || latencyMs;
-        ({ text, photo, photoRecordId, photoCaption, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(
-            userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates
+        ({ text, photo, photoRecordId, photoCaption, voice, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(
+            userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates, isVoiceRequest
         ));
         generationTrace.push({
             step: 'retry',
@@ -844,6 +894,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         blockedByJudge,
         photo,
         photoRecordId,
+        voice,
         recommendationPost: finalRecPost,
         showBuyButton,
         contentId,
@@ -962,6 +1013,7 @@ export async function generateResponse(userId, text, envelope = {}) {
 
     let contentCandidates = [];
     const isPhotoRequest = PHOTO_INTENT_REGEX.test(text);
+    const isVoiceRequest = VOICE_INTENT_REGEX.test(text);
     if (routingMode === 'CASUAL' && !isPhotoRequest) {
         const [counts, dialogue] = await Promise.all([
             getInitiativeDailyCounts(userId).catch(() => ({ content: 3 })),
@@ -979,6 +1031,7 @@ export async function generateResponse(userId, text, envelope = {}) {
         photoUrls: envelope.photoUrls || [],
         isInitiative: false,
         routingMode,
+        isVoiceRequest,
         classifierResult,
         contentCandidates,
         commandGate: command.isCommand ? command : null,

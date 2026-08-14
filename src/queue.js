@@ -348,13 +348,20 @@ async function processAiJob(bot, job) {
                     // Статус "загружает фото..." в Telegram перед отправкой картинки
                     await bot.telegram.sendChatAction(chatId, 'upload_photo').catch(() => {});
 
+                    // Формируем полезную нагрузку: либо file_id строка, либо InputFile объект с filename
+                    const photoPayload = (response.photo && typeof response.photo === 'object' && response.photo.source)
+                        ? { source: response.photo.source, filename: response.photo.filename || 'photo.jpg' }
+                        : response.photo;
+
                     // Отдельное второе сообщение — сама картинка (без подписи)
-                    await bot.telegram.sendPhoto(chatId, response.photo);
+                    const sentMsg = await bot.telegram.sendPhoto(chatId, photoPayload);
+                    const sentFileId = sentMsg?.photo?.at(-1)?.file_id || (typeof response.photo === 'string' ? response.photo : null);
+
                     if (response.photoRecordId) {
                         await recordPhotoSent(userId, response.photoRecordId)
                             .catch(error => console.error(`[PHOTO HISTORY ERROR] user ${userId}:`, error.message));
                     }
-                    await saveLeraEvent('', 'PHOTO', { file_id: response.photo });
+                    await saveLeraEvent('', 'PHOTO', { file_id: sentFileId || 'ai_generated_photo' });
                 } catch (imgError) {
                     await refundReservation();
                     console.error(`[TELEGRAM ERROR] Не удалось отправить фото юзеру ${userId}:`, imgError.message);
@@ -367,50 +374,48 @@ async function processAiJob(bot, job) {
                     await markInputEvents('COMPLETED', imgError.message);
                 }
             } else {
-                // Если фото нет, отправляем текст (поддержка отправки "лесенкой")
-                const extraOptions = { parse_mode: 'Markdown' };
-                
-                if (response.showBuyButton) {
-                    extraOptions.reply_markup = {
-                        inline_keyboard: [[{ text: '⭐️ Перейти в магазин', callback_data: 'trigger_buy' }]]
+                if (response.voice && !response.text) {
+                    if (tempMsgId) {
+                        await bot.telegram.deleteMessage(chatId, tempMsgId).catch(() => {});
+                    }
+                } else {
+                    const extraOptions = { parse_mode: 'Markdown' };
+                    if (response.showBuyButton) {
+                        extraOptions.reply_markup = {
+                            inline_keyboard: [[{ text: '⭐️ Перейти в магазин', callback_data: 'trigger_buy' }]]
+                        };
+                    }
+
+                    const safeSendMessage = async (text, options) => {
+                        try {
+                            return await bot.telegram.sendMessage(chatId, text, options);
+                        } catch (e) {
+                            const noMdOptions = { ...options };
+                            delete noMdOptions.parse_mode;
+                            return await bot.telegram.sendMessage(chatId, text, noMdOptions);
+                        }
                     };
-                }
 
-                // Вспомогательные функции для безопасной отправки (с фолбэком без Markdown)
-                const safeSendMessage = async (text, options) => {
-                    try {
-                        return await bot.telegram.sendMessage(chatId, text, options);
-                    } catch (e) {
-                        const noMdOptions = { ...options };
-                        delete noMdOptions.parse_mode;
-                        return await bot.telegram.sendMessage(chatId, text, noMdOptions);
+                    const safeEditMessage = async (msgId, text, options) => {
+                        try {
+                            return await bot.telegram.editMessageText(chatId, msgId, null, text, options);
+                        } catch (e) {
+                            const noMdOptions = { ...options };
+                            delete noMdOptions.parse_mode;
+                            return await bot.telegram.editMessageText(chatId, msgId, null, text, noMdOptions);
+                        }
+                    };
+
+                    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+                    let messages = splitResponseMessages(response.text);
+                    if (messages.length === 0 || messages.length > 10) {
+                        messages = [response.text || "..."];
                     }
-                };
 
-                const safeEditMessage = async (msgId, text, options) => {
-                    try {
-                        return await bot.telegram.editMessageText(chatId, msgId, null, text, options);
-                    } catch (e) {
-                        const noMdOptions = { ...options };
-                        delete noMdOptions.parse_mode;
-                        return await bot.telegram.editMessageText(chatId, msgId, null, text, noMdOptions);
-                    }
-                };
-
-                const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-                // Лесенка включается только явным разделителем |||, который
-                // модель получает в формате ответа. Переносы оставляем
-                // fallback-совместимостью для старых сохранённых промптов.
-                let messages = splitResponseMessages(response.text);
-
-                if (messages.length === 0 || messages.length > 10) {
-                    messages = [response.text || "..."];
-                }
-
-                // 1. Первое сообщение — редактируем временное (или отправляем заново)
-                const firstMsg = messages[0];
-                const firstOptions = messages.length === 1 ? extraOptions : { parse_mode: 'Markdown' };
+                    // 1. Первое сообщение — редактируем временное (или отправляем заново)
+                    const firstMsg = messages[0];
+                    const firstOptions = messages.length === 1 ? extraOptions : { parse_mode: 'Markdown' };
 
                 if (tempMsgId) {
                     await safeEditMessage(tempMsgId, firstMsg, firstOptions)
@@ -436,6 +441,21 @@ async function processAiJob(bot, job) {
                     await safeSendMessage(msg, currentOptions);
                 }
                 await saveLeraEvent(response.text, 'MESSAGE', { message_count: messages.length });
+                }
+            }
+
+            // Отправка голосового сообщения (если сгенерировано голосовое)
+            const voiceBuffer = response.voice?.buffer || response.voice?.source;
+            if (response.voice && voiceBuffer) {
+                try {
+                    await bot.telegram.sendChatAction(chatId, 'record_voice').catch(() => {});
+                    const voicePayload = { source: voiceBuffer, filename: response.voice.filename || 'voice.ogg' };
+                    const sentVoiceMsg = await bot.telegram.sendVoice(chatId, voicePayload);
+                    const sentVoiceFileId = sentVoiceMsg?.voice?.file_id || 'ai_generated_voice';
+                    await saveLeraEvent('', 'VOICE', { file_id: sentVoiceFileId });
+                } catch (voiceSendErr) {
+                    console.error(`[TELEGRAM VOICE ERROR] Не удалось отправить голосовое юзеру ${userId}:`, voiceSendErr.message);
+                }
             }
 
             if (response.contentId) {
