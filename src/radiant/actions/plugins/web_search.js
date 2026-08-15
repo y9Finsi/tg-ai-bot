@@ -116,11 +116,10 @@ export class GeminiSearchProvider {
         // 2. Официальный REST API с ротацией моделей при 429 Quota
         if (this.apiKey) {
             const modelsToTry = [
-                this.model,
                 'gemini-2.0-flash',
                 'gemini-1.5-flash',
-                'gemini-2.5-flash'
-            ].filter((v, i, a) => a.indexOf(v) === i);
+                this.model
+            ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
 
             let lastError = null;
             for (const tryModel of modelsToTry) {
