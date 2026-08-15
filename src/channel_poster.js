@@ -8,6 +8,7 @@ import {
     getLeraProfileProjection,
     getRandomChannelContent,
     getLeraContent,
+    getLeraPhotoById,
     getChannelSubscriberCount
 } from './database.js';
 import { getOpenAIClientAndModel } from './ai.js';
@@ -28,7 +29,7 @@ const TOPIC_DESCRIPTIONS = {
 };
 const PUBLIC_BLOCK_LABELS = { voice: 'Голос и подача', context: 'Контекст', restrictions: 'Ограничения', cta: 'CTA' };
 
-function getTimeOfDayMSK() {
+export function getTimeOfDayMSK() {
     const hour = parseInt(new Date().toLocaleTimeString('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', hour12: false }), 10);
     if (hour >= 5 && hour < 12) return 'утро';
     if (hour >= 12 && hour < 18) return 'день';
@@ -118,15 +119,20 @@ export async function generateChannelPostDraft(overrideSettings = null) {
     ]);
     const time = getFormattedTimeMSK();
     const timeOfDay = getTimeOfDayMSK();
-    const topic = selectWeightedTopic(settings);
+    const topic = overrideSettings?.topic || selectWeightedTopic(settings);
     let topicDescription = TOPIC_DESCRIPTIONS[topic] || 'Мысли вслух и жизненные заметки';
     let mediaContent = null;
+    let selectedPhoto = null;
+
     if (topic === 'meme' || settings.media_mode === 'meme') {
         mediaContent = await getRandomChannelContent({ type: 'photo' }) || await getRandomChannelContent();
         if (mediaContent) {
             topicDescription = `Дерзкая подпись к мему/картинке: ${mediaContent.description || 'жизненный мем'}`;
         }
+    } else if (settings.media_mode === 'db_photo') {
+        selectedPhoto = await getRandomLeraPhoto({ access_level: 'free', time_of_day: timeOfDay, excludeChannelUsed: true });
     }
+
     const messagesCount = '1';
     let publicFacts = settings.public_facts_enabled ? (settings.public_facts || []) : [];
     const subscribers = await getChannelSubscriberCount().catch(() => null);
@@ -142,6 +148,9 @@ export async function generateChannelPostDraft(overrideSettings = null) {
     if (mediaContent) {
         baseProvenance.media_content_id = mediaContent.id;
         baseProvenance.media_type = mediaContent.telegram_type;
+    } else if (selectedPhoto) {
+        baseProvenance.media_content_id = `photo:${selectedPhoto.id}`;
+        baseProvenance.media_type = 'photo';
     }
     const systemPrompt = buildChannelSystemPrompt({
         time, timeOfDay, topic, topicDescription, recentPosts, messagesCount: '1', promptBlocks: settings.prompt_blocks,
@@ -177,13 +186,42 @@ export async function generateChannelPostDraft(overrideSettings = null) {
         judge_latency_ms: judge.latencyMs || 0,
         published: settings.judge_mode !== 'ENFORCE' || judge.passed !== false
     };
+
+    let media = null;
+    if (mediaContent) {
+        media = {
+            type: mediaContent.telegram_type || 'photo',
+            id: mediaContent.id,
+            description: mediaContent.description || 'Мем/картинка из каталога',
+            file_id: mediaContent.telegram_file_id || null,
+            preview_url: mediaContent.telegram_file_id
+                ? `/api/admin/telegram-preview?file_id=${encodeURIComponent(mediaContent.telegram_file_id)}`
+                : (mediaContent.url || null)
+        };
+    } else if (selectedPhoto) {
+        media = {
+            type: 'photo',
+            id: `photo:${selectedPhoto.id}`,
+            description: selectedPhoto.caption || 'Фото Леры из базы',
+            file_id: selectedPhoto.file_id || null,
+            preview_url: `/api/admin/photos/${selectedPhoto.id}/preview`
+        };
+    } else if (settings.media_mode === 'ai_photo') {
+        media = {
+            type: 'ai_photo',
+            description: 'AI-генерация фото (Gemini) при отправке'
+        };
+    }
+
     const draft = {
         text,
         chunks: [text],
         topic,
         provenance,
         judge,
-        media_content_id: mediaContent?.id || null,
+        media,
+        media_mode: settings.media_mode,
+        media_content_id: mediaContent?.id || (selectedPhoto ? `photo:${selectedPhoto.id}` : null),
         status: judge.passed === false && settings.judge_mode === 'ENFORCE' ? 'DRAFT_REJECTED' : 'DRAFT'
     };
     if (judge.passed === false && settings.judge_mode === 'ENFORCE') {
@@ -222,7 +260,7 @@ async function judgeChannelText({ text, topic, publicFacts, recentPosts, profile
     });
 }
 
-export async function publishChannelDraft(bot, { text, topic, provenance = {}, media_content_id = null } = {}, overrideSettings = null) {
+export async function publishChannelDraft(bot, { text, topic, provenance = {}, media_content_id = null, media = null } = {}, overrideSettings = null) {
     if (!bot) throw new Error('Бот не инициализирован');
     const settings = overrideSettings ? { ...(await getChannelPosterSettings()), ...overrideSettings } : await getChannelPosterSettings();
     const channelId = String(settings.channel_id || '').trim();
@@ -259,11 +297,17 @@ export async function publishChannelDraft(bot, { text, topic, provenance = {}, m
     }
     let photoToSend = null;
     let contentMedia = null;
-    const contentId = media_content_id || provenance.media_content_id;
-    if (contentId) {
+    const contentId = media_content_id || provenance.media_content_id || media?.id;
+    if (typeof contentId === 'string' && contentId.startsWith('photo:')) {
+        const photoDbId = contentId.replace('photo:', '');
+        const dbPhoto = await getLeraPhotoById(photoDbId).catch(() => null);
+        if (dbPhoto?.file_id) {
+            photoToSend = dbPhoto.file_id;
+        }
+    } else if (contentId) {
         contentMedia = await getLeraContent(contentId).catch(() => null);
     }
-    if (!contentMedia && (settings.media_mode === 'ai_photo' || settings.media_mode === 'db_photo')) {
+    if (!contentMedia && !photoToSend && (settings.media_mode === 'ai_photo' || settings.media_mode === 'db_photo')) {
         if (settings.media_mode === 'ai_photo') {
             try {
                 const prompt = `Candid photo of Lera for Telegram channel post. Topic: ${topic}. Post text: "${cleanedText.slice(0, 300)}"`;

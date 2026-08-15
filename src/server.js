@@ -1211,6 +1211,24 @@ export function startAdminServer() {
         }
     });
 
+    app.get('/api/admin/telegram-preview', async (req, res) => {
+        try {
+            if (!botInstance) return res.status(503).json({ error: 'Telegram-бот не инициализирован' });
+            const fileId = req.query.file_id;
+            if (!fileId) return res.status(400).json({ error: 'file_id required' });
+            const link = await botInstance.telegram.getFileLink(fileId);
+            const upstream = await fetch(String(link));
+            if (!upstream.ok) throw new Error(`Telegram file API: HTTP ${upstream.status}`);
+            const contentType = upstream.headers.get('content-type') || 'image/jpeg';
+            const buffer = Buffer.from(await upstream.arrayBuffer());
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Cache-Control', 'private, max-age=600');
+            res.send(buffer);
+        } catch (e) {
+            res.status(502).json({ error: e.message });
+        }
+    });
+
     app.patch('/api/admin/photos/:id', async (req, res) => {
         try {
             const { caption, tags, access_level, time_of_day, explicitness, outfit_tags } = req.body;
@@ -2219,8 +2237,35 @@ export function startAdminServer() {
 
     app.post('/api/admin/channel/draft', async (req, res) => {
         try {
-            const draft = await generateChannelPostDraft();
+            const draft = req.body && Object.keys(req.body).length ? await generateChannelPostDraft(req.body) : await generateChannelPostDraft();
             res.json({ success: true, draft });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/channel/preview-ai-photo', async (req, res) => {
+        try {
+            const { topic = 'life', text = '' } = req.body || {};
+            const prompt = `Candid photo of Lera for Telegram channel post. Topic: ${topic}. Post text: "${String(text).slice(0, 300)}"`;
+            const generated = await generateLeraPhoto({
+                prompt,
+                timeOfDay: getTimeOfDayMSK(),
+                bot: botInstance,
+                saveToDb: false,
+                source: 'channel_preview'
+            });
+            if (generated?.buffer) {
+                const base64 = Buffer.from(generated.buffer).toString('base64');
+                return res.json({ success: true, preview_url: `data:image/jpeg;base64,${base64}` });
+            } else if (generated?.file_id) {
+                return res.json({
+                    success: true,
+                    file_id: generated.file_id,
+                    preview_url: `/api/admin/telegram-preview?file_id=${encodeURIComponent(generated.file_id)}`
+                });
+            }
+            res.status(500).json({ error: 'Не удалось сгенерировать превью фото' });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }

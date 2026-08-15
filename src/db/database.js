@@ -2447,6 +2447,11 @@ export async function getAllLeraPhotos() {
     return res.rows;
 }
 
+export async function getLeraPhotoById(id) {
+    const res = await query('SELECT * FROM lera_photos WHERE id = $1', [id]);
+    return res.rows[0] || null;
+}
+
 export async function deleteLeraPhoto(id) {
     const res = await query('DELETE FROM lera_photos WHERE id = $1 RETURNING *', [id]);
     return res.rows[0];

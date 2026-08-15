@@ -4336,6 +4336,9 @@ function ContentPanel({ toast }) {
     });
     const [channelDraft, setChannelDraft] = useState(null);
     const [draftText, setDraftText] = useState('');
+    const [draftMediaMode, setDraftMediaMode] = useState('inherit');
+    const [draftTopic, setDraftTopic] = useState('random');
+    const [generatingAiPreview, setGeneratingAiPreview] = useState(false);
 
     const run = async (action, success) => {
         try {
@@ -4481,12 +4484,50 @@ function ContentPanel({ toast }) {
         loadChannel();
     }
 
-    async function generateDraft() {
-        const result = await run(() => api('/api/admin/channel/draft', { method: 'POST' }));
+    async function generateDraft(override = {}) {
+        const mode = override.mediaMode || (draftMediaMode === 'inherit' ? channelForm.mediaMode : draftMediaMode);
+        const topic = override.topic || (draftTopic === 'random' ? undefined : draftTopic);
+        const result = await run(() => api('/api/admin/channel/draft', {
+            method: 'POST',
+            body: JSON.stringify({
+                media_mode: mode,
+                topic: topic
+            })
+        }));
         if (result?.draft) {
             setChannelDraft(result.draft);
             setDraftText(result.draft.text || '');
-            if (toast) toast('Черновик готов — проверьте текст перед публикацией');
+            if (toast) toast('Черновик готов — проверьте текст и медиа перед публикацией');
+        }
+    }
+
+    async function generateDraftAiPhoto() {
+        if (!channelDraft || !draftText.trim()) return;
+        setGeneratingAiPreview(true);
+        try {
+            const res = await api('/api/admin/channel/preview-ai-photo', {
+                method: 'POST',
+                body: JSON.stringify({
+                    topic: channelDraft.topic || 'life',
+                    text: draftText.trim()
+                })
+            });
+            if (res?.preview_url) {
+                setChannelDraft(prev => ({
+                    ...prev,
+                    media: {
+                        type: 'ai_photo',
+                        preview_url: res.preview_url,
+                        file_id: res.file_id || null,
+                        description: 'Сгенерированное ИИ-фото (Gemini)'
+                    }
+                }));
+                if (toast) toast('AI-фото успешно сгенерировано для превью!');
+            }
+        } catch (e) {
+            if (toast) toast(`Ошибка генерации фото: ${e.message}`, 'error');
+        } finally {
+            setGeneratingAiPreview(false);
         }
     }
 
@@ -4494,8 +4535,14 @@ function ContentPanel({ toast }) {
         if (!channelDraft || !draftText.trim()) return;
         const result = await run(() => api('/api/admin/channel/publish-draft', {
             method: 'POST',
-            body: JSON.stringify({ text: draftText.trim(), topic: channelDraft.topic, provenance: channelDraft.provenance })
-        }), 'Пост опубликован');
+            body: JSON.stringify({
+                text: draftText.trim(),
+                topic: channelDraft.topic,
+                provenance: channelDraft.provenance,
+                media_content_id: channelDraft.media_content_id,
+                media: channelDraft.media
+            })
+        }), 'Пост опубликован в Telegram-канале');
         if (result) {
             setChannelDraft(null);
             setDraftText('');
@@ -5338,22 +5385,78 @@ function ContentPanel({ toast }) {
                         <CardHeader eyebrow="Конструктор промпта" title="Управляемая генерация" description="Личность Леры и контекст дня подключены ниже — вы сразу видите, из каких блоков собирается пост." />
                         <PromptAssemblyMap channelForm={channelForm} onChannelChange={setChannelForm} />
                         <PromptModulesEditor modules={channelForm.promptBlocks} onChange={promptBlocks => setChannelForm({ ...channelForm, promptBlocks })} definitions={CHANNEL_PROMPT_MODULES} />
-                        <div className="channel-action-bar">
+                        <div className="channel-generator-controls">
                             <span>Черновик не отправляется в Telegram.</span>
-                            <Button variant="primary" onClick={generateDraft}><WandSparkles size={15} /> Сгенерировать черновик</Button>
+                            <label className="channel-generator-select">
+                                <span>Тема черновика:</span>
+                                <select value={draftTopic} onChange={e => setDraftTopic(e.target.value)}>
+                                    <option value="random">🎲 Случайная (по весам)</option>
+                                    {Object.entries(TOPIC_LABELS).map(([k, v]) => (
+                                        <option key={k} value={k}>{v}</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label className="channel-generator-select">
+                                <span>Медиа-режим:</span>
+                                <select value={draftMediaMode} onChange={e => setDraftMediaMode(e.target.value)}>
+                                    <option value="inherit">⚙️ Из настроек ({channelForm.mediaMode === 'none' ? 'без фото' : channelForm.mediaMode === 'db_photo' ? 'фото из БД' : channelForm.mediaMode === 'ai_photo' ? 'AI-фото' : 'мем'})</option>
+                                    <option value="none">📝 Без фото (только текст)</option>
+                                    <option value="db_photo">🖼️ Фото из базы (lera_photos)</option>
+                                    <option value="ai_photo">🤖 AI-генерация фото (Gemini)</option>
+                                    <option value="meme">🎭 Мем / контент (#тгк)</option>
+                                </select>
+                            </label>
+                            <Button variant="primary" onClick={() => generateDraft()}><WandSparkles size={15} /> Сгенерировать черновик</Button>
                         </div>
                         {channelDraft && <div className="channel-draft-card">
-                            <div className="channel-post-header"><Badge variant="blue">{TOPIC_LABELS[channelDraft.topic] || channelDraft.topic}</Badge><span>Проверьте перед публикацией</span></div>
+                            <div className="channel-post-header">
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                    <Badge variant="blue">{TOPIC_LABELS[channelDraft.topic] || channelDraft.topic}</Badge>
+                                    {channelDraft.media?.type === 'photo' && <Badge variant="green">🖼️ Фото из базы</Badge>}
+                                    {channelDraft.media?.type === 'ai_photo' && <Badge variant="purple">🤖 AI-фото (Gemini)</Badge>}
+                                    {channelDraft.media?.type === 'meme' && <Badge variant="yellow">🎭 Мем</Badge>}
+                                    {!channelDraft.media && <Badge variant="muted">📝 Без фото</Badge>}
+                                </div>
+                                <span>Проверьте перед публикацией</span>
+                            </div>
                             <textarea value={draftText} onChange={event => setDraftText(event.target.value)} aria-label="Текст черновика поста" />
+                            {channelDraft.media && (
+                                <div className="channel-draft-media-box">
+                                    {channelDraft.media.preview_url ? (
+                                        <div className="channel-draft-media-preview-container">
+                                            <img src={channelDraft.media.preview_url} alt="Медиа превью" className="channel-draft-media-img" />
+                                            <div className="channel-draft-media-details">
+                                                <strong>{channelDraft.media.type === 'photo' ? 'Фото Леры' : channelDraft.media.type === 'ai_photo' ? 'AI-фото (Gemini)' : 'Мем/контент'}</strong>
+                                                <span>{channelDraft.media.description || channelDraft.media.caption || 'Медиа прикреплено к посту'}</span>
+                                                <div className="channel-draft-media-actions">
+                                                    <Button size="xs" variant="outline" onClick={() => setChannelDraft({ ...channelDraft, media: null, media_content_id: null })}>
+                                                        Убрать медиа
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : channelDraft.media.type === 'ai_photo' ? (
+                                        <div className="channel-draft-ai-placeholder">
+                                            <div className="channel-draft-ai-text">
+                                                <strong>🤖 AI-генерация фото включена</strong>
+                                                <span>При публикации будет сгенерировано фото через Gemini под контекст поста. Вы можете сгенерировать превью прямо сейчас:</span>
+                                            </div>
+                                            <Button size="xs" variant="secondary" onClick={generateDraftAiPhoto} disabled={generatingAiPreview}>
+                                                {generatingAiPreview ? <><RefreshCw size={13} className="animate-spin" /> Генерация превью...</> : <><Sparkles size={13} /> Сгенерировать AI-превью</>}
+                                            </Button>
+                                        </div>
+                                    ) : null}
+                                </div>
+                            )}
                             <div className="channel-action-bar">
-                                <Button variant="outline" onClick={generateDraft}><RefreshCw size={15} /> Сгенерировать заново</Button>
-                                <ConfirmAction title="Опубликовать отредактированный черновик?" description="Текст будет отправлен в Telegram-канал. После отправки редактирование Telegram-поста пока не поддержано." confirmText="Опубликовать" onConfirm={publishDraft}>Опубликовать в Telegram</ConfirmAction>
+                                <Button variant="outline" onClick={() => generateDraft()}><RefreshCw size={15} /> Сгенерировать заново</Button>
+                                <ConfirmAction title="Опубликовать отредактированный черновик?" description="Пост вместе с медиа будет отправлен в Telegram-канал." confirmText="Опубликовать" onConfirm={publishDraft}>Опубликовать в Telegram</ConfirmAction>
                             </div>
                         </div>}
                     </Card>
 
                     <Card>
-                        <CardHeader eyebrow="История публикаций" title="Что уже ушло в канал" description="Карточки показывают текст и безопасное объяснение, на основе чего он был создан." />
+                        <CardHeader eyebrow="История публикаций" title="Что уже ушло в канал" description="Карточки показывают текст, медиа и объяснение, на основе чего был создан пост." />
                         <div className="channel-feed-grid">
                             {channelHistory.length ? channelHistory.map(post => (
                                 <div className="channel-post-card" key={post.id || post.created_at}>
@@ -5361,10 +5464,20 @@ function ContentPanel({ toast }) {
                                         <Badge variant="blue">{TOPIC_LABELS[post.topic] || post.topic || 'Пост'}</Badge>
                                         <span>{formatTime(post.created_at)}</span>
                                     </div>
+                                    {post.photo_url && (
+                                        <div className="channel-history-media-thumb">
+                                            <img
+                                                src={post.photo_url.startsWith('http') ? post.photo_url : `/api/admin/telegram-preview?file_id=${encodeURIComponent(post.photo_url)}`}
+                                                alt="Медиа к посту"
+                                                onError={e => { e.currentTarget.parentElement.style.display = 'none'; }}
+                                            />
+                                        </div>
+                                    )}
                                     <p className="channel-post-text">{post.text}</p>
                                     <details className="post-provenance">
                                         <summary>Почему этот пост</summary>
                                         <span>Статус: {post.status || (post.provenance?.published ? 'PUBLISHED' : 'DRAFT')}</span>
+                                        <span>Медиа: {post.media_mode || 'none'}</span>
                                         <span>Judge: {post.provenance?.judge_verdict || 'не запускался'}{post.provenance?.judge_code ? ` · ${post.provenance.judge_code}` : ''}</span>
                                         <span>Попытка: {post.provenance?.attempt || 1}</span>
                                         <span>Профиль: v{post.provenance?.profile_version || '—'}</span>
