@@ -2,8 +2,23 @@ const DASH_CHARACTERS = /[-\u058A\u05BE\u1400\u1806\u2010-\u2015\u2E17\u2E1A\u2E
 const DECORATIVE_QUOTES = /[«»“”„‟]/gu;
 export function cleanResponseText(rawText) {
     if (!rawText) return '';
-    let text = String(rawText).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    let text = String(rawText);
+
+    // Удаляем любые блоки мыслей модели: <think>...</think>, </think> и всё до него
+    text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+    text = text.replace(/^[\s\S]*?<\/think>/gi, '').trim();
     text = text.replace(/<think>[\s\S]*/gi, '').trim();
+
+    // Удаляем специальные токены и разметку моделей (DeepSeek, ChatGPT и др.)
+    text = text.replace(/<[｜|][\s\S]*?[｜|]>/g, '').trim();
+    text = text.replace(/<\/?context>/gi, '').trim();
+    text = text.replace(/<\/?[a-z0-9_-]+(?:\s+[^>]*)?>/gi, '').trim();
+
+    // Удаляем галлюцинированные системные заголовки и инструкции
+    text = text.replace(/##\s*(?:История диалога|Текущее сообщение|Текущий запрос|Дополнительная информация|Погода|Последние новости|ИСТОРИЯ ДИАЛОГА|ПОСЛЕДНЕЕ СООБЩЕНИЕ)[\s\S]*?(?=(?:\r?\n\r?\n)|$)/gi, '').trim();
+    text = text.replace(/\[(?:Пользователь|Собеседник|Лера)[^\]]*\]:?/gi, '').trim();
+    text = text.replace(/^(?:Пользователь|Собеседник|Лера):\s*/gim, '').trim();
+
     text = text.replace(/\[IMAGE:[\s\S]*?\]/gi, '').trim();
     text = text.replace(/\[IMAGE:[\s\S]*/gi, '').trim();
     text = text.replace(/\[RECOMMEND\]/gi, '').trim();
@@ -12,6 +27,7 @@ export function cleanResponseText(rawText) {
     text = text.replace(/\[СИСТЕМНАЯ ЗАДАЧА[\s\S]*?\]/gi, '').trim();
     text = text.replace(/\[СИСТЕМНАЯ КОМАНДА[\s\S]*?\]/gi, '').trim();
     text = text.replace(/\[СИСТЕМНЫЙ БЛОК[\s\S]*?\]/gi, '').trim();
+    text = text.replace(/\[СИСТЕМНОЕ СОБЫТИЕ[\s\S]*?\]/gi, '').trim();
     text = text.replace(/\[Лера отправила[\s\S]*?\]/gi, '').trim();
     text = text.replace(/\[Лера переслала[\s\S]*?\]/gi, '').trim();
     text = text.replace(/\[D:[^\]]+\]|\[(?:M|R|PHOTO|VOICE|VIDEO|STICKER|INITIATIVE|REMEMBER|FORGET|MUTE|SYSTEM)[^\]]*\]/gi, '').trim();

@@ -557,15 +557,26 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     const systemPrompt = baseSystemPromptText + mediaLogInstruction + tamagotchiInstruction + modeInstruction;
     const messages = [{ role: 'system', content: systemPrompt }];
 
+    function sanitizeHistoryContent(raw) {
+        let text = String(raw || '').trim();
+        text = text.replace(/^\[\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\]\s*[^:]+:\s*/, '');
+        text = text.replace(/^(?:\[Пользователь\]|\[Лера\]|Пользователь:|Лера:)\s*/i, '');
+        text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/^[\s\S]*?<\/think>/gi, '');
+        return text.trim();
+    }
+
     // Нативный multi-turn контекст диалога
     if (productionIntentConfig?.promptModules?.history !== false) {
         if (chatHistoryEvents.length > 0) {
             for (const ev of chatHistoryEvents) {
                 const isLera = ev.role === 'lera' || ev.role === 'assistant';
-                messages.push({
-                    role: isLera ? 'assistant' : 'user',
-                    content: ev.content
-                });
+                const cleanContent = sanitizeHistoryContent(ev.content);
+                if (cleanContent) {
+                    messages.push({
+                        role: isLera ? 'assistant' : 'user',
+                        content: cleanContent
+                    });
+                }
             }
         }
     }
@@ -618,6 +629,10 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         }
 
         messages.push({ role: 'system', content: initiativeDirective });
+        messages.push({
+            role: 'user',
+            content: `[СИСТЕМНОЕ СОБЫТИЕ: ${initiativeReason || 'Напиши сообщение первой в соответствии с инструкцией выше'}]`
+        });
     }
 
     // Передаем последнее текущее сообщение пользователя (с поддержкой Vision)

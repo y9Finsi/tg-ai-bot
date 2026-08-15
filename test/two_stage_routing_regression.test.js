@@ -195,7 +195,7 @@ test('EROTIC mode suppresses sleeping guidance in context prompt', () => {
 
 test('multi-turn history passes real assistant and user messages without embedding text in system prompt', () => {
     const engine = fs.readFileSync(path.join(root, 'src', 'ai.js'), 'utf8');
-    assert.match(engine, /messages\.push\(\{\s*role:\s*isLera\s*\?\s*'assistant'\s*:\s*'user',\s*content:\s*ev\.content\s*\}\)/);
+    assert.match(engine, /messages\.push\(\{\s*role:\s*isLera\s*\?\s*'assistant'\s*:\s*'user',\s*content:\s*(?:cleanContent|ev\.content)\s*\}\)/);
     assert.doesNotMatch(engine, /historyInstruction\s*=\s*`\\n\\n=== 💬 ПОСЛЕДНИЕ СООБЩЕНИЯ ДИАЛОГА/);
 });
 
