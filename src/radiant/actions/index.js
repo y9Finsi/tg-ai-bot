@@ -8,11 +8,13 @@ import { executeAction } from './executor.js';
 import { webSearchAction } from './plugins/web_search.js';
 import { weatherAction } from './plugins/weather.js';
 import { spbPlacesAction } from './plugins/spb_places.js';
+import { searchArchiveMemoryAction } from './plugins/search_archive_memory.js';
 
 // Авторегистрация системных действий ядра
 actionRegistry.register(webSearchAction);
 actionRegistry.register(weatherAction);
 actionRegistry.register(spbPlacesAction);
+actionRegistry.register(searchArchiveMemoryAction);
 
 export {
     actionRegistry,
@@ -20,5 +22,6 @@ export {
     executeAction,
     webSearchAction,
     weatherAction,
-    spbPlacesAction
+    spbPlacesAction,
+    searchArchiveMemoryAction
 };

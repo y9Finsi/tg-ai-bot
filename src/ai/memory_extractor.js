@@ -3,6 +3,34 @@ import { getCachedOpenAIClient } from './llm_client.js';
 import { logLlmTrace } from './llm_client.js';
 import { parseLlmJson } from '../utils/robust_json.js';
 
+const CATEGORY_TO_MEMORY_TYPE = Object.freeze({
+    profile: 'PROFILE',
+    identity: 'PROFILE',
+    name: 'PROFILE',
+    location: 'PROFILE',
+    city: 'PROFILE',
+    profession: 'PROFILE',
+    work: 'PROFILE',
+    preference: 'PREFERENCE',
+    preferences: 'PREFERENCE',
+    commitment: 'COMMITMENT',
+    promise: 'COMMITMENT',
+    open_thread: 'OPEN_THREAD',
+    'open thread': 'OPEN_THREAD',
+    episode: 'EPISODE',
+    event: 'EPISODE',
+    relationship: 'RELATIONSHIP_EVENT',
+    relationship_event: 'RELATIONSHIP_EVENT'
+});
+
+function memoryTypeFor(item) {
+    const raw = String(item?.type ?? item?.memory_type ?? item?.category ?? 'PROFILE')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_');
+    return CATEGORY_TO_MEMORY_TYPE[raw] || 'PROFILE';
+}
+
 export function isMemoryCandidate(text) {
     const value = String(text || '').trim();
     if (value.length < 8) return false;
@@ -26,7 +54,7 @@ function parseMemoryPayload(raw) {
     return parsed;
 }
 
-export async function extractFactsInBackground(userId, userText) {
+export async function extractFactsInBackground(userId, userText, { sourceEventId = null } = {}) {
     if (!userText || userText.trim().length < 3) return { success: false, reason: "Text too short" };
     if (!isMemoryCandidate(userText)) return { success: false, reason: "No personal assertion candidate" };
     // Игнорируем простые приветствия и общие фан-реакции
@@ -42,7 +70,39 @@ export async function extractFactsInBackground(userId, userText) {
         const provider = await getMemoryProvider(memSettings);
         if (!provider) return { success: false, reason: "No memory provider" };
 
-        const existingMemories = await getUserMemories(userId, 30);
+        let typedRepository = null;
+        let typedMemories = [];
+        try {
+            typedRepository = (await import('../memory/memory_repository.js')).memoryRepository;
+            typedMemories = await typedRepository.listFacts(userId, {
+                includeInactive: false,
+                limit: 30
+            });
+        } catch (typedReadError) {
+            console.warn(`[MEMORY TYPED READ FALLBACK] user ${userId}:`, typedReadError.message);
+        }
+
+        let legacyMemories = [];
+        try {
+            legacyMemories = await getUserMemories(userId, 30);
+        } catch {
+            legacyMemories = [];
+        }
+        const existingMemories = [
+            ...typedMemories.map(fact => ({
+                id: fact.id,
+                fact: fact.text || fact.normalizedText,
+                source: 'typed'
+            })),
+            ...legacyMemories.map(fact => ({ ...fact, source: 'legacy' }))
+        ].filter((fact, index, values) => (
+            fact.fact
+            && values.findIndex(candidate => (
+                String(candidate.id) === String(fact.id)
+                || String(candidate.fact).trim().toLocaleLowerCase('ru-RU')
+                    === String(fact.fact).trim().toLocaleLowerCase('ru-RU')
+            )) === index
+        ));
         const existingListText = existingMemories.length > 0
             ? existingMemories.map(m => `(id:${m.id}) ${m.fact}`).join('\n')
             : 'Пока нет сохраненных фактов.';
@@ -94,10 +154,20 @@ export async function extractFactsInBackground(userId, userText) {
         };
         logLlmTrace({ userId, kind: 'MEMORY', mode: 'fact-extractor', providerName: provider.name, model: memSettings.model || provider.model_name, userText, systemPrompt: trace.prompt, messages: [{ role: 'system', content: trace.prompt }], rawResponse: raw, parsedResponse: parsed, usage: completion.usage || {}, latencyMs: Date.now() - startedAt, generationTrace: [trace] });
 
-        let savedCount = 0;
         if (parsed.deactivate_ids && Array.isArray(parsed.deactivate_ids)) {
             for (const id of parsed.deactivate_ids) {
-                await deactivateUserMemory(id, userId);
+                let archived = false;
+                if (typedRepository) {
+                    try {
+                        archived = Boolean(await typedRepository.archiveFact(userId, id, {
+                            source: 'memory_extractor',
+                            reason: 'llm_deactivate'
+                        }));
+                    } catch (typedArchiveError) {
+                        console.warn(`[MEMORY TYPED ARCHIVE FALLBACK] user ${userId}:`, typedArchiveError.message);
+                    }
+                }
+                if (!archived) await deactivateUserMemory(id, userId);
                 await appendConversationEvent({
                     userId,
                     eventType: 'FORGET',
@@ -111,17 +181,60 @@ export async function extractFactsInBackground(userId, userText) {
 
         if (parsed.new_facts && Array.isArray(parsed.new_facts)) {
             for (const item of parsed.new_facts) {
-                if (item.fact && item.fact.trim()) {
-                    await saveUserMemory(userId, item.fact);
+                const factText = String(typeof item === 'string' ? item : item?.fact ?? item?.text ?? '').trim();
+                if (factText) {
+                    const category = typeof item === 'string' ? 'general' : (item.category || item.type || 'general');
+                    const memoryType = memoryTypeFor(typeof item === 'string' ? {} : item);
+                    const supersedesId = typeof item === 'object' && item?.supersedes_id != null
+                        ? item.supersedes_id
+                        : (typeof item === 'object' ? item?.supersedesId : null);
+                    let saved = null;
+                    if (typedRepository) {
+                        try {
+                            saved = await typedRepository.createFact({
+                                userId,
+                                type: memoryType,
+                                payload: {
+                                    text: factText,
+                                    category: String(category).slice(0, 80),
+                                    extractor: 'memory_extractor'
+                                },
+                                confidence: Number.isFinite(Number(item?.confidence))
+                                    ? Number(item.confidence)
+                                    : 0.75,
+                                importance: Number.isFinite(Number(item?.importance))
+                                    ? Number(item.importance)
+                                    : (memoryType === 'PROFILE' ? 80 : 55),
+                                sourceEventId,
+                                supersedesId,
+                                provenance: {
+                                    source: 'memory_extractor',
+                                    category: String(category).slice(0, 80),
+                                    provider: provider.name,
+                                    model: memSettings.model || provider.model_name
+                                }
+                            });
+                        } catch (typedError) {
+                            console.warn(`[MEMORY TYPED FALLBACK] user ${userId}:`, typedError.message);
+                        }
+                    }
+                    if (!saved) {
+                        saved = await saveUserMemory(userId, factText);
+                    }
                     await appendConversationEvent({
                         userId,
                         eventType: 'REMEMBER',
                         role: 'system',
-                        content: item.fact,
-                        metadata: { category: item.category || 'general' },
+                        content: factText,
+                        metadata: {
+                            category,
+                            memory_type: memoryType,
+                            memory_fact_id: saved?.id ?? null,
+                            source_event_id: sourceEventId
+                        },
                         status: 'COMPLETED'
                     }).catch(() => null);
-                    console.log(`🧠 [MEMORY SAVED for user ${userId} via ${provider.name}]: (${item.category || 'general'}) ${item.fact}`);
+                    console.log(`🧠 [MEMORY SAVED for user ${userId} via ${provider.name}]: (${category}) ${factText}`);
                     savedCount++;
                 }
             }

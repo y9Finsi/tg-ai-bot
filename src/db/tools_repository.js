@@ -11,6 +11,7 @@ import { WebhookClient } from '../radiant/actions/adapters/webhook_client.js';
 import { webSearchAction } from '../radiant/actions/plugins/web_search.js';
 import { weatherAction } from '../radiant/actions/plugins/weather.js';
 import { spbPlacesAction } from '../radiant/actions/plugins/spb_places.js';
+import { searchArchiveMemoryAction } from '../radiant/actions/plugins/search_archive_memory.js';
 
 export class ToolsRepository {
     static async ensureTable() {
@@ -329,6 +330,7 @@ export class ToolsRepository {
         if (name === 'web_search') actionRegistry.register(webSearchAction);
         if (name === 'weather') actionRegistry.register(weatherAction);
         if (name === 'spb_places') actionRegistry.register(spbPlacesAction);
+        if (name === 'search_archive_memory') actionRegistry.register(searchArchiveMemoryAction);
 
         return { success: true, name };
     }

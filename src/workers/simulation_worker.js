@@ -15,6 +15,7 @@ import { normalizePersonality } from '../radiant/personality.js';
 import { getSetting } from '../db/database.js';
 import { applyTaskEffects, FOOD_PRICE_RUBLES } from '../radiant/task_catalog.js';
 import { randomUUID } from 'node:crypto';
+import { memoryRepository } from '../memory/memory_repository.js';
 
 const RANDOM_EVENT_IDS = RANDOM_EVENTS.map(event => event.id);
 
@@ -293,6 +294,15 @@ export class SimulationWorker {
                 if (!availableRoutine.length && await StateRepository.hasRecentTaskFact(client, selected.taskType, new Date(tickAt.getTime() - 30 * 60 * 1000))) {
                     selected = UtilitySelector.select({ state: selectorState, npc: { nastya: nastyaDb, max_client: maxDb }, now: tickAt, dayProfile, timeWindow: dayProfile.timeWindow, excludedTaskTypes: [selected.taskType] });
                 }
+                const selectedTaskContext = `${selected.taskType} ${selected.reason || ''}`.trim();
+                const precedents = await memoryRepository.getSimulationPrecedents(
+                    `${selectedTaskContext} ${tickAt.toISOString()}`,
+                    { userId: '0', limit: 5 }
+                ).catch(error => {
+                    console.warn('[SIMULATION PRECEDENTS ERROR]:', error.message);
+                    return [];
+                });
+                const precedentIds = precedents.map(item => String(item.id)).filter(Boolean);
                 const queued = await StateRepository.enqueueTask(client, {
                     taskType: selected.taskType,
                     targetLocation: selected.targetLocation || 'petrogradka_home',
@@ -309,7 +319,46 @@ export class SimulationWorker {
                     await client.query('UPDATE sim_queue SET result = $2::jsonb WHERE id = $1', [queued.task.id, JSON.stringify(queued.task.result)]);
                 }
                 executable = queued.task;
-                rationale.push({ category: selected.routineDate ? 'DAILY_ROUTINE' : 'UTILITY_SELECTOR', title: `Выбрана цель ${selected.taskType}`, explanation: selected.reason, payload: { selected, dayProfile, candidates: UtilitySelector.candidates({ state: selectorState, npc: { nastya: nastyaDb, max_client: maxDb }, now: tickAt }) } });
+                const decisionStrategy = 'utility_selector_plus_memory';
+                rationale.push({
+                    category: selected.routineDate ? 'DAILY_ROUTINE' : 'UTILITY_SELECTOR',
+                    title: `Выбрана цель ${selected.taskType}`,
+                    explanation: selected.reason,
+                    payload: {
+                        selected,
+                        dayProfile,
+                        strategy: decisionStrategy,
+                        precedentIds,
+                        precedents,
+                        candidates: UtilitySelector.candidates({
+                            state: selectorState,
+                            npc: { nastya: nastyaDb, max_client: maxDb },
+                            now: tickAt
+                        })
+                    }
+                });
+                memoryRepository.createFact({
+                    userId: '0',
+                    type: 'DECISION_TRACE',
+                    payload: {
+                        text: `Выбрана задача ${selected.taskType}: ${selected.reason || 'без пояснения'}`,
+                        selectedTaskType: selected.taskType,
+                        precedentIds,
+                        precedents: precedents.slice(0, 5),
+                        strategy: decisionStrategy
+                    },
+                    observedAt: tickAt,
+                    confidence: 0.8,
+                    importance: 55,
+                    provenance: {
+                        source: 'simulation_worker',
+                        strategy: decisionStrategy,
+                        tickAt: tickAt.toISOString()
+                    },
+                    idempotencyKey: `simulation:decision:${tickAt.toISOString()}`
+                }).catch(error => {
+                    console.warn('[SIMULATION DECISION TRACE ERROR]:', error.message);
+                });
             }
 
             if (executable?.status === 'PENDING' && !executable.dependencies_expanded_at) {

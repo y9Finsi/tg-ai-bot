@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Command, Search, Copy, Check, Pause, Trash2, Clock, Coins, Cpu, Layers, AlertTriangle, XCircle, Filter, Activity, ChevronRight, ChevronDown, User, SlidersHorizontal, Plus, Globe, Server } from 'lucide-react';
+import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Command, Search, Copy, Check, Pause, Trash2, Clock, Coins, Cpu, Layers, AlertTriangle, XCircle, Filter, Activity, ChevronRight, ChevronDown, User, SlidersHorizontal, Plus, Globe, Server, Network, BrainCircuit, GitBranch, Gauge, ShieldCheck } from 'lucide-react';
 import './styles.css';
 import { Button } from './components/ui/button.jsx';
 import { Badge } from './components/ui/badge.jsx';
@@ -63,6 +63,75 @@ function formatDate(value) {
         dateStyle: 'short',
         timeStyle: 'short'
     }).format(new Date(value));
+}
+
+function memoryGraphData(payload) {
+    const graph = payload?.graph || payload || {};
+    return {
+        nodes: Array.isArray(graph.nodes) ? graph.nodes : [],
+        edges: Array.isArray(graph.edges) ? graph.edges : (Array.isArray(graph.links) ? graph.links : [])
+    };
+}
+
+function MemoryGraph({ graph, loading, error, onRetry }) {
+    if (loading) return <div className="memory-insight-state"><RefreshCw size={16} className="spin" /> Загружаю граф памяти…</div>;
+    if (error) return <div className="memory-insight-state is-error" role="alert"><CircleAlert size={16} /> <span>{error}</span><Button size="sm" variant="outline" onClick={onRetry}>Повторить</Button></div>;
+    if (!graph.nodes.length) return <div className="memory-insight-state"><BrainCircuit size={18} /> В графе пока нет связанных фактов.</div>;
+
+    const width = 720;
+    const height = Math.max(230, Math.ceil(graph.nodes.length / 4) * 96 + 42);
+    const positions = Object.fromEntries(graph.nodes.map((node, index) => [String(node.id ?? node.key ?? index), {
+        x: 92 + (index % 4) * 174,
+        y: 54 + Math.floor(index / 4) * 96
+    }]));
+    const point = value => positions[String(value)] || positions[String(value?.id)] || null;
+    return <div className="memory-graph-wrap">
+        <svg className="memory-graph-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Граф фактов памяти пользователя">
+            <g className="memory-graph-edges">{graph.edges.map((edge, index) => {
+                const source = point(edge.source ?? edge.from ?? edge.source_id);
+                const target = point(edge.target ?? edge.to ?? edge.target_id);
+                return source && target ? <line key={`${edge.id || index}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y} /> : null;
+            })}</g>
+            <g>{graph.nodes.map((node, index) => {
+                const position = positions[String(node.id ?? node.key ?? index)];
+                const inactive = node.is_active === false || node.active === false;
+                const superseded = Boolean(node.superseded || node.is_superseded);
+                return <g className={cn('memory-graph-node', inactive && 'is-inactive', superseded && 'is-superseded')} key={String(node.id ?? node.key ?? index)} transform={`translate(${position.x}, ${position.y})`}>
+                    <circle r="22" />
+                    <text className="memory-graph-node-type" textAnchor="middle" y="4">{String(node.type || node.kind || 'fact').slice(0, 10)}</text>
+                    <text className="memory-graph-node-label" textAnchor="middle" y="43">{String(node.label || node.fact || node.text || node.name || 'Без названия').slice(0, 24)}</text>
+                </g>;
+            })}</g>
+        </svg>
+        <div className="memory-graph-legend"><span><i className="is-active" /> Активен</span><span><i className="is-inactive" /> Неактивен</span><span><i className="is-superseded" /> Superseded</span><span><GitBranch size={13} /> Связь</span></div>
+    </div>;
+}
+
+function RetrievalTrace({ retrievals, loading, error, onRetry }) {
+    if (loading) return <div className="memory-insight-state"><RefreshCw size={16} className="spin" /> Загружаю trace…</div>;
+    if (error) return <div className="memory-insight-state is-error" role="alert"><CircleAlert size={16} /> <span>{error}</span><Button size="sm" variant="outline" onClick={onRetry}>Повторить</Button></div>;
+    if (!retrievals.length) return <div className="memory-insight-state"><Gauge size={18} /> Ответов с trace для этого пользователя пока нет.</div>;
+    return <div className="retrieval-trace-list">{retrievals.map((item, index) => {
+        const metadata = item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+        const traces = Array.isArray(item.traces) ? item.traces : [];
+        const selected = traces.filter(trace => trace.selected === true);
+        const source = metadata.source || item.source || item.provider || '—';
+        const latency = metadata.latency_ms ?? item.latency_ms ?? item.latencyMs ?? '—';
+        const fallbackReason = metadata.fallbackReason || metadata.fallback_reason || item.fallbackReason || item.fallback_reason || item.error || null;
+        const status = String(item.status || '').toUpperCase();
+        const fallback = Boolean(fallbackReason) || status === 'FAILED';
+        const factLabel = trace => trace.normalized_text || trace.trace?.text || trace.trace?.fact || 'Факт недоступен';
+        const scoreLabel = trace => Number.isFinite(Number(trace.final_score))
+            ? Number(trace.final_score).toFixed(3)
+            : '—';
+        return <article className="retrieval-trace-card" key={item.id || item.request_id || index}>
+            <div className="retrieval-trace-head"><div><strong>{item.created_at || item.createdAt ? formatDate(item.created_at || item.createdAt) : `Trace #${index + 1}`}</strong><span>{item.query_text || item.query || item.user_text || item.request || 'Запрос без текста'}</span></div><Badge variant={fallback ? 'yellow' : 'green'}>{fallback ? (status === 'FAILED' ? 'Ошибка' : 'Fallback') : 'Выбрано'}</Badge></div>
+            <div className="retrieval-trace-meta"><span><Database size={13} /> source: {source}</span><span><Clock size={13} /> latency: {latency} мс</span><span><ShieldCheck size={13} /> strategy: {item.strategy || '—'}</span><span><Gauge size={13} /> fallback: {fallbackReason || 'нет'}</span></div>
+            {fallbackReason && <small className="trace-error">Причина fallback: {fallbackReason}</small>}
+            <div className="retrieval-facts"><span className="retrieval-label">Selected facts ({selected.length})</span>{selected.length ? selected.map((trace, traceIndex) => <div className="retrieval-fact" key={trace.id || trace.memory_fact_id || traceIndex}><span><strong>{trace.memory_type || 'FACT'}</strong> · {factLabel(trace)}</span><code>{scoreLabel(trace)}</code></div>) : <small>Факты не выбраны</small>}</div>
+            {traces.length > 0 && <details className="retrieval-candidates"><summary>Кандидаты и причины ({traces.length})</summary><div className="retrieval-facts">{traces.map((trace, traceIndex) => <div className={cn('retrieval-fact', trace.selected && 'is-selected')} key={`candidate-${trace.id || trace.memory_fact_id || traceIndex}`}><span><strong>#{trace.candidate_rank || traceIndex + 1}</strong> {trace.memory_type || 'FACT'} · {factLabel(trace)}{trace.exclusion_reason ? ` · ${trace.exclusion_reason}` : ''}</span><code>{scoreLabel(trace)}</code></div>)}</div></details>}
+        </article>;
+    })}</div>;
 }
 function mskDateParts(value = new Date()) { return Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(value)).filter(part => part.type !== 'literal').map(part => [part.type, part.value])); }
 function isoDate(value) { const parts = mskDateParts(value); return `${parts.year}-${parts.month}-${parts.day}`; }
@@ -3702,6 +3771,10 @@ function CrmPanel({ toast }) {
     const [facts, setFacts] = useState([]);
     const [factText, setFactText] = useState('');
     const [factUserId, setFactUserId] = useState('');
+    const [memoryGraph, setMemoryGraph] = useState({ nodes: [], edges: [] });
+    const [memoryGraphState, setMemoryGraphState] = useState({ loading: false, error: '' });
+    const [retrievals, setRetrievals] = useState([]);
+    const [retrievalState, setRetrievalState] = useState({ loading: false, error: '' });
     const [relationshipForm, setRelationshipForm] = useState({ trust: 50, affection: 50, irritation: 0 });
 
     const [packages, setPackages] = useState({});
@@ -3744,7 +3817,27 @@ function CrmPanel({ toast }) {
                 affection: Math.round(Number(result.relationship?.relationship?.affection ?? 50)),
                 irritation: Math.round(Number(result.relationship?.relationship?.irritation ?? 0))
             });
+            loadMemoryInsights(id);
         }
+    }
+
+    async function loadMemoryInsights(id = selectedUser?.user?.telegram_id) {
+        if (!id) return;
+        setMemoryGraphState({ loading: true, error: '' });
+        setRetrievalState({ loading: true, error: '' });
+        const [graphResult, retrievalResult] = await Promise.allSettled([
+            api(`/api/admin/memory/graph/${id}`),
+            api(`/api/admin/memory/retrievals/${id}?limit=20`)
+        ]);
+        if (graphResult.status === 'fulfilled') {
+            setMemoryGraph(memoryGraphData(graphResult.value));
+            setMemoryGraphState({ loading: false, error: '' });
+        } else setMemoryGraphState({ loading: false, error: graphResult.reason?.message || 'Не удалось загрузить граф памяти.' });
+        if (retrievalResult.status === 'fulfilled') {
+            const payload = retrievalResult.value;
+            setRetrievals(payload.retrievals || payload.results || payload.items || []);
+            setRetrievalState({ loading: false, error: '' });
+        } else setRetrievalState({ loading: false, error: retrievalResult.reason?.message || 'Не удалось загрузить response trace.' });
     }
 
     async function saveRelationship() {
@@ -3809,7 +3902,7 @@ function CrmPanel({ toast }) {
     async function toggleFact(id, isActive) {
         await run(() => api(`/api/admin/memory/facts/${id}`, {
             method: 'PATCH',
-            body: JSON.stringify({ isActive })
+            body: JSON.stringify({ userId: factUserId.trim(), isActive })
         }), 'Статус факта обновлён');
         loadFacts();
     }
@@ -3934,6 +4027,8 @@ function CrmPanel({ toast }) {
                                 <div className="dossier-subnav">
                                     <button className={cn('dossier-tab-btn', dossierTab === 'balance' && 'active')} onClick={() => setDossierTab('balance')}>⚙️ Балансы и Доступ</button>
                                     <button className={cn('dossier-tab-btn', dossierTab === 'memory' && 'active')} onClick={() => setDossierTab('memory')}>🧠 Память ({facts.length})</button>
+                                    <button className={cn('dossier-tab-btn', dossierTab === 'memory-graph' && 'active')} onClick={() => setDossierTab('memory-graph')}><Network size={14} /> Memory Graph</button>
+                                    <button className={cn('dossier-tab-btn', dossierTab === 'why' && 'active')} onClick={() => setDossierTab('why')}><BrainCircuit size={14} /> Почему ответила так</button>
                                     <button className={cn('dossier-tab-btn', dossierTab === 'relationship' && 'active')} onClick={() => setDossierTab('relationship')}>🫀 Отношения</button>
                                     <button className={cn('dossier-tab-btn', dossierTab === 'chat' && 'active')} onClick={() => setDossierTab('chat')}>💬 Диалоги ({selectedUser.conversations?.length || 0})</button>
                                     <button className={cn('dossier-tab-btn', dossierTab === 'payments' && 'active')} onClick={() => setDossierTab('payments')}>💳 Платежи ({selectedUser.payments?.length || 0})</button>
@@ -3990,10 +4085,24 @@ function CrmPanel({ toast }) {
                                                         <Database size={15} />
                                                         <div><strong>{fact.fact}</strong><span>{fact.source || 'manual'} · {fact.is_active === false ? 'выключен' : 'активен'}</span></div>
                                                         <Button size="sm" variant="outline" onClick={() => toggleFact(fact.id, fact.is_active === false)}>{fact.is_active === false ? 'Включить' : 'Выключить'}</Button>
-                                                        <ConfirmAction title="Удалить факт?" description="Факт перестанет использоваться в памяти пользователя." confirmText="Удалить" variant="danger" onConfirm={() => run(() => api(`/api/admin/memory/facts/${fact.id}`, { method: 'DELETE' }), 'Факт удалён').then(loadFacts)}>Удалить</ConfirmAction>
+                                                        <ConfirmAction title="Удалить факт?" description="Факт перестанет использоваться в памяти пользователя." confirmText="Удалить" variant="danger" onConfirm={() => run(() => api(`/api/admin/memory/facts/${fact.id}`, { method: 'DELETE', body: JSON.stringify({ userId: factUserId.trim() }) }), 'Факт удалён').then(loadFacts)}>Удалить</ConfirmAction>
                                                     </div>
                                                 )) : <div className="empty-state">Фактов в памяти не найдено.</div>}
                                             </div>
+                                        </div>
+                                    )}
+
+                                    {dossierTab === 'memory-graph' && (
+                                        <div className="crm-section memory-graph-section">
+                                            <div className="crm-section-heading"><div><span className="eyebrow">Структура памяти</span><h3>Memory Graph</h3><p>Типы узлов, активность, связи и факты, которые были заменены.</p></div><Button size="sm" variant="outline" onClick={() => loadMemoryInsights()}><RefreshCw size={14} /> Обновить</Button></div>
+                                            <MemoryGraph graph={memoryGraph} loading={memoryGraphState.loading} error={memoryGraphState.error} onRetry={() => loadMemoryInsights()} />
+                                        </div>
+                                    )}
+
+                                    {dossierTab === 'why' && (
+                                        <div className="crm-section response-trace-section">
+                                            <div className="crm-section-heading"><div><span className="eyebrow">Response trace</span><h3>Почему ответила так</h3><p>Источник, задержка, fallback, выбранные факты и оценки retrieval.</p></div><Button size="sm" variant="outline" onClick={() => loadMemoryInsights()}><RefreshCw size={14} /> Обновить</Button></div>
+                                            <RetrievalTrace retrievals={retrievals} loading={retrievalState.loading} error={retrievalState.error} onRetry={() => loadMemoryInsights()} />
                                         </div>
                                     )}
 

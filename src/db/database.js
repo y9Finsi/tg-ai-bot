@@ -2099,35 +2099,90 @@ export async function getMemoryProvider(settings = {}) {
     return await getActiveAiProvider();
 }
 
+async function getTypedMemoryRepository() {
+    const module = await import('../memory/memory_repository.js');
+    return module.memoryRepository;
+}
+
+function legacyMemoryShape(fact) {
+    if (!fact) return null;
+    return {
+        ...fact,
+        id: fact.id,
+        fact: fact.normalizedText ?? fact.text ?? fact.fact ?? '',
+        is_active: fact.isActive !== false,
+        created_at: fact.created_at ?? fact.createdAt ?? null
+    };
+}
+
 export async function getUserMemories(userId, limit = 30) {
     try {
-        const res = await query(
-            "SELECT id, fact FROM user_memories WHERE user_id = $1 AND is_active = TRUE ORDER BY created_at DESC LIMIT $2",
-            [userId, limit]
-        );
-        return res.rows;
-    } catch (e) {
-        return [];
+        const repository = await getTypedMemoryRepository();
+        const facts = await repository.listFacts(userId, {
+            includeInactive: false,
+            limit: Math.max(1, Math.min(100, Number(limit) || 30))
+        });
+        return facts.map(legacyMemoryShape);
+    } catch {
+        try {
+            const res = await query(
+                "SELECT id, fact, is_active, created_at FROM user_memories WHERE user_id = $1 AND is_active = TRUE ORDER BY created_at DESC LIMIT $2",
+                [userId, limit]
+            );
+            return res.rows;
+        } catch {
+            return [];
+        }
     }
 }
 
 export async function saveUserMemory(userId, fact) {
     try {
-        const res = await query(
-            "INSERT INTO user_memories (user_id, fact) VALUES ($1, $2) RETURNING *",
-            [userId, fact]
-        );
-        return res.rows[0];
-    } catch (e) {
-        return null;
+        const repository = await getTypedMemoryRepository();
+        const saved = await repository.createFact({
+            userId,
+            type: 'PROFILE',
+            payload: {
+                text: String(fact || '').trim(),
+                legacy_compat: true
+            },
+            provenance: {
+                source: 'legacy_memory_api',
+                source_kind: 'LEGACY_COMPAT'
+            }
+        });
+        return legacyMemoryShape(saved);
+    } catch {
+        try {
+            const res = await query(
+                "INSERT INTO user_memories (user_id, fact) VALUES ($1, $2) RETURNING *",
+                [userId, fact]
+            );
+            return res.rows[0];
+        } catch {
+            return null;
+        }
     }
 }
 
 export async function deactivateUserMemory(id, userId = null) {
     try {
-        await query("UPDATE user_memories SET is_active = FALSE WHERE id = $1 AND ($2::bigint IS NULL OR user_id = $2)", [id, userId]);
-    } catch (e) {
-        // Ignored
+        const repository = await getTypedMemoryRepository();
+        if (userId === null || userId === undefined) return null;
+        return legacyMemoryShape(await repository.setFactActive(userId, id, false, {
+            source: 'legacy_memory_api',
+            reason: 'deactivate'
+        }));
+    } catch {
+        try {
+            await query(
+                "UPDATE user_memories SET is_active = FALSE WHERE id = $1 AND ($2::bigint IS NULL OR user_id = $2)",
+                [id, userId]
+            );
+        } catch {
+            // Compatibility cleanup is best effort.
+        }
+        return null;
     }
 }
 
@@ -2449,8 +2504,42 @@ export async function claimDailyBonus(userId, bonusRequests = 3) {
 }
 
 export async function clearUserMemories(userId) {
-    const res = await query('DELETE FROM user_memories WHERE user_id = $1', [userId]);
-    return res.rowCount;
+    try {
+        const repository = await getTypedMemoryRepository();
+        const deleted = await repository.withTransaction(async client => {
+            await client.query(
+                'DELETE FROM memory_retrieval_log WHERE user_id = $1',
+                [userId]
+            );
+            await client.query(
+                'DELETE FROM memory_outbox WHERE user_id = $1',
+                [userId]
+            );
+            const typedFacts = await client.query(
+                'DELETE FROM memory_fact WHERE user_id = $1',
+                [userId]
+            );
+            const legacyFacts = await client.query(
+                'DELETE FROM user_memories WHERE user_id = $1',
+                [userId]
+            );
+            await repository.enqueue(client, {
+                userId,
+                operation: 'DELETE',
+                payload: { purge_user: true, user_id: String(userId) },
+                idempotencyKey: `purge:user:${String(userId)}`
+            });
+            return (typedFacts.rowCount || 0) + (legacyFacts.rowCount || 0);
+        });
+        return deleted;
+    } catch {
+        try {
+            const res = await query('DELETE FROM user_memories WHERE user_id = $1', [userId]);
+            return res.rowCount;
+        } catch {
+            return 0;
+        }
+    }
 }
 
 export async function getAllRecentConversationEvents(limit = 50) {
@@ -2472,8 +2561,44 @@ export async function clearAllChatHistory() {
 }
 
 export async function clearAllUserMemories() {
-    const resMem = await query('DELETE FROM user_memories');
-    return resMem.rowCount || 0;
+    try {
+        const repository = await getTypedMemoryRepository();
+        return await repository.withTransaction(async client => {
+            const users = await client.query(
+                `SELECT user_id
+                 FROM (
+                     SELECT DISTINCT user_id FROM memory_fact
+                     UNION
+                     SELECT DISTINCT user_id FROM user_memories
+                     UNION
+                     SELECT DISTINCT user_id FROM memory_outbox
+                     UNION
+                     SELECT DISTINCT user_id FROM memory_retrieval_log
+                 ) memory_users
+                 ORDER BY user_id`
+            );
+            await client.query('DELETE FROM memory_retrieval_log');
+            await client.query('DELETE FROM memory_outbox');
+            const typedFacts = await client.query('DELETE FROM memory_fact');
+            const legacyFacts = await client.query('DELETE FROM user_memories');
+            for (const row of users.rows) {
+                await repository.enqueue(client, {
+                    userId: row.user_id,
+                    operation: 'DELETE',
+                    payload: { purge_user: true, user_id: String(row.user_id) },
+                    idempotencyKey: `purge:user:${String(row.user_id)}`
+                });
+            }
+            return (typedFacts.rowCount || 0) + (legacyFacts.rowCount || 0);
+        });
+    } catch {
+        try {
+            const resMem = await query('DELETE FROM user_memories');
+            return resMem.rowCount || 0;
+        } catch {
+            return 0;
+        }
+    }
 }
 
 // =========================================================================
@@ -2481,14 +2606,23 @@ export async function clearAllUserMemories() {
 // =========================================================================
 
 export async function getUserMemoriesAdmin(userId, includeInactive = true) {
-    const res = await query(
-        `SELECT id, user_id, fact, is_active, created_at
-         FROM user_memories
-         WHERE user_id = $1 AND ($2::boolean OR is_active = TRUE)
-         ORDER BY created_at DESC`,
-        [userId, includeInactive]
-    );
-    return res.rows;
+    try {
+        const repository = await getTypedMemoryRepository();
+        const facts = await repository.listFacts(userId, {
+            includeInactive: Boolean(includeInactive),
+            limit: 1000
+        });
+        return facts.map(legacyMemoryShape);
+    } catch {
+        const res = await query(
+            `SELECT id, user_id, fact, is_active, created_at
+             FROM user_memories
+             WHERE user_id = $1 AND ($2::boolean OR is_active = TRUE)
+             ORDER BY created_at DESC`,
+            [userId, includeInactive]
+        );
+        return res.rows;
+    }
 }
 
 export async function updateUserMemoryFact(id, fact) {

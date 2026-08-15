@@ -33,6 +33,9 @@ import { initChannelPoster, stopChannelPoster } from './channel_poster.js';
 import { editContentChannelPost, extractContentFromChannelPost } from './content_service.js';
 import { enqueuePersonalInitiatives } from './initiative_service.js';
 import { handleChannelDiscussionMessage } from './channel_comments.js';
+import { createSemanticaClient } from './memory/semantica_client.js';
+import { createMemoryOutboxWorker } from './memory/memory_outbox_worker.js';
+import { memoryRepository } from './memory/memory_repository.js';
 
 const requiredEnvs = ['BOT_TOKEN', 'ADMIN_ID', 'OPENROUTER_API_KEY', 'DATABASE_URL'];
 for (const envName of requiredEnvs) {
@@ -53,6 +56,7 @@ const adminBroadcastMsg = {};
 const lastMessageTime = {};
 const adminTargetUser = {};
 const adminPromoDraft = {};
+let memoryOutboxWorker = null;
 
 // Хранилище и настройки буфера сообщений ("лесенка")
 const userDebounceBuffer = {};
@@ -1916,6 +1920,12 @@ setBotInstanceForServer(bot);
 // producing silent empty ticks and a half-functional admin UI.
 initDatabaseTables()
     .then(() => {
+        const semanticaClient = createSemanticaClient();
+        memoryOutboxWorker = createMemoryOutboxWorker({
+            memoryRepository,
+            semanticaClient
+        });
+        memoryOutboxWorker.start();
         startAdminServer();
         SimulationWorker.startWorker();
         MemorySummarizer.startScheduler();
@@ -1937,6 +1947,7 @@ async function gracefulShutdown(signal) {
     bot.stop(signal);
     SimulationWorker.stopWorker();
     MemorySummarizer.stopScheduler();
+    await memoryOutboxWorker?.stop();
     stopChannelPoster();
     await stopAiWorker();
     await stopBroadcastWorker();

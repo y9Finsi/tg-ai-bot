@@ -9,6 +9,7 @@ import { UtilitySelector } from './radiant/utility_selector.js';
 import { WeatherService } from './radiant/weather_service.js';
 import { coordinateAtProgress } from './radiant/world_map.js';
 import { MemorySummarizer } from './memory/summarizer.js';
+import { memoryRepository } from './memory/memory_repository.js';
 import { ContextBuilder } from './ai/context_builder.js';
 import { generateLeraVoice } from './services/voice_generator.js';
 import { ToolsRepository } from './db/tools_repository.js';
@@ -2377,7 +2378,7 @@ export function startAdminServer() {
             const [user, payments, facts, conversations, relationship, routingSettings] = await Promise.all([
                 getUser(req.params.id),
                 getPaymentHistory(req.params.id, 50),
-                getUserMemoriesAdmin(req.params.id, true),
+                memoryRepository.listFacts(req.params.id, { includeInactive: true }),
                 getRecentConversationEvents(req.params.id, 80),
                 getUserRelationshipAdmin(req.params.id, 30),
                 getRoutingSettings()
@@ -2479,53 +2480,98 @@ export function startAdminServer() {
     });
 
     // =========================================================================
-    // MODULE 6b: USER MEMORY (user_memories) — full CRUD + digests
+    // MODULE 6b: TYPED USER MEMORY — admin CRUD + graph/retrieval diagnostics
     // =========================================================================
 
     app.get('/api/admin/memory/facts/:userId', async (req, res) => {
         try {
-            const facts = await getUserMemoriesAdmin(req.params.userId, true);
+            const facts = await memoryRepository.listFacts(req.params.userId, {
+                includeInactive: req.query.includeInactive !== 'false',
+                limit: req.query.limit
+            });
             res.json({ success: true, facts });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            res.status(e instanceof TypeError ? 400 : 500).json({ error: e.message });
         }
     });
 
     app.post('/api/admin/memory/facts/:userId', async (req, res) => {
         try {
-            const { fact } = req.body;
-            if (!fact || !String(fact).trim()) return res.status(400).json({ error: 'Пустой факт' });
-            const created = await saveUserMemory(req.params.userId, String(fact).trim());
-            if (!created) return res.status(500).json({ error: 'Не удалось сохранить факт' });
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            const input = body.fact !== undefined && body.payload === undefined
+                ? { ...body, type: body.type || body.memoryType || 'PROFILE', text: String(body.fact).trim() }
+                : body;
+            const created = await memoryRepository.createFact(input, { userId: req.params.userId });
             res.json({ success: true, fact: created });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            res.status(e instanceof TypeError || e instanceof RangeError ? 400 : 500).json({ error: e.message });
         }
     });
 
     app.patch('/api/admin/memory/facts/:id', async (req, res) => {
         try {
-            const { fact, isActive } = req.body;
-            let updated = null;
-            if (fact !== undefined && String(fact).trim()) {
-                updated = await updateUserMemoryFact(req.params.id, String(fact).trim());
+            const body = req.body && typeof req.body === 'object' ? req.body : {};
+            if (body.userId === undefined || body.userId === null || String(body.userId).trim() === '') {
+                return res.status(400).json({ error: 'Для изменения факта нужен userId' });
             }
-            if (isActive !== undefined) {
-                updated = await setUserMemoryActive(req.params.id, isActive);
-            }
-            if (!updated) return res.status(404).json({ error: 'Факт не найден' });
+            const userId = String(body.userId).trim();
+            const patch = { ...body };
+            delete patch.userId;
+            if (patch.fact !== undefined) patch.text = String(patch.fact).trim();
+            const updated = patch.isActive === undefined
+                ? await memoryRepository.updateFact(userId, req.params.id, patch)
+                : await memoryRepository.setFactActive(userId, req.params.id, patch.isActive, { edited_by: 'admin' });
+            if (!updated) return res.status(404).json({ error: 'Факт не найден у этого пользователя' });
             res.json({ success: true, fact: updated });
         } catch (e) {
-            res.status(500).json({ error: e.message });
+            res.status(e instanceof TypeError || e instanceof RangeError ? 400 : 500).json({ error: e.message });
         }
     });
 
     app.delete('/api/admin/memory/facts/:id', async (req, res) => {
         try {
-            const deleted = await deleteUserMemory(req.params.id);
+            const userId = req.body?.userId ?? req.query.userId;
+            if (userId === undefined || userId === null || String(userId).trim() === '') {
+                return res.status(400).json({ error: 'Для удаления факта нужен userId' });
+            }
+            const deleted = await memoryRepository.archiveFact(userId, req.params.id, { edited_by: 'admin' });
+            if (!deleted) return res.status(404).json({ error: 'Факт не найден у этого пользователя' });
             res.json({ success: true, fact: deleted });
         } catch (e) {
+            res.status(e instanceof TypeError ? 400 : 500).json({ error: e.message });
+        }
+    });
+
+    app.get('/api/admin/memory/graph/:userId', async (req, res) => {
+        try {
+            res.json({ success: true, graph: await memoryRepository.getGraph(req.params.userId, { limit: req.query.limit }) });
+        } catch (e) {
+            res.status(e instanceof TypeError ? 400 : 500).json({ error: e.message });
+        }
+    });
+
+    app.get('/api/admin/memory/retrievals/:userId', async (req, res) => {
+        try {
+            const retrievals = await memoryRepository.listRetrievals(req.params.userId, req.query.limit);
+            res.json({ success: true, retrievals });
+        } catch (e) {
+            res.status(e instanceof TypeError ? 400 : 500).json({ error: e.message });
+        }
+    });
+
+    app.get('/api/admin/memory/health', async (_req, res) => {
+        try {
+            res.json({ success: true, outbox: await memoryRepository.getOutboxHealth() });
+        } catch (e) {
             res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.post('/api/admin/memory/rebuild', async (req, res) => {
+        try {
+            res.json({ success: true, rebuild: await memoryRepository.rebuildProjection({ userId: req.body?.userId ?? null }) });
+        } catch (e) {
+            res.status(e instanceof TypeError ? 400 : 500).json({ error: e.message });
         }
     });
 

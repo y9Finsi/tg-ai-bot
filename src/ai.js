@@ -22,6 +22,10 @@ import { cleanResponseText } from './utils/response_text.js';
 import { generateLeraPhoto } from './services/image_generator.js';
 import { generateLeraVoice } from './services/voice_generator.js';
 import { actionRegistry, executeAction } from './radiant/actions/index.js';
+import { createContextRetriever } from './ai/context_retriever.js';
+import { buildMemoryRetrievalQuery } from './ai/memory_query.js';
+import { shouldPersistToolObservation } from './ai/tool_observation_policy.js';
+import { memoryRepository } from './memory/memory_repository.js';
 // --- 1. КОНСТАНТЫ И ДИНАМИЧЕСКИЙ КЛИЕНТ ИИ ---
 
 const rateLimitMap = new Map();
@@ -29,6 +33,74 @@ setInterval(() => rateLimitMap.clear(), 60 * 1000);
 
 let activeProviderCache = null;
 let openaiClientInstance = null;
+const contextRetriever = createContextRetriever({ repository: memoryRepository });
+
+export { buildMemoryRetrievalQuery };
+
+function normalizeMemoryForPrompt(memory, index) {
+    const text = String(memory?.text ?? memory?.fact ?? memory?.normalizedText ?? '').trim();
+    return {
+        ...memory,
+        id: String(memory?.id ?? `legacy-${index}`),
+        text,
+        fact: text,
+        score: Number.isFinite(Number(memory?.score)) ? Number(memory.score) : 1
+    };
+}
+
+function legacyRetrievalResult(memories, query, startedAt, fallbackReason) {
+    const facts = (Array.isArray(memories) ? memories : [])
+        .map(normalizeMemoryForPrompt)
+        .filter(fact => fact.text);
+    return {
+        facts,
+        coreFacts: [],
+        promptText: facts.map(fact => `- ${fact.text}`).join('\n'),
+        trace: {
+            query_text: query,
+            source: 'legacy_repository',
+            strategy: 'legacy_repository_fallback',
+            latency_ms: Date.now() - startedAt,
+            latency: Date.now() - startedAt,
+            fallbackReason,
+            selected: facts,
+            candidates: facts.map((fact, index) => ({
+                ...fact,
+                candidateRank: index + 1,
+                selected: true,
+                selectedRank: index + 1,
+                finalScore: fact.score,
+                exclusionReason: null
+            })),
+            shadow: [],
+            metadata: {
+                source: 'legacy_repository',
+                latency_ms: Date.now() - startedAt,
+                fallbackReason
+            }
+        }
+    };
+}
+
+function persistMemoryRetrieval(userId, memoryRetrieval) {
+    if (!memoryRetrieval?.trace) return;
+    memoryRepository.recordRetrieval({
+        userId,
+        queryText: memoryRetrieval.trace.query_text,
+        strategy: memoryRetrieval.trace.strategy,
+        requestedLimit: memoryRetrieval.trace.metadata?.limit || memoryRetrieval.facts?.length || 0,
+        contextText: memoryRetrieval.promptText,
+        metadata: {
+            ...(memoryRetrieval.trace.metadata || {}),
+            source: memoryRetrieval.trace.source,
+            fallbackReason: memoryRetrieval.trace.fallbackReason || null
+        },
+        selectedFacts: memoryRetrieval.facts || [],
+        candidates: memoryRetrieval.trace.candidates || []
+    }).catch(error => {
+        console.warn('[MEMORY RETRIEVAL LOG ERROR]:', error.message);
+    });
+}
 
 function getMoscowHour() {
     return Number(new Intl.DateTimeFormat('en-GB', {
@@ -278,10 +350,9 @@ async function generateVoiceForText(user, voiceText) {
 async function buildMessagePayload(user, userId, { userText, photoUrls = [], isInitiative, routingMode = 'CASUAL', initiativeReason = null, initiativeKind = null, contentCandidates = [], batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, actionResult = null, climaxState = null }) {
     const productionRoutingSettings = await getRoutingSettings();
     const productionIntentConfig = getModeIntentConfig(routingMode, productionRoutingSettings);
-    const [baseSystemPromptText, conversationEvents, memories] = await Promise.all([
+    const [baseSystemPromptText, conversationEvents] = await Promise.all([
         getRoutedSystemPrompt(routingMode, productionIntentConfig),
-        getRecentConversationEvents(userId, 10).catch(() => []),
-        getUserMemories(userId, 30).catch(() => [])
+        getRecentConversationEvents(userId, 10).catch(() => [])
     ]);
 
     const mediaLogInstruction = "\n\nПометки вида [Лера отправила личное фото: ...] в истории диалога — это служебные логи отправленных медиафайлов. Никогда не повторяй текст этих пометок в своих ответах!";
@@ -316,6 +387,26 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     const currentBatchIds = new Set((eventIds || []).map(Number));
     const priorEvents = conversationEvents.filter(event => !currentBatchIds.has(Number(event.id)) && event.status === 'COMPLETED');
     const lastEvent = priorEvents.at(-1);
+    const lastLeraText = [...priorEvents].reverse().find(event => event.role === 'lera' && event.content)?.content || '';
+    const memoryQuery = buildMemoryRetrievalQuery({ userText, lastLeraText, routingMode });
+    let memoryRetrieval;
+    try {
+        memoryRetrieval = await contextRetriever({
+            userId,
+            query: memoryQuery
+        });
+    } catch (memoryError) {
+        const fallbackStartedAt = Date.now();
+        const legacyMemories = await getUserMemories(userId, 30).catch(() => []);
+        memoryRetrieval = legacyRetrievalResult(
+            legacyMemories,
+            memoryQuery,
+            fallbackStartedAt,
+            `typed_memory_error:${memoryError.message}`
+        );
+        console.warn(`[MEMORY RETRIEVAL FALLBACK] user ${userId}:`, memoryError.message);
+    }
+    const memories = memoryRetrieval.facts || [];
     const gapSeconds = Number.isFinite(Number(preMessageGapSeconds))
         ? Math.max(0, Number(preMessageGapSeconds))
         : (lastEvent ? Math.max(0, Math.floor((new Date(firstMessageAt || now).getTime() - new Date(lastEvent.occurred_at).getTime()) / 1000)) : 0);
@@ -374,7 +465,6 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         modeInstruction += `\n\n[ДОСТУПНЫЙ КОНТЕНТ]\n${catalog}\n${productionRoutingSettings.contentPrompt}`;
     }
 
-    const lastLeraText = [...priorEvents].reverse().find(event => event.role === 'lera' && event.content)?.content || '';
     let tamagotchiInstruction = "";
     let radiantContextText = "";
     let radiantLayers = {};
@@ -388,7 +478,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         radiantContextText = radiantContext;
         radiantLayers = detailedContext.layers;
         const memoryText = memories.length > 0
-            ? memories.map(m => `- ${m.fact}`).join('\n')
+            ? memories.map(m => `- ${m.text ?? m.fact ?? m.normalizedText ?? ''}`).filter(line => line !== '- ').join('\n')
             : 'Пока нет сохраненных фактов о пользователе.';
 
         const promptModules = productionIntentConfig?.promptModules || {};
@@ -588,6 +678,7 @@ function analyzeAssistantRepetitions(priorEvents = []) {
             .filter(Boolean)
             .slice(-5),
         memories,
+        memoryRetrieval,
         systemPrompt,
         radiantContext: radiantContextText,
         judgeLeraRules: baseSystemPromptText,
@@ -712,13 +803,14 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     const {
         messages, isPhotoRequest, recommendationPost, preselectedPhoto, lastLeraText,
         recentReplyTexts, memories, leraState, systemPrompt, radiantContext, judgeLeraRules,
-        hasRecentGreeting
+        hasRecentGreeting, memoryRetrieval
     } = await buildMessagePayload(user, userId, {
         userText, photoUrls, isInitiative, routingMode, initiativeReason,
         initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds,
         firstMessageAt, actionResult: resolvedActionRouting?.actionResult || null,
         climaxState
     });
+    persistMemoryRetrieval(userId, memoryRetrieval);
     const routingSettings = await getRoutingSettings();
     const generationParams = getModeGenerationParams(routingMode, routingSettings);
 
@@ -735,7 +827,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             radiantContext,
             messages,
             stateSnapshot: leraState || {},
-            memoryUsed: (memories || []).map(m => m.fact || m),
+            memoryUsed: (memories || []).map(m => m.text || m.fact || m.normalizedText || m),
             isPhotoRequest,
             commandGateStatus: commandGate?.code || null,
             commandGateReason: commandGate?.accepted ? null : commandGate?.willingness ? `Willingness ${commandGate.willingness.value}%` : null,
@@ -843,14 +935,27 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             return {
                 name: funcName,
                 content: toolResultContent,
-                execRes
+                execRes,
+                callId: tc.id || null
             };
         });
 
         const settledResults = await Promise.allSettled(toolExecutionPromises);
         for (const settled of settledResults) {
             if (settled.status === 'fulfilled') {
-                const { name, content } = settled.value;
+                const { name, content, execRes } = settled.value;
+                if (shouldPersistToolObservation({ status: execRes?.status, name })) {
+                    memoryRepository.recordToolObservation({
+                        userId,
+                        toolName: name,
+                        queryText: userText,
+                        resultText: content,
+                        callId: settled.value.callId || null,
+                        sourceEventId: eventIds.at(-1) || null
+                    }).catch(error => {
+                        console.warn(`[TOOL MEMORY OBSERVATION ERROR] ${name}:`, error.message);
+                    });
+                }
                 messages.push({
                     role: 'system',
                     content: `[РЕАЛЬНЫЕ СВЕЖИЕ ДАННЫЕ ИЗ ИНСТРУМЕНТА ${name}]:\n${content}\n\nВАЖНО: Обязательно используй эти реальные факты для ответа собеседнику, пересказав их своими словами в живом характере Леры (сленг, лесенка). Не говори, что ничего не знаешь, факты выше — настоящие и свежие!`
@@ -901,6 +1006,15 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     // 3. Чистка текста и генерация/выборка фото и голоса
     let { text, photo, photoRecordId, photoCaption, voice, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates, isVoiceRequest, recentReplyTexts);
     const generationTrace = [{
+        step: 'memory_retrieval',
+        query: memoryRetrieval?.trace?.query_text || '',
+        strategy: memoryRetrieval?.trace?.strategy || null,
+        source: memoryRetrieval?.trace?.source || null,
+        metadata: memoryRetrieval?.trace?.metadata || {},
+        selectedFacts: memoryRetrieval?.facts || [],
+        candidates: memoryRetrieval?.trace?.candidates || [],
+        fallbackReason: memoryRetrieval?.trace?.fallbackReason || null
+    }, {
         step: 'first',
         response: text,
         rawResponse: rawText,
@@ -1151,6 +1265,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         parsedResponse: text,
         usage,
         generationTrace,
+        memoryRetrieval: memoryRetrieval?.trace || null,
         profileVersion: activeProfile?.version || null,
         judgeVerdict: generationTrace.filter(item => item.step === 'judge').at(-1)?.verdict || null,
         judgeCode: generationTrace.filter(item => item.step === 'judge').at(-1)?.code || null,
@@ -1163,7 +1278,9 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
 
     // 5. Асинхронная экстракция долгосрочных фактов в память в фоне (не блокирует ответ)
     if (!isInitiative && userText) {
-        extractFactsInBackground(userId, userText).catch(mErr =>
+        extractFactsInBackground(userId, userText, {
+            sourceEventId: eventIds.at(-1) || null
+        }).catch(mErr =>
             console.error(`⚠️ Ошибка фонового извлечения памяти (${userId}):`, mErr.message)
         );
     }
@@ -1182,7 +1299,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         anchorEventId,
         debugInfo: {
             state_snapshot: leraState,
-            memory_used: (memories && memories.length > 0) ? memories.map(m => m.fact || m) : "Память пока пуста (в БД PostgreSQL для этого юзера еще нет фактов)",
+            memory_used: (memories && memories.length > 0) ? memories.map(m => m.text || m.fact || m.normalizedText || m) : "Память пока пуста (в БД PostgreSQL для этого юзера еще нет фактов)",
+            memory_retrieval: memoryRetrieval?.trace || null,
             rawPrompt: messages,
             rawText,
             usage
