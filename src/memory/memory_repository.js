@@ -858,6 +858,10 @@ export class MemoryRepository {
             selected.map((fact, index) => [String(fact.id ?? fact.fact_id ?? ''), index + 1])
         );
 
+        const isPending = status === 'PENDING';
+        const finalStatus = ['PENDING', 'COMPLETED', 'FAILED'].includes(status) ? status : 'COMPLETED';
+        const completedAt = isPending ? null : new Date();
+
         return this.withTransaction(async client => {
             const logResult = await client.query(
                 `INSERT INTO memory_retrieval_log (
@@ -866,8 +870,7 @@ export class MemoryRepository {
                     completed_at
                  ) VALUES (
                     $1, $2, $3, $4, $5, $6,
-                    $7, $8, $9, $10::jsonb, $11,
-                    CASE WHEN $6::text = 'PENDING' THEN NULL ELSE NOW() END
+                    $7, $8, $9, $10::jsonb, $11, $12
                  )
                  ON CONFLICT (user_id, request_id) DO UPDATE
                  SET status = EXCLUDED.status,
@@ -883,12 +886,13 @@ export class MemoryRepository {
                     normalizeMemoryText(queryText, 4000),
                     hashText(queryText),
                     normalizeMemoryText(strategy, 64) || 'hybrid_v1',
-                    ['PENDING', 'COMPLETED', 'FAILED'].includes(status) ? status : 'COMPLETED',
+                    finalStatus,
                     effectiveLimit,
                     selected.length,
                     normalizeMemoryText(contextText, 12000),
                     JSON.stringify(cleanMetadata(metadata)),
-                    error ? normalizeMemoryText(error?.message || error, 4000) : null
+                    error ? normalizeMemoryText(error?.message || error, 4000) : null,
+                    completedAt
                 ]
             );
             const log = logResult.rows[0];
