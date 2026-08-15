@@ -867,7 +867,7 @@ export class MemoryRepository {
                  ) VALUES (
                     $1, $2, $3, $4, $5, $6,
                     $7, $8, $9, $10::jsonb, $11,
-                    CASE WHEN $6 = 'PENDING' THEN NULL ELSE NOW() END
+                    CASE WHEN $6::text = 'PENDING' THEN NULL ELSE NOW() END
                  )
                  ON CONFLICT (user_id, request_id) DO UPDATE
                  SET status = EXCLUDED.status,

@@ -33,10 +33,10 @@ function memoryTypeFor(item) {
 
 export function isMemoryCandidate(text) {
     const value = String(text || '').trim();
-    if (value.length < 8) return false;
-    if (/(?:^|\s)(?:я|мне)\b[\s\S]{0,40}\b(?:спать|спть|поспать|ложиться|отбой|устал(?:а|ый)?|сон)\b/iu.test(value)) return false;
-    if (/^(?:кароче\s+)?(?:ладно\s+)?(?:я\s+)?(?:спать|спть|пойду\s+спать|ложусь)\b[\s!.…]*$/iu.test(value)) return false;
-    return /(?:^|\s)(?:я|мне|меня|мой|моя|моё|мои|у меня|люблю|ненавижу|обожаю|работаю|учусь|живу|зовут|родом|занимаюсь|хочу|могу|не люблю)\b/iu.test(value);
+    if (value.length < 5) return false;
+    if (/(?:^|[^\p{L}\p{N}])(?:я|мне)(?:[^\p{L}\p{N}][\s\S]{0,40}[^\p{L}\p{N}]|[^\p{L}\p{N}])(?:спать|спть|поспать|ложиться|отбой|устал(?:а|ый)?|сон)(?=[^\p{L}\p{N}]|$)/iu.test(value)) return false;
+    if (/^(?:кароче\s+)?(?:ладно\s+)?(?:я\s+)?(?:спать|спть|пойду\s+спать|ложусь)[^\p{L}\p{N}]*$/iu.test(value)) return false;
+    return /(?:^|[^\p{L}\p{N}])(?:я|мне|меня|мой|моя|моё|мое|мои|моем|моей|моих|моего|у меня|люблю|ненавижу|обожаю|работаю|учусь|живу|зовут|родом|занимаюсь|хочу|могу|не люблю|еду|поеду|родился|родилась|мама|папа|брат|сестра|девушка|парень|жена|муж|друг|подруга|кот|кошка|собака)(?=[^\p{L}\p{N}]|$)/iu.test(value);
 }
 
 function renderMemoryPrompt(template, existingListText, userText) {
@@ -67,7 +67,7 @@ export async function extractFactsInBackground(userId, userText, { sourceEventId
         const memSettings = await getMemorySettings();
         if (!memSettings.is_enabled) return { success: false, reason: "Memory disabled" };
 
-        const provider = await getMemoryProvider(memSettings);
+        let provider = await getMemoryProvider(memSettings);
         if (!provider) return { success: false, reason: "No memory provider" };
 
         let typedRepository = null;
@@ -111,22 +111,43 @@ export async function extractFactsInBackground(userId, userText, { sourceEventId
 
 Дополнение: короткие прямые утверждения тоже являются фактами. Например, «я дизайнер» — это факт о профессии пользователя, его нужно вернуть в new_facts. Не выдумывай детали и не добавляй факт только из ответа Леры.`;
 
-        const client = getCachedOpenAIClient(provider.base_url, provider.api_key, memSettings.timeout_ms);
-        const requestCompletion = (maxTokens, retry = false) => client.chat.completions.create({
-            model: memSettings.model || provider.model_name,
-            messages: [{
-                role: 'system',
-                content: retry
-                    ? `${prompt}\n\nПРЕДЫДУЩИЙ ОТВЕТ БЫЛ ОБОРВАН. Верни только полностью закрытый JSON. Если фактов нет, верни {"new_facts":[],"deactivate_ids":[]}.`
-                    : prompt
-            }],
-            temperature: memSettings.temperature,
-            max_tokens: maxTokens
-        });
+        let client = getCachedOpenAIClient(provider.base_url, provider.api_key, memSettings.timeout_ms);
+        const makeCompletionCall = async (prov, maxTokens, retry = false) => {
+            const cl = getCachedOpenAIClient(prov.base_url, prov.api_key, memSettings.timeout_ms);
+            return cl.chat.completions.create({
+                model: memSettings.model || prov.model_name,
+                messages: [
+                    {
+                        role: 'system',
+                        content: 'Ты — строгий модуль извлечения долгосрочных фактов о пользователе. Отвечай СТРОГО валидным JSON без markdown и без лишнего текста.'
+                    },
+                    {
+                        role: 'user',
+                        content: retry
+                            ? `${prompt}\n\nПРЕДЫДУЩИЙ ОТВЕТ БЫЛ ОБОРВАН. Верни только полностью закрытый JSON. Если фактов нет, верни {"new_facts":[],"deactivate_ids":[]}.`
+                            : prompt
+                    }
+                ],
+                temperature: memSettings.temperature,
+                max_tokens: maxTokens
+            });
+        };
 
         const startedAt = Date.now();
         let attempt = 'first';
-        let completion = await requestCompletion(memSettings.max_tokens);
+        let completion;
+        try {
+            completion = await makeCompletionCall(provider, memSettings.max_tokens);
+        } catch (provErr) {
+            console.warn(`[MEMORY PROVIDER ERROR] ${provider.name} failed (${provErr.message}), falling back to active provider...`);
+            const fallbackProvider = await (await import('../database.js')).getActiveAiProvider();
+            if (fallbackProvider && String(fallbackProvider.id) !== String(provider.id)) {
+                provider = fallbackProvider;
+                completion = await makeCompletionCall(provider, memSettings.max_tokens);
+            } else {
+                throw provErr;
+            }
+        }
         let raw = completion.choices[0]?.message?.content || '';
         lastRaw = raw;
         let parsed;
