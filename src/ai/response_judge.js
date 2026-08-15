@@ -2,6 +2,7 @@ import { getActiveAiProvider } from '../database.js';
 import { getCachedOpenAIClient, requestLlmCompletion } from './llm_client.js';
 import { getJudgeProviders } from './intent_router.js';
 import { normalizeRelationshipEvent } from './relationship.js';
+import { normalizeArousalEvent } from './climax_engine.js';
 import { parseLlmJson } from '../utils/robust_json.js';
 
 export const JUDGE_CODES = [
@@ -63,6 +64,7 @@ export function buildJudgeMessages({
     recentPublicPosts = []
 } = {}) {
     const isChannel = String(surface).toUpperCase() === 'CHANNEL';
+    const isErotic = String(mode).toUpperCase() === 'EROTIC' && !isChannel;
     const relationshipContract = isChannel
         ? ''
         : '\n\n[RELATIONSHIP JUDGE - ОЦЕНКА ОТНОШЕНИЙ]:' +
@@ -75,13 +77,28 @@ export function buildJudgeMessages({
           '\n- DISRESPECT (интенсивность 0.4–0.8): токсичность, пренебрежение, навязчивая грубая пошлость без взаимности.' +
           '\n- NEUTRAL (интенсивность 0.0): обычные бытовые вопросы, факты, приветствия, нейтральный разговор.' +
           '\nНе меняй вердикт проверки (verdict) из-за отношения пользователя.';
+    const arousalContract = isErotic
+        ? '\n\n[AROUSAL JUDGE - ОЦЕНКА ИНТИМНОГО ДЕЙСТВИЯ (ТОЛЬКО РЕЖИМ EROTIC)]:' +
+          '\nОцени откровенность и интенсивность сексуального действия пользователя и верни объект arousal_event:' +
+          '\n- KISS_TOUCH (интенсивность 0.5–0.9): поцелуи, объятия, ласки тела, раздевание, снятие одежды.' +
+          '\n- ORAL_LICK (интенсивность 0.6–1.0): оральный секс (минет, куни), вылизывание, глубокие стоны.' +
+          '\n- SEX_PENETRATION (интенсивность 0.7–1.0): секс, проникновение, глубокие толчки, смена поз, страсть.' +
+          '\n- CLIMAX_TRIGGER (интенсивность 1.0): фразы о приближении финала («я кончаю», «сейчас кончу», «кончай со мной»).' +
+          '\n- COOL_DOWN (интенсивность 0.5–1.0): просьбы замедлиться, сделать паузу, нежные поглаживания.' +
+          '\n- NONE (интенсивность 0.0): фразы без явного сексуального действия.'
+        : '';
     const channelContract = isChannel
         ? `\nТы проверяешь публичный пост. Отклоняй любой конкретный факт, которого нет в подтвержденных публичных фактах. Отклоняй личные переписки, пользователей, встречи, приватные детали, техно-слова и служебные теги. Отклоняй уход от темы, повтор последних постов, бессвязность и неверный формат. Для отказа используй только channel-коды. Если факт не доказан, это отказ, а не PASS.`
         : '';
+    const jsonFormat = isChannel
+        ? ' {"verdict":"PASS" или "REJECT:CODE"}'
+        : isErotic
+        ? ' {"verdict":"PASS" (или "REJECT:CODE"),"relationship_event":{"type":"NEUTRAL|COMPLIMENT|AFFECTION|SUPPORT|APOLOGY|INSULT|DISRESPECT","intensity":0.0},"arousal_event":{"type":"NONE|KISS_TOUCH|ORAL_LICK|SEX_PENETRATION|CLIMAX_TRIGGER|COOL_DOWN","intensity":0.0}}'
+        : ' {"verdict":"PASS" (или "REJECT:CODE"),"relationship_event":{"type":"NEUTRAL|COMPLIMENT|AFFECTION|SUPPORT|APOLOGY|INSULT|DISRESPECT","intensity":0.0}}';
     return [
         {
             role: 'system',
-            content: `${judgePrompt || ''}${relationshipContract}${channelContract}`
+            content: `${judgePrompt || ''}${relationshipContract}${arousalContract}${channelContract}`
         },
         {
             role: 'user',
@@ -96,7 +113,7 @@ export function buildJudgeMessages({
                 `Диалог:\n${compactConversation(messages) || 'нет предыдущих сообщений'}`,
                 `Последняя реплика пользователя:\n${String(userText || '').slice(0, 600)}`,
                 `Кандидат-ответ Леры:\n${String(reply || '').slice(0, 800)}`,
-                `Формат ответа СТРОГО один JSON-объект:${isChannel ? ' {"verdict":"PASS" или "REJECT:CODE"}' : ' {"verdict":"PASS" (или "REJECT:CODE"),"relationship_event":{"type":"NEUTRAL|COMPLIMENT|AFFECTION|SUPPORT|APOLOGY|INSULT|DISRESPECT","intensity":0.0}}'}`
+                `Формат ответа СТРОГО один JSON-объект:${jsonFormat}`
             ].filter(Boolean).join('\n\n')
         }
     ];
@@ -108,12 +125,26 @@ export function parseJudgeVerdict(rawText) {
         const parsed = parseLlmJson(raw);
         const verdictText = String(parsed?.verdict || '').toUpperCase().replace(/\s/g, '');
         const eventPayload = parsed?.relationship_event || parsed?.relationshipEvent || parsed?.event || {};
+        const arousalPayload = parsed?.arousal_event || parsed?.arousalEvent || null;
+        const arousalEvent = arousalPayload ? normalizeArousalEvent(arousalPayload) : null;
         if (verdictText === 'PASS') {
-            return { verdict: 'PASS', passed: true, code: null, relationshipEvent: normalizeRelationshipEvent(eventPayload) };
+            return {
+                verdict: 'PASS',
+                passed: true,
+                code: null,
+                relationshipEvent: normalizeRelationshipEvent(eventPayload),
+                arousalEvent
+            };
         }
         const jsonMatch = verdictText.match(/^REJECT:([A-Z_]+)$/);
         if (jsonMatch && JUDGE_CODES.includes(jsonMatch[1])) {
-            return { verdict: `REJECT:${jsonMatch[1]}`, passed: false, code: jsonMatch[1], relationshipEvent: normalizeRelationshipEvent(eventPayload) };
+            return {
+                verdict: `REJECT:${jsonMatch[1]}`,
+                passed: false,
+                code: jsonMatch[1],
+                relationshipEvent: normalizeRelationshipEvent(eventPayload),
+                arousalEvent
+            };
         }
     } catch {
         // Backward-compatible compact verdicts are still accepted below.

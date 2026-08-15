@@ -1,5 +1,6 @@
 /**
  * Climax & Arousal Engine for EROTIC mode in Lera Bot
+ * Computes sexual tension & orgasm progression through event-based deltas (analogous to relationship engine).
  */
 
 export const CLIMAX_STAGES = {
@@ -10,20 +11,57 @@ export const CLIMAX_STAGES = {
     AFTERGLOW: 'AFTERGLOW'
 };
 
+export const AROUSAL_EVENT_TYPES = [
+    'NONE',
+    'KISS_TOUCH',
+    'ORAL_LICK',
+    'SEX_PENETRATION',
+    'CLIMAX_TRIGGER',
+    'COOL_DOWN'
+];
+
+export const AROUSAL_DELTAS = Object.freeze({
+    KISS_TOUCH: 12,
+    ORAL_LICK: 18,
+    SEX_PENETRATION: 22,
+    CLIMAX_TRIGGER: 25,
+    COOL_DOWN: -12,
+    NONE: 10
+});
+
 const FAST_CLIMAX_REGEX = /(?:я\s+конча[юе]|сейчас\s+кончу|конча[юе]|кончи(?:ть|ла|шь)?\s+для\s+меня|давай\s+вместе\s+конч|спускаю|излива|я\s+вс[её]|я\s+кончил)/iu;
 
 export function isFastClimaxTrigger(userText = '') {
     return FAST_CLIMAX_REGEX.test(String(userText || ''));
 }
 
-export function computeClimaxState({ recentEvents = [], userText = '', isEroticMode = false }) {
+export function normalizeArousalEvent(event) {
+    if (!event || typeof event !== 'object') {
+        return { type: 'NONE', intensity: 0 };
+    }
+    const rawType = String(event.type || event.event_type || 'NONE').toUpperCase().trim();
+    const type = AROUSAL_EVENT_TYPES.includes(rawType) ? rawType : 'NONE';
+    const parsedIntensity = Number(event.intensity);
+    const intensity = Number.isFinite(parsedIntensity)
+        ? Math.max(0, Math.min(1, parsedIntensity))
+        : (type === 'NONE' ? 0 : 0.8);
+    return { type, intensity };
+}
+
+export function computeClimaxState({
+    recentEvents = [],
+    userText = '',
+    isEroticMode = false,
+    arousalEvent = null
+}) {
     if (!isEroticMode) {
         return {
             stage: null,
             arousal: 0,
             turns: 0,
             isFinished: false,
-            isEdging: false
+            isEdging: false,
+            event: { type: 'NONE', intensity: 0 }
         };
     }
 
@@ -52,7 +90,8 @@ export function computeClimaxState({ recentEvents = [], userText = '', isEroticM
             arousal: 0,
             turns: previousTurns + 1,
             isFinished: true,
-            isEdging: false
+            isEdging: false,
+            event: { type: 'NONE', intensity: 0 }
         };
     }
 
@@ -63,40 +102,51 @@ export function computeClimaxState({ recentEvents = [], userText = '', isEroticM
             arousal: 10,
             turns: previousTurns + 1,
             isFinished: false,
-            isEdging: false
+            isEdging: false,
+            event: { type: 'NONE', intensity: 0 }
         };
     }
 
     const currentTurns = previousTurns + 1;
-    const userWantsClimax = isFastClimaxTrigger(userText);
+    const normalizedEvent = arousalEvent ? normalizeArousalEvent(arousalEvent) : null;
+    const isClimaxByRegex = isFastClimaxTrigger(userText);
+    const isClimaxEvent = normalizedEvent?.type === 'CLIMAX_TRIGGER' || isClimaxByRegex;
 
-    // Если пользователь говорит "кончаю", но сцена только началась (arousal < 75% и turns < 5):
-    // Включаем EDGING — Лера оттягивает финал, дразнит и нагнетает страсть
-    if (userWantsClimax && previousArousal < 75 && currentTurns < 5) {
+    // Если триггер оргазма сработал, но возбуждение ещё мало (arousal < 75% и turns < 5):
+    // Включаем режим EDGING — Лера дразнит, нагнетает страсть и оттягивает финал
+    if (isClimaxEvent && previousArousal < 75 && currentTurns < 5) {
         const edgingArousal = Math.min(85, Math.max(50, previousArousal + 25));
         return {
             stage: CLIMAX_STAGES.EDGE,
             arousal: edgingArousal,
             turns: currentTurns,
             isFinished: false,
-            isEdging: true
+            isEdging: true,
+            event: normalizedEvent || { type: 'CLIMAX_TRIGGER', intensity: 1.0 }
         };
     }
 
-    // Если пользователь говорит "кончаю" и напряжение уже высокое (arousal >= 75% или turns >= 5)
-    if (userWantsClimax) {
+    // Если триггер оргазма при высоком возбуждении (arousal >= 75% или turns >= 5)
+    if (isClimaxEvent) {
         return {
             stage: CLIMAX_STAGES.CLIMAX,
             arousal: 100,
             turns: currentTurns,
             isFinished: false,
-            isEdging: false
+            isEdging: false,
+            event: normalizedEvent || { type: 'CLIMAX_TRIGGER', intensity: 1.0 }
         };
     }
 
-    // Стандартный органичный прогресс: +12-15% за шаг (5-8 реплик до финала)
-    const increment = 14;
-    const arousal = Math.min(100, Math.max(15, previousArousal + increment));
+    // Вычисляем дельту возбуждения по типу события и интенсивности (как в relationship.js)
+    let delta = 14;
+    if (normalizedEvent && normalizedEvent.type !== 'NONE') {
+        const baseDelta = AROUSAL_DELTAS[normalizedEvent.type] ?? 14;
+        delta = Math.round(baseDelta * Math.max(0.5, normalizedEvent.intensity || 0.8));
+    }
+
+    const baseArousal = previousArousal > 0 ? previousArousal : 15;
+    const arousal = Math.min(100, Math.max(15, baseArousal + delta));
 
     let stage = CLIMAX_STAGES.WARMUP;
     if (arousal >= 95 || currentTurns >= 7) {
@@ -114,7 +164,8 @@ export function computeClimaxState({ recentEvents = [], userText = '', isEroticM
         arousal,
         turns: currentTurns,
         isFinished: false,
-        isEdging: false
+        isEdging: false,
+        event: normalizedEvent || { type: 'NONE', intensity: 0 }
     };
 }
 

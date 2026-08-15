@@ -39,7 +39,18 @@ test('reply judge parses relationship event without changing PASS/REJECT semanti
             verdict: 'PASS',
             passed: true,
             code: null,
-            relationshipEvent: { type: 'INSULT', intensity: 0.8 }
+            relationshipEvent: { type: 'INSULT', intensity: 0.8 },
+            arousalEvent: null
+        }
+    );
+    assert.deepEqual(
+        parseJudgeVerdict('{"verdict":"PASS","relationship_event":{"type":"AFFECTION","intensity":0.9},"arousal_event":{"type":"KISS_TOUCH","intensity":0.7}}'),
+        {
+            verdict: 'PASS',
+            passed: true,
+            code: null,
+            relationshipEvent: { type: 'AFFECTION', intensity: 0.9 },
+            arousalEvent: { type: 'KISS_TOUCH', intensity: 0.7 }
         }
     );
     assert.deepEqual(

@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeClimaxState, getClimaxPromptInstruction, isFastClimaxTrigger, CLIMAX_STAGES } from '../src/ai/climax_engine.js';
+import {
+    computeClimaxState,
+    getClimaxPromptInstruction,
+    isFastClimaxTrigger,
+    normalizeArousalEvent,
+    CLIMAX_STAGES,
+    AROUSAL_DELTAS
+} from '../src/ai/climax_engine.js';
 
 test('isFastClimaxTrigger detects user climax statements', () => {
     assert.equal(isFastClimaxTrigger('я кончаю'), true);
@@ -11,22 +18,57 @@ test('isFastClimaxTrigger detects user climax statements', () => {
     assert.equal(isFastClimaxTrigger('ты красивая'), false);
 });
 
-test('computeClimaxState advances stages sequentially', () => {
-    // 1 turn: WARMUP
+test('normalizeArousalEvent handles various event shapes and intensities', () => {
+    assert.deepEqual(normalizeArousalEvent({ type: 'KISS_TOUCH', intensity: 0.8 }), { type: 'KISS_TOUCH', intensity: 0.8 });
+    assert.deepEqual(normalizeArousalEvent({ type: 'SEX_PENETRATION' }), { type: 'SEX_PENETRATION', intensity: 0.8 });
+    assert.deepEqual(normalizeArousalEvent({ type: 'UNKNOWN' }), { type: 'NONE', intensity: 0 });
+    assert.deepEqual(normalizeArousalEvent(null), { type: 'NONE', intensity: 0 });
+});
+
+test('computeClimaxState strictly isolates non-erotic modes', () => {
+    const casualState = computeClimaxState({
+        recentEvents: [],
+        userText: 'Привет, как прошёл день?',
+        isEroticMode: false,
+        arousalEvent: { type: 'SEX_PENETRATION', intensity: 1.0 }
+    });
+    assert.equal(casualState.stage, null);
+    assert.equal(casualState.arousal, 0);
+    assert.equal(casualState.turns, 0);
+    assert.equal(casualState.isFinished, false);
+});
+
+test('computeClimaxState calculates arousal deltas from events', () => {
+    // 1 turn: KISS_TOUCH event
     const state1 = computeClimaxState({
         recentEvents: [],
-        userText: 'давай вирт',
-        isEroticMode: true
+        userText: 'целую твои плечи',
+        isEroticMode: true,
+        arousalEvent: { type: 'KISS_TOUCH', intensity: 1.0 }
     });
     assert.equal(state1.stage, CLIMAX_STAGES.WARMUP);
     assert.equal(state1.turns, 1);
-    assert.ok(state1.arousal >= 15);
+    assert.equal(state1.arousal, 15 + AROUSAL_DELTAS.KISS_TOUCH);
 
+    // 2 turn: SEX_PENETRATION event
+    const state2 = computeClimaxState({
+        recentEvents: [{ status: 'COMPLETED', metadata: { mode: 'EROTIC', climax_stage: CLIMAX_STAGES.WARMUP, arousal: state1.arousal } }],
+        userText: 'вхожу в тебя',
+        isEroticMode: true,
+        arousalEvent: { type: 'SEX_PENETRATION', intensity: 1.0 }
+    });
+    assert.equal(state2.stage, CLIMAX_STAGES.BUILDUP);
+    assert.equal(state2.turns, 2);
+    assert.ok(state2.arousal >= state1.arousal + 20);
+});
+
+test('computeClimaxState advances stages sequentially and handles Edging', () => {
     // Early fast climax trigger triggers EDGING instead of instant climax
     const stateEarlyClimax = computeClimaxState({
         recentEvents: [{ status: 'COMPLETED', metadata: { mode: 'EROTIC', climax_stage: CLIMAX_STAGES.WARMUP, arousal: 25 } }],
         userText: 'я кончаю',
-        isEroticMode: true
+        isEroticMode: true,
+        arousalEvent: { type: 'CLIMAX_TRIGGER', intensity: 1.0 }
     });
     assert.equal(stateEarlyClimax.stage, CLIMAX_STAGES.EDGE);
     assert.equal(stateEarlyClimax.isEdging, true);
@@ -45,7 +87,8 @@ test('computeClimaxState advances stages sequentially', () => {
     const stateClimax = computeClimaxState({
         recentEvents: mockEvents,
         userText: 'кончаю вместе с тобой',
-        isEroticMode: true
+        isEroticMode: true,
+        arousalEvent: { type: 'CLIMAX_TRIGGER', intensity: 1.0 }
     });
     assert.equal(stateClimax.stage, CLIMAX_STAGES.CLIMAX);
     assert.equal(stateClimax.arousal, 100);

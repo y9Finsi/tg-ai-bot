@@ -931,6 +931,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         })
         : { skipped: true, verdict: 'SKIPPED', passed: true, code: null };
     const relationshipEvent = judgeResult.relationshipEvent || null;
+    const arousalEvent = judgeResult.arousalEvent || null;
     generationTrace.push({
         step: 'judge',
         phase: 'first',
@@ -942,7 +943,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         usage: judgeResult.usage || {},
         error: judgeResult.error || null,
         judgeMessages: judgeResult.judgeMessages || null,
-        relationshipEvent
+        relationshipEvent,
+        arousalEvent
     });
 
     const normalizeReply = value => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -1050,7 +1052,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                 usage: retryJudge.usage || {},
                 error: retryJudge.error || null,
                 judgeMessages: retryJudge.judgeMessages || null,
-                relationshipEvent: retryJudge.relationshipEvent || null
+                relationshipEvent: retryJudge.relationshipEvent || null,
+                arousalEvent: retryJudge.arousalEvent || null
             });
             if (activeJudgeMode === 'ENFORCE' && retryJudge.passed === false) {
                 if (isInitiative) {
