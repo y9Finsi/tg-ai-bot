@@ -141,7 +141,7 @@ export class ContextBuilder {
             : humanizeCurrentStatus(task, snapshot.transit);
         const wellbeing = isErotic
             ? 'Чувствует себя хорошо, возбуждена и готова к близости'
-            : humanizeWellbeing(snapshot.mood, needs);
+            : humanizeWellbeing(snapshot.mood, needs, snapshot.state?.physiology);
         return `${relationshipToPrompt(snapshot.relationship || {})}
 
 [СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ]
@@ -240,12 +240,21 @@ function humanizeCurrentStatus(task, transit) {
 function isSleepingTask(task) {
     return ['SLEEP_NIGHT', 'SLEEP_EXHAUSTED'].includes(task?.task_type);
 }
-function humanizeWellbeing(mood, needs = {}) {
+function humanizeWellbeing(mood, needs = {}, physiology = {}) {
     const fatigue = Number(needs.fatigue || 0);
     const moodText = Number(mood || 0) >= 55 ? 'в целом всё нормально' : 'настроение тяжёлое';
-    if (fatigue >= 80) return `Заметная усталость, тяжёлый день, но ${moodText}`;
-    if (fatigue >= 55) return `Усталость заметна, но ${moodText}`;
-    return `Чувствует себя нормально, ${moodText}`;
+    const cycleDay = Number(physiology?.cycle_day || 0);
+    let cycleNote = '';
+    if (cycleDay >= 1 && cycleDay <= 2) {
+        cycleNote = ' (начало цикла: тянет низ живота, лёгкая слабость, хочется тепла)';
+    } else if (cycleDay >= 12 && cycleDay <= 14) {
+        cycleNote = ' (середина цикла: пик энергии и чувственности)';
+    } else if (cycleDay >= 25 && cycleDay <= 28) {
+        cycleNote = ' (ПМС: обострённая эмоциональная чувствительность)';
+    }
+    if (fatigue >= 80) return `Заметная усталость, тяжёлый день, но ${moodText}${cycleNote}`;
+    if (fatigue >= 55) return `Усталость заметна, но ${moodText}${cycleNote}`;
+    return `Чувствует себя нормально, ${moodText}${cycleNote}`;
 }
 function capitalize(value) { const text = String(value || ''); return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : text; }
 function humanizeModifiers(modifiers = []) { return modifiers.length ? modifiers.map(value => String(value).replaceAll('_', ' ').toLowerCase()).join(', ') : 'ничего особенного'; }

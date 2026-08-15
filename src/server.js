@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { StateRepository } from './db/state_repository.js';
 import { LOCATIONS } from './radiant/world_map.js';
 import { GOAPPlanner } from './radiant/goap_planner.js';
-import { calculateMood } from './radiant/needs.js';
+import { calculateMood, cycleDayFromDate } from './radiant/needs.js';
 import { UtilitySelector } from './radiant/utility_selector.js';
 import { WeatherService } from './radiant/weather_service.js';
 import { coordinateAtProgress } from './radiant/world_map.js';
@@ -388,6 +388,9 @@ export function startAdminServer() {
             StateRepository.getQueueAnomalies().catch(() => ({ duplicateScopes: [], stalledTasks: [], expandedPendingRoots: [] }))
         ]);
         const npc = { nastya, max_client: maxClient };
+        const effectiveCycleDay = state?.cycle_anchor_date
+            ? cycleDayFromDate(state.cycle_anchor_date, new Date())
+            : Number(state?.physiology?.cycle_day || 3);
         const transit = activeTask?.status === 'IN_TRANSIT' ? {
             from: activeTask.transit_from_location, to: activeTask.transit_to_location,
             progress_percent: Number(activeTask.transit_progress_percent || 0),
@@ -400,7 +403,10 @@ export function startAdminServer() {
                 ...(state || {}),
                 location_name: (LOCATIONS[state?.location_id] || LOCATIONS.petrogradka_home).name,
                 needs: state?.needs || {}, mood: calculateMood(state || {}),
-                physiology: state?.physiology || {},
+                physiology: {
+                    ...(state?.physiology || {}),
+                    cycle_day: effectiveCycleDay
+                },
                 wallet: { rubles: state?.wallet_rubles || 0, stars: state?.wallet_stars || 0 }
             },
             willingness: GOAPPlanner.explainWillingness(state || {}),

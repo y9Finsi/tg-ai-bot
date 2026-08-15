@@ -22,9 +22,20 @@ export function normalizePhysiology(physiology = {}) {
 
 export function cycleDayFromDate(anchorDate, now = new Date()) {
     if (!anchorDate) return 3;
-    const anchor = new Date(`${String(anchorDate).slice(0, 10)}T00:00:00+03:00`);
-    const current = new Date(now);
-    const elapsedDays = Math.floor((current.getTime() - anchor.getTime()) / 86400000);
+    let anchorTime;
+    if (anchorDate instanceof Date) {
+        anchorTime = anchorDate.getTime();
+    } else {
+        const str = String(anchorDate).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+            anchorTime = new Date(`${str.slice(0, 10)}T00:00:00+03:00`).getTime();
+        } else {
+            anchorTime = new Date(str).getTime();
+        }
+    }
+    if (!Number.isFinite(anchorTime)) return 3;
+    const current = new Date(now).getTime();
+    const elapsedDays = Math.floor((current - anchorTime) / 86400000);
     return ((elapsedDays % 28) + 28) % 28 + 1;
 }
 
