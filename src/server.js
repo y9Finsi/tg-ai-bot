@@ -95,6 +95,7 @@ import { requestLlmCompletion, getCachedOpenAIClient } from './ai/llm_client.js'
 import { generateAndPublishChannelPost, generateChannelPostDraft, publishChannelDraft } from './channel_poster.js';
 import { generateCommentDecision } from './channel_comments.js';
 import { normalizeTopicDistribution } from './channel_topics.js';
+import { CHANNEL_EDITORIAL_MODES, DEFAULT_REFERENCE_FORMAT_SEQUENCE } from './channel_content.js';
 import { getRecentLogs, logEmitter } from './logger.js';
 import { getLlmParams, updateLlmParams, getLeraPrompts, updateLeraPrompts, DEFAULT_LLM_PARAMS, getRoutingPromptModules, getRoutedSystemPrompt } from './prompts.js';
 import {
@@ -2173,10 +2174,19 @@ export function startAdminServer() {
 
     app.post('/api/admin/channel/settings', async (req, res) => {
         try {
-            const { channelId, channelUrl, isEnabled, frequencyHours, topics, topicWeights, messagesCount, mediaMode, promptBlocks, temperature, inheritLeraPrompt, includeDayContext, publicProfileEnabled, publicFactsEnabled, publicFacts, creativity, ctaStyle, judgeMode, judgeProviderId, judgeModel, judgePrompt, judgeTimeoutMs, judgeMaxTokens, commentsEnabled, reactionChance, commentChance, recognizeUsers, commentsPrompt } = req.body;
+            const { channelId, channelUrl, isEnabled, frequencyHours, postsPerDay, editorialMode, formatSequence, topics, topicWeights, messagesCount, mediaMode, promptBlocks, temperature, inheritLeraPrompt, includeDayContext, publicProfileEnabled, publicFactsEnabled, publicFacts, creativity, ctaStyle, judgeMode, judgeProviderId, judgeModel, judgePrompt, judgeTimeoutMs, judgeMaxTokens, commentsEnabled, reactionChance, commentChance, recognizeUsers, commentsPrompt } = req.body;
             const allowedTopics = ['thoughts', 'flirt', 'life', 'jokes', 'questions', 'meme', 'repost'];
             const safeTopics = Array.isArray(topics) ? topics.filter(topic => allowedTopics.includes(topic)) : [];
             const activeTopics = safeTopics.length ? safeTopics : ['thoughts'];
+            const safeEditorialMode = CHANNEL_EDITORIAL_MODES.includes(editorialMode) ? editorialMode : 'reference_short';
+            const safeFormatSequence = Array.isArray(formatSequence)
+                ? [...new Set(formatSequence.filter(format => DEFAULT_REFERENCE_FORMAT_SEQUENCE.includes(format)))]
+                : [];
+            const editorialSequence = safeFormatSequence.length ? safeFormatSequence : DEFAULT_REFERENCE_FORMAT_SEQUENCE;
+            const safePostsPerDay = Math.max(1, Math.min(2, Number(postsPerDay) || 2));
+            const safeFrequencyHours = safeEditorialMode === 'reference_short'
+                ? Math.max(12, Math.min(168, Number(frequencyHours) || 12))
+                : Math.max(1, Math.min(168, Number(frequencyHours) || 4));
             const safeWeights = normalizeTopicDistribution(activeTopics, Object.fromEntries(
                 allowedTopics.map(topic => [topic, Math.max(0, Math.min(100, Number(topicWeights?.[topic]) || 0))])
             ));
@@ -2184,11 +2194,14 @@ export function startAdminServer() {
                 setSetting('channel_id', String(channelId || '').trim()),
                 setSetting('bonus_channel_url', String(channelUrl || '').trim()),
                 setSetting('channel_poster_enabled', isEnabled ? 'true' : 'false'),
-                setSetting('channel_frequency_hours', String(Math.max(1, Math.min(168, Number(frequencyHours) || 4)))),
+                setSetting('channel_frequency_hours', String(safeFrequencyHours)),
+                setSetting('channel_posts_per_day', String(safePostsPerDay)),
+                setSetting('channel_editorial_mode', safeEditorialMode),
+                setSetting('channel_format_sequence', JSON.stringify(editorialSequence)),
                 setSetting('channel_topics', JSON.stringify(activeTopics)),
                 setSetting('channel_topic_weights', JSON.stringify(safeWeights)),
                 setSetting('channel_messages_count', '1'),
-                setSetting('channel_media_mode', ['none', 'db_photo', 'meme'].includes(mediaMode) ? mediaMode : 'none'),
+                setSetting('channel_media_mode', ['none', 'db_photo', 'ai_photo', 'meme'].includes(mediaMode) ? mediaMode : 'none'),
                 setSetting('channel_prompt_blocks', JSON.stringify(Object.fromEntries(['voice', 'context', 'restrictions', 'cta'].map(key => [key, String(promptBlocks?.[key] || '').trim().slice(0, 1200)])))),
                 setSetting('channel_temperature', String(Math.max(0, Math.min(2, Number(temperature ?? 0.7))))),
                 setSetting('channel_inherit_lera_prompt', 'false'),

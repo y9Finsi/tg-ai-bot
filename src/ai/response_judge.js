@@ -23,6 +23,7 @@ export const JUDGE_CODES = [
     'CHANNEL_FORMAT_MISMATCH',
     'CHANNEL_REFERENCE_COPY',
     'CHANNEL_SCENE_REPETITION',
+    'CHANNEL_TOO_LONG',
     'CHANNEL_JUDGE_INVALID',
     'CHANNEL_JUDGE_ERROR'
 ];
@@ -68,7 +69,8 @@ export function buildJudgeMessages({
     topic = '',
     publicFacts = [],
     recentPublicPosts = [],
-    contentFormat = ''
+    contentFormat = '',
+    editorialMode = 'reference_short'
 } = {}) {
     const surfaceKey = String(surface).toUpperCase();
     const isPublic = surfaceKey === 'CHANNEL' || surfaceKey === 'CHANNEL_COMMENT';
@@ -106,6 +108,8 @@ export function buildJudgeMessages({
 - Отклоняй (REJECT:CHANNEL_OUT_OF_TOPIC), если пост полностью не соответствует заданной теме.
 - Отклоняй (REJECT:CHANNEL_FORMAT), если пост написан сплошной простыней без абзацев, содержит списки, дефисы в начале строк или эмодзи.
 - Отклоняй (REJECT:CHANNEL_FORMAT_MISMATCH), если пост не соответствует ожидаемому формату ${contentFormat || 'обычного наблюдения'}.
+- Отклоняй (REJECT:CHANNEL_TOO_LONG), если пост длиннее редакционного лимита или выглядит как статья/полотнище.
+- Редакционный режим: ${editorialMode}. В режиме reference_short допустимы только короткая мысль, фото-подпись и бытовое наблюдение; длинный монолог запрещён.
 - Отклоняй (REJECT:CHANNEL_REFERENCE_COPY), если пост копирует заметную формулировку или последовательность мыслей из эталонного примера, а не только его интонацию.
 - Отклоняй (REJECT:CHANNEL_SCENE_REPETITION), если повторяется та же бытовая сцена, предмет или конструкция, что в недавних постах.
 Для отказа используй только channel-коды. Если пост качественный и без нарушений, верни PASS.`
@@ -134,6 +138,7 @@ export function buildJudgeMessages({
                 `Поверхность: ${surface}`,
                 isPublic ? `Тема поста: ${topic || 'не указана'}` : '',
                 isChannel ? `Ожидаемый формат: ${contentFormat || 'life_observation'}` : '',
+                isChannel ? `Редакционный режим: ${editorialMode}` : '',
                 isPublic ? `Подтверждённые публичные факты:\n${publicFacts.map(fact => `- ${typeof fact === 'string' ? fact : JSON.stringify(fact)}`).join('\n') || 'нет фактов'}` : '',
                 isPublic ? `Последние публичные посты:\n${recentPublicPosts.map((post, index) => `${index + 1}. ${String(post?.text || post).slice(0, 300)}`).join('\n') || 'нет постов'}` : '',
                 `Контекст Леры на сегодня:\n${compactDayContext(dayContext) || 'не передан'}`,
@@ -199,6 +204,7 @@ export async function judgeLeraReply({
     publicFacts = [],
     recentPublicPosts = [],
     contentFormat = '',
+    editorialMode = 'reference_short',
     settings = {}
 } = {}) {
     const surfaceKey = String(surface || 'CHAT').toUpperCase();
@@ -225,7 +231,8 @@ export async function judgeLeraReply({
         topic,
         publicFacts,
         recentPublicPosts,
-        contentFormat
+        contentFormat,
+        editorialMode
     });
 
     try {

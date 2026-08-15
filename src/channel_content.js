@@ -8,11 +8,34 @@ export const CHANNEL_CONTENT_FORMATS = [
     'repost_reaction'
 ];
 
+export const CHANNEL_EDITORIAL_MODES = [
+    'reference_short',
+    'legacy_mix'
+];
+
+export const DEFAULT_REFERENCE_FORMAT_SEQUENCE = [
+    'photo_caption',
+    'short_thought',
+    'life_observation'
+];
+
 const BASE_FORMAT_WEIGHTS = {
     short_thought: 30,
     photo_caption: 30,
     life_observation: 25,
     long_monologue: 15
+};
+
+const REFERENCE_FORMATS = new Set(DEFAULT_REFERENCE_FORMAT_SEQUENCE);
+
+const FORMAT_LIMITS = {
+    short_thought: { maxChars: 180, maxLines: 2, maxParagraphs: 1 },
+    photo_caption: { maxChars: 420, maxLines: 4, maxParagraphs: 2 },
+    life_observation: { maxChars: 560, maxLines: 8, maxParagraphs: 2 },
+    long_monologue: { maxChars: 1400, maxLines: 30, maxParagraphs: 6 },
+    question: { maxChars: 180, maxLines: 2, maxParagraphs: 1 },
+    meme_caption: { maxChars: 260, maxLines: 4, maxParagraphs: 2 },
+    repost_reaction: { maxChars: 360, maxLines: 6, maxParagraphs: 2 }
 };
 
 const TOPIC_FORMATS = {
@@ -39,24 +62,85 @@ export function describeChannelContentFormat(contentFormat = 'life_observation')
     return descriptions[contentFormat] || descriptions.life_observation;
 }
 
+export function normalizeChannelEditorialMode(mode = 'reference_short') {
+    const normalized = String(mode || '').trim().toLowerCase();
+    return CHANNEL_EDITORIAL_MODES.includes(normalized) ? normalized : 'reference_short';
+}
+
+export function normalizeChannelFormatSequence(sequence = DEFAULT_REFERENCE_FORMAT_SEQUENCE) {
+    const normalized = Array.isArray(sequence)
+        ? sequence
+            .map(format => String(format || '').trim())
+            .filter(format => REFERENCE_FORMATS.has(format))
+        : [];
+    return normalized.length ? [...new Set(normalized)] : [...DEFAULT_REFERENCE_FORMAT_SEQUENCE];
+}
+
+export function getChannelFormatLimits(contentFormat = 'life_observation') {
+    return FORMAT_LIMITS[contentFormat] || FORMAT_LIMITS.life_observation;
+}
+
+export function validateChannelText(text, contentFormat = 'life_observation', editorialMode = 'reference_short') {
+    const value = String(text || '').replace(/\r/g, '').trim();
+    const limits = getChannelFormatLimits(contentFormat);
+    const lines = value ? value.split('\n').filter(line => line.trim()) : [];
+    const paragraphs = value ? value.split(/\n\s*\n/).filter(part => part.trim()) : [];
+    const mode = normalizeChannelEditorialMode(editorialMode);
+    if (!value) return { ok: false, code: 'CHANNEL_EMPTY', reason: 'Пост пустой.' };
+    if (mode === 'reference_short' && !REFERENCE_FORMATS.has(contentFormat)) {
+        return { ok: false, code: 'CHANNEL_FORMAT_MISMATCH', reason: 'Формат не входит в эталонный короткий режим.' };
+    }
+    if (value.length > limits.maxChars) {
+        return { ok: false, code: 'CHANNEL_TOO_LONG', reason: `Пост длиннее лимита ${limits.maxChars} символов.` };
+    }
+    if (lines.length > limits.maxLines) {
+        return { ok: false, code: 'CHANNEL_FORMAT_MISMATCH', reason: 'Слишком много строк для выбранного формата.' };
+    }
+    if (paragraphs.length > limits.maxParagraphs) {
+        return { ok: false, code: 'CHANNEL_FORMAT_MISMATCH', reason: 'Слишком много абзацев для выбранного формата.' };
+    }
+    return { ok: true, code: null, reason: '' };
+}
+
 export function selectChannelContentFormat({
     recentPosts = [],
     hasMedia = false,
     topic = '',
     preferredFormat = '',
     avoidFormat = '',
+    editorialMode = 'reference_short',
+    formatSequence = DEFAULT_REFERENCE_FORMAT_SEQUENCE,
     randomValue = Math.random()
 } = {}) {
-    const topicFormat = TOPIC_FORMATS[topic];
-    const requested = preferredFormat || topicFormat;
+    const mode = normalizeChannelEditorialMode(editorialMode);
+    const sequence = normalizeChannelFormatSequence(formatSequence);
     const previousFormat = recentFormat(recentPosts.at(-1));
+    const requested = preferredFormat || (mode === 'legacy_mix' ? TOPIC_FORMATS[topic] : '');
+    const isAllowed = format => mode === 'legacy_mix' || REFERENCE_FORMATS.has(format);
     if (CHANNEL_CONTENT_FORMATS.includes(requested)
+        && isAllowed(requested)
         && requested !== avoidFormat
-        && requested !== previousFormat) {
-        if (requested !== 'photo_caption' || hasMedia) return requested;
+        && requested !== previousFormat
+        && (requested !== 'photo_caption' || hasMedia)) {
+        return requested;
+    }
+
+    if (mode === 'reference_short') {
+        const previousIndex = sequence.indexOf(previousFormat);
+        const ordered = previousIndex >= 0
+            ? sequence.slice(previousIndex + 1).concat(sequence.slice(0, previousIndex + 1))
+            : sequence;
+        const next = ordered.find(format =>
+            format !== avoidFormat
+            && format !== previousFormat
+            && (format !== 'photo_caption' || hasMedia)
+        );
+        if (next) return next;
+        return hasMedia && avoidFormat !== 'photo_caption' ? 'photo_caption' : 'short_thought';
     }
 
     const candidates = CHANNEL_CONTENT_FORMATS
+        .filter(format => isAllowed(format))
         .filter(format => format !== avoidFormat)
         .filter(format => format !== previousFormat)
         .filter(format => hasMedia || format !== 'photo_caption');

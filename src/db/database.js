@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { publishDevtoolEvent } from '../devtools/event_bus.js';
 import { normalizeTopicDistribution } from '../channel_topics.js';
 import { applyRelationshipDelta, DEFAULT_RELATIONSHIP, relationshipDecay, normalizeRelationship } from '../ai/relationship.js';
+import { normalizeChannelEditorialMode, normalizeChannelFormatSequence } from '../channel_content.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1780,7 +1781,7 @@ export async function getOrderedAiProviders() {
 }
 
 export async function getChannelPosterSettings() {
-    const keys = ['channel_poster_enabled', 'channel_id', 'lera_channel_id', 'channel_frequency_hours', 'channel_topics', 'channel_topic_weights', 'channel_messages_count', 'channel_media_mode', 'channel_prompt_blocks', 'channel_temperature', 'channel_inherit_lera_prompt', 'channel_include_day_context', 'channel_public_profile_enabled', 'channel_public_facts_enabled', 'channel_public_facts', 'channel_creativity', 'channel_cta_style', 'channel_judge_mode', 'channel_judge_provider_id', 'channel_judge_model', 'channel_judge_prompt', 'channel_judge_timeout_ms', 'channel_judge_max_tokens', 'channel_comments_enabled', 'channel_reaction_chance', 'channel_comment_chance', 'channel_recognize_users', 'channel_comments_prompt'];
+    const keys = ['channel_poster_enabled', 'channel_id', 'lera_channel_id', 'channel_frequency_hours', 'channel_posts_per_day', 'channel_editorial_mode', 'channel_format_sequence', 'channel_topics', 'channel_topic_weights', 'channel_messages_count', 'channel_media_mode', 'channel_prompt_blocks', 'channel_temperature', 'channel_inherit_lera_prompt', 'channel_include_day_context', 'channel_public_profile_enabled', 'channel_public_facts_enabled', 'channel_public_facts', 'channel_creativity', 'channel_cta_style', 'channel_judge_mode', 'channel_judge_provider_id', 'channel_judge_model', 'channel_judge_prompt', 'channel_judge_timeout_ms', 'channel_judge_max_tokens', 'channel_comments_enabled', 'channel_reaction_chance', 'channel_comment_chance', 'channel_recognize_users', 'channel_comments_prompt'];
     const result = await query('SELECT key, value FROM settings WHERE key = ANY($1::text[])', [keys]);
     const values = Object.fromEntries(result.rows.map(row => [row.key, row.value]));
     let topics = ['thoughts', 'life', 'jokes'];
@@ -1793,7 +1794,16 @@ export async function getChannelPosterSettings() {
     return {
         is_enabled: values.channel_poster_enabled !== 'false',
         channel_id: values.channel_id || values.lera_channel_id || '',
-        frequency_hours: Number(values.channel_frequency_hours || 4),
+        frequency_hours: Number(values.channel_frequency_hours || 12),
+        posts_per_day: Math.max(1, Math.min(2, Number(values.channel_posts_per_day || 2))),
+        editorial_mode: normalizeChannelEditorialMode(values.channel_editorial_mode),
+        format_sequence: (() => {
+            try {
+                return normalizeChannelFormatSequence(JSON.parse(values.channel_format_sequence || '[]'));
+            } catch {
+                return normalizeChannelFormatSequence();
+            }
+        })(),
         topics,
         topic_weights,
         messages_count: values.channel_messages_count || '1',
@@ -1839,6 +1849,17 @@ export async function getChannelPostHistory(limit = 5) {
     return result.rows.reverse();
 }
 export const getChannelPostLogs = getChannelPostHistory;
+
+export async function countChannelPostsSince(channelId, since) {
+    if (!channelId || !since) return 0;
+    const result = await query(
+        `SELECT COUNT(*)::int AS count
+         FROM channel_post_logs
+         WHERE channel_id = $1 AND status = 'PUBLISHED' AND created_at >= $2`,
+        [String(channelId), since]
+    );
+    return Number(result.rows[0]?.count || 0);
+}
 
 export async function getChannelPostByTelegramMessageId(channelId, messageId) {
     if (!channelId || !messageId) return null;

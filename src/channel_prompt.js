@@ -1,5 +1,5 @@
 import { cleanResponseText } from './utils/response_text.js';
-import { describeChannelContentFormat } from './channel_content.js';
+import { describeChannelContentFormat, getChannelFormatLimits, normalizeChannelEditorialMode } from './channel_content.js';
 
 const CHANNEL_PERSONA = `
 Ты пишешь публичный пост от лица Леры для её авторского Telegram-канала.
@@ -39,7 +39,8 @@ function publicPromptBlocks(promptBlocks = {}) {
 
 export function buildChannelSystemPrompt({
     time, timeOfDay, topic, topicDescription, recentPosts = [], messagesCount = '1', promptBlocks = {},
-    leraPrompt = '', dayContext = '', publicFacts = [], creativity = 0.6, ctaStyle = '', contentFormat = 'life_observation'
+    leraPrompt = '', dayContext = '', publicFacts = [], creativity = 0.6, ctaStyle = '', contentFormat = 'life_observation',
+    editorialMode = 'reference_short'
 } = {}) {
     const history = recentPosts
         .map(post => cleanResponseText(post.text).replace(/\s+/g, ' '))
@@ -47,6 +48,8 @@ export function buildChannelSystemPrompt({
         .map((text, index) => `${index + 1}. ${text}`)
         .join('\n') || 'Публичных постов ещё нет.';
     const formatRule = describeChannelContentFormat(contentFormat);
+    const mode = normalizeChannelEditorialMode(editorialMode);
+    const limits = getChannelFormatLimits(contentFormat);
     const topicRule = TOPIC_RULES[topic] || topicDescription || 'Короткая мысль из обычной жизни.';
 
     // Эти аргументы оставлены для совместимости со старыми preview-вызовами,
@@ -64,8 +67,10 @@ ${facts}
 - Задача темы: ${topicRule}
 - Формат поста: ${contentFormat}
 - Требование формата: ${formatRule}
+- Редакционный режим: ${mode}
+- Жёсткий лимит: до ${limits.maxChars} символов, до ${limits.maxLines} строк и до ${limits.maxParagraphs} абзац(а)
 - Креативность: ${Math.max(0, Math.min(1, Number(creativity) || 0.6))}
-${ctaStyle ? `- Стиль CTA: ${String(ctaStyle).slice(0, 600)}` : ''}
+${ctaStyle && mode !== 'reference_short' ? `- Стиль CTA: ${String(ctaStyle).slice(0, 600)}` : ''}
 
 ПОСЛЕДНИЕ ПУБЛИЧНЫЕ ПОСТЫ:
 ${history}
@@ -76,7 +81,8 @@ ${publicPromptBlocks(promptBlocks)}
 - Соблюдай выбранный формат, но не копируй формулировки из референсов и недавних постов.
 - СТРОЖАЙШИЙ ЗАПРЕТ на шаблонные зачины и позы: категорически запрещено начинать с «знаете что...», «а вы знали...», «сижу на кухне/подоконнике/остановке/кровати», «еду в маршрутке/метро», «валяюсь под пледиком», «смотрю в окно/на мух/в стену и думаю...».
 - Сразу начинай с сути, действия, мысли или диалога (in media res).
-- Форматирование по длине: short_thought — 1–2 строки; обычный формат — 1–2 коротких абзаца; long_monologue — 3–6 естественных абзацев; photo_caption — подпись длиной по ситуации.
+- Форматирование по длине: short_thought — 1–2 строки; photo_caption — короткая подпись по фото; life_observation — один короткий бытовой фрагмент. В эталонном режиме не используй длинные монологи, статьи и перечисления.
+- В эталонном режиме чередуй только короткие формы: фото + состояние → короткая мысль → бытовое наблюдение. Если фото нет, выбери короткую мысль или наблюдение.
 - Не повторяй сюжеты, шутки и формулировки последних постов (никаких повторов про разные носки, батоны, сборку полок и т.д.).
 - Не выдумывай конкретные новости, встречи, переписки, людей или события.
 - Не добавляй обязательный вопрос, CTA или мораль, если выбранный формат этого не требует.

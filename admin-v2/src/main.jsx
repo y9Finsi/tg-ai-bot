@@ -2422,7 +2422,10 @@ function LeraJudgeSettingsEditor({ toast }) {
                 channelId: channelSettings.channel_id || '',
                 channelUrl: channelSettings.channel_url || '',
                 isEnabled: channelSettings.is_enabled === true,
-                frequencyHours: channelSettings.frequency_hours || 4,
+                frequencyHours: channelSettings.frequency_hours || 12,
+                postsPerDay: channelSettings.posts_per_day || 2,
+                editorialMode: channelSettings.editorial_mode || 'reference_short',
+                formatSequence: channelSettings.format_sequence || ['photo_caption', 'short_thought', 'life_observation'],
                 topics: channelSettings.topics || ['thoughts'],
                 topicWeights: channelSettings.topic_weights || {},
                 messagesCount: channelSettings.messages_count || '1',
@@ -2439,7 +2442,12 @@ function LeraJudgeSettingsEditor({ toast }) {
                 judgeModel: channelSettings.judge_model || '',
                 judgePrompt: channelSettings.judge_prompt || '',
                 judgeTimeoutMs: channelSettings.judge_timeout_ms || 5000,
-                judgeMaxTokens: channelSettings.judge_max_tokens || 120
+                judgeMaxTokens: channelSettings.judge_max_tokens || 120,
+                commentsEnabled: channelSettings.comments_enabled !== false,
+                reactionChance: channelSettings.reaction_chance ?? 40,
+                commentChance: channelSettings.comment_chance ?? 15,
+                recognizeUsers: channelSettings.recognize_users !== false,
+                commentsPrompt: channelSettings.comments_prompt || ''
             };
             const result = await api('/api/admin/channel/settings', { method: 'POST', body: JSON.stringify(body) });
             setChannelSettings(result.settings || channelSettings);
@@ -4310,9 +4318,12 @@ function ContentPanel({ toast }) {
     const [channel, setChannel] = useState(null);
     const [channelHistory, setChannelHistory] = useState([]);
     const [channelForm, setChannelForm] = useState({
-        channelId: '',
-        channelUrl: '',
-        frequencyHours: 4,
+                channelId: '',
+                channelUrl: '',
+        frequencyHours: 12,
+        postsPerDay: 2,
+        editorialMode: 'reference_short',
+        formatSequence: ['photo_caption', 'short_thought', 'life_observation'],
         messagesCount: '1',
         isEnabled: false,
         topics: ['thoughts', 'life'],
@@ -4338,6 +4349,7 @@ function ContentPanel({ toast }) {
     const [draftText, setDraftText] = useState('');
     const [draftMediaMode, setDraftMediaMode] = useState('inherit');
     const [draftTopic, setDraftTopic] = useState('random');
+    const [draftFormat, setDraftFormat] = useState('auto');
     const [generatingAiPreview, setGeneratingAiPreview] = useState(false);
 
     const run = async (action, success) => {
@@ -4446,8 +4458,11 @@ function ContentPanel({ toast }) {
         const tw = normalizeTopicShares(selectedTopics, result.settings?.topic_weights || { thoughts: 50, life: 50 });
         setChannelForm({
             channelId: result.channelId || '',
-            channelUrl: result.channelUrl || '',
-            frequencyHours: result.settings?.frequency_hours || 4,
+                channelUrl: result.channelUrl || '',
+            frequencyHours: result.settings?.frequency_hours || 12,
+            postsPerDay: result.settings?.posts_per_day || 2,
+            editorialMode: result.settings?.editorial_mode || 'reference_short',
+            formatSequence: result.settings?.format_sequence || ['photo_caption', 'short_thought', 'life_observation'],
             messagesCount: result.settings?.messages_count || '1',
             isEnabled: Boolean(result.settings?.is_enabled),
             topics: selectedTopics,
@@ -4491,7 +4506,8 @@ function ContentPanel({ toast }) {
             method: 'POST',
             body: JSON.stringify({
                 media_mode: mode,
-                topic: topic
+                topic: topic,
+                content_format: draftFormat === 'auto' ? undefined : draftFormat
             })
         }));
         if (result?.draft) {
@@ -5224,6 +5240,11 @@ function ContentPanel({ toast }) {
                             <label>Channel ID<input value={channelForm.channelId} placeholder="-100123456789" onChange={event => setChannelForm({ ...channelForm, channelId: event.target.value })} /></label>
                             <label>Ссылка на канал<input value={channelForm.channelUrl} placeholder="t.me/..." onChange={event => setChannelForm({ ...channelForm, channelUrl: event.target.value })} /></label>
                             <label>Частота (ч)<input type="number" min="1" max="168" value={channelForm.frequencyHours} onChange={event => setChannelForm({ ...channelForm, frequencyHours: event.target.value })} /></label>
+                            <label>Постов в сутки<select value={channelForm.postsPerDay} onChange={event => setChannelForm({ ...channelForm, postsPerDay: Number(event.target.value), frequencyHours: Number(event.target.value) === 1 ? 24 : 12 })}><option value={1}>1</option><option value={2}>2</option></select></label>
+                            <label>Редакционный режим<select value={channelForm.editorialMode} onChange={event => setChannelForm({ ...channelForm, editorialMode: event.target.value, ...(event.target.value === 'reference_short' ? { postsPerDay: 2, frequencyHours: 12, mediaMode: channelForm.mediaMode === 'none' ? 'db_photo' : channelForm.mediaMode, topics: ['thoughts', 'life'], topicWeights: { thoughts: 1, life: 1 } } : {}) })}><option value="reference_short">Эталон Леры · короткий</option><option value="legacy_mix">Свободный микс</option></select></label>
+                            <label>Цикл 1<select value={channelForm.formatSequence?.[0] || 'photo_caption'} onChange={event => setChannelForm({ ...channelForm, formatSequence: [event.target.value, ...(channelForm.formatSequence || []).slice(1)] })}><option value="photo_caption">Фото + состояние</option><option value="short_thought">Короткая мысль</option><option value="life_observation">Бытовое наблюдение</option></select></label>
+                            <label>Цикл 2<select value={channelForm.formatSequence?.[1] || 'short_thought'} onChange={event => setChannelForm({ ...channelForm, formatSequence: [channelForm.formatSequence?.[0] || 'photo_caption', event.target.value, ...(channelForm.formatSequence || []).slice(2)] })}><option value="photo_caption">Фото + состояние</option><option value="short_thought">Короткая мысль</option><option value="life_observation">Бытовое наблюдение</option></select></label>
+                            <label>Цикл 3<select value={channelForm.formatSequence?.[2] || 'life_observation'} onChange={event => setChannelForm({ ...channelForm, formatSequence: [channelForm.formatSequence?.[0] || 'photo_caption', channelForm.formatSequence?.[1] || 'short_thought', event.target.value] })}><option value="photo_caption">Фото + состояние</option><option value="short_thought">Короткая мысль</option><option value="life_observation">Бытовое наблюдение</option></select></label>
                             <label>Медиа-режим<select value={channelForm.mediaMode} onChange={event => setChannelForm({ ...channelForm, mediaMode: event.target.value })}><option value="none">Без фото (только текст)</option><option value="db_photo">Прикреплять фото из базы</option><option value="ai_photo">AI-генерация фото (Gemini)</option><option value="meme">Мемы и картинки из каталога (#тгк)</option></select></label>
                             <label>Температура <span>{Number(channelForm.temperature).toFixed(1)}</span><input type="range" min="0" max="2" step="0.1" value={channelForm.temperature} onChange={event => setChannelForm({ ...channelForm, temperature: Number(event.target.value) })} /></label>
                             <label>Креативность <span>{Number(channelForm.creativity).toFixed(1)}</span><input type="range" min="0" max="1" step="0.1" value={channelForm.creativity} onChange={event => setChannelForm({ ...channelForm, creativity: Number(event.target.value) })} /></label>
@@ -5241,7 +5262,7 @@ function ContentPanel({ toast }) {
                         <div className="channel-status" style={{ marginTop: 12 }}>
                             <Radio size={17} />
                             <strong>{channel?.settings?.is_enabled ? 'Автопостинг ВКЛЮЧЁН' : 'Автопостинг ВЫКЛЮЧЕН'}</strong>
-                            <span>Интервал: {channel?.settings?.frequency_hours || 4} ч · Канал: {channel?.channelUrl || '—'}</span>
+                            <span>Интервал: {channel?.settings?.frequency_hours || 12} ч · Постов/сутки: {channel?.settings?.posts_per_day || 2} · Канал: {channel?.channelUrl || '—'}</span>
                         </div>
                         <div className="context-template-editor" style={{ marginTop: 16 }}>
                             <label className="classifier-prompt-editor">Подтверждённые публичные факты дня
@@ -5404,6 +5425,19 @@ function ContentPanel({ toast }) {
                                     <option value="db_photo">🖼️ Фото из базы (lera_photos)</option>
                                     <option value="ai_photo">🤖 AI-генерация фото (Gemini)</option>
                                     <option value="meme">🎭 Мем / контент (#тгк)</option>
+                                </select>
+                            </label>
+                            <label className="channel-generator-select">
+                                <span>Формат:</span>
+                                <select value={draftFormat} onChange={e => setDraftFormat(e.target.value)}>
+                                    <option value="auto">⚙️ По редакционному циклу</option>
+                                    <option value="photo_caption">Фото + состояние</option>
+                                    <option value="short_thought">Короткая мысль</option>
+                                    <option value="life_observation">Бытовое наблюдение</option>
+                                    <option value="question">Вопрос</option>
+                                    <option value="meme_caption">Подпись к мему</option>
+                                    <option value="repost_reaction">Реакция на репост</option>
+                                    <option value="long_monologue">Длинный поток · legacy</option>
                                 </select>
                             </label>
                             <Button variant="primary" onClick={() => generateDraft()}><WandSparkles size={15} /> Сгенерировать черновик</Button>

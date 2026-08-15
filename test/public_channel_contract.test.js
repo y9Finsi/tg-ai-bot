@@ -115,18 +115,21 @@ test('content format selector respects media, topic and immediate format cooldow
     assert.equal(selectChannelContentFormat({
         topic: 'meme',
         hasMedia: true,
+        editorialMode: 'legacy_mix',
         recentPosts: []
     }), 'meme_caption');
 
     assert.equal(selectChannelContentFormat({
         topic: 'life',
         preferredFormat: 'long_monologue',
+        editorialMode: 'legacy_mix',
         recentPosts: [{ provenance: { content_format: 'short_thought' } }]
     }), 'long_monologue');
 
     assert.notEqual(selectChannelContentFormat({
         topic: 'life',
         preferredFormat: 'long_monologue',
+        editorialMode: 'legacy_mix',
         recentPosts: [{ provenance: { content_format: 'long_monologue' } }]
     }), 'long_monologue');
 
@@ -135,6 +138,29 @@ test('content format selector respects media, topic and immediate format cooldow
         hasMedia: false,
         randomValue: 0.5
     }), 'photo_caption');
+});
+
+test('reference-short mode follows the configured short cycle and rejects legacy formats', () => {
+    const base = { editorialMode: 'reference_short', hasMedia: true };
+    assert.equal(selectChannelContentFormat({ ...base, recentPosts: [] }), 'photo_caption');
+    assert.equal(selectChannelContentFormat({
+        ...base,
+        recentPosts: [{ provenance: { content_format: 'photo_caption' } }]
+    }), 'short_thought');
+    assert.equal(selectChannelContentFormat({
+        ...base,
+        recentPosts: [{ provenance: { content_format: 'short_thought' } }]
+    }), 'life_observation');
+    assert.equal(selectChannelContentFormat({
+        ...base,
+        preferredFormat: 'long_monologue',
+        recentPosts: []
+    }), 'photo_caption');
+    assert.equal(selectChannelContentFormat({
+        editorialMode: 'reference_short',
+        hasMedia: false,
+        recentPosts: []
+    }), 'short_thought');
 });
 
 test('channel publisher respects Telegram caption and message length boundaries', () => {

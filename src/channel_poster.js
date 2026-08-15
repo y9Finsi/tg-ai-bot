@@ -10,6 +10,7 @@ import {
     getLeraContent,
     getLeraPhotoById,
     getChannelSubscriberCount,
+    countChannelPostsSince,
     claimChannelPublication,
     completeChannelPublication
 } from './database.js';
@@ -20,7 +21,12 @@ import { buildChannelSystemPrompt } from './channel_prompt.js';
 import { judgeLeraReply } from './ai/response_judge.js';
 import { generateLeraPhoto } from './services/image_generator.js';
 import { cleanResponseText } from './utils/response_text.js';
-import { selectChannelContentFormat } from './channel_content.js';
+import {
+    selectChannelContentFormat,
+    validateChannelText,
+    normalizeChannelEditorialMode,
+    normalizeChannelFormatSequence
+} from './channel_content.js';
 
 const TOPIC_DESCRIPTIONS = {
     thoughts: 'Мысли вслух о людях, Питере, музыке и неожиданных наблюдениях',
@@ -47,13 +53,15 @@ function getFormattedTimeMSK() {
     });
 }
 
-function safeProvenance({ topic, timeOfDay, messagesCount, settings, model, contentFormat }) {
+function safeProvenance({ topic, timeOfDay, messagesCount, settings, model, contentFormat, editorialMode, formatSequence }) {
     const promptBlocks = Object.entries(settings.prompt_blocks || {})
         .filter(([, value]) => String(value || '').trim())
         .map(([key]) => PUBLIC_BLOCK_LABELS[key] || key);
     return {
         topic,
         content_format: contentFormat,
+        editorial_mode: editorialMode,
+        format_sequence: formatSequence,
         time_of_day: timeOfDay,
         messages_count: messagesCount,
         media_mode: settings.media_mode || 'none',
@@ -102,6 +110,8 @@ async function requestDraftText({ systemPrompt, topicDescription, temperature, r
 
 export async function generateChannelPostDraft(overrideSettings = null) {
     const settings = overrideSettings ? { ...(await getChannelPosterSettings()), ...overrideSettings } : await getChannelPosterSettings();
+    const editorialMode = normalizeChannelEditorialMode(settings.editorial_mode);
+    const formatSequence = normalizeChannelFormatSequence(settings.format_sequence);
     const [recentPosts, profile] = await Promise.all([
         getChannelPostHistory(8),
         getLeraProfile()
@@ -126,7 +136,9 @@ export async function generateChannelPostDraft(overrideSettings = null) {
         recentPosts,
         hasMedia: Boolean(mediaContent || selectedPhoto || settings.media_mode === 'ai_photo'),
         topic,
-        preferredFormat: overrideSettings?.content_format || settings.content_format
+        preferredFormat: overrideSettings?.content_format || settings.content_format,
+        editorialMode,
+        formatSequence
     });
     const messagesCount = '1';
     let publicFacts = settings.public_facts_enabled ? (settings.public_facts || []) : [];
@@ -139,7 +151,9 @@ export async function generateChannelPostDraft(overrideSettings = null) {
         topic, timeOfDay, messagesCount,
         settings: { ...settings, public_facts: publicFacts, profile_version: profile.version },
         model: null,
-        contentFormat
+        contentFormat,
+        editorialMode,
+        formatSequence
     });
     if (mediaContent) {
         baseProvenance.media_content_id = mediaContent.id;
@@ -154,18 +168,26 @@ export async function generateChannelPostDraft(overrideSettings = null) {
         publicFacts,
         creativity: settings.creativity,
         ctaStyle: settings.cta_style,
-        contentFormat
+        contentFormat,
+        editorialMode
     });
     let generated = await requestDraftText({ systemPrompt, topicDescription, temperature: settings.temperature });
     let text = cleanResponseText(generated.text);
-    let judge = await judgeChannelText({ text, topic, publicFacts, recentPosts, profile, settings, contentFormat });
+    let formatCheck = validateChannelText(text, contentFormat, editorialMode);
+    let judge = await judgeChannelText({ text, topic, publicFacts, recentPosts, profile, settings, contentFormat, editorialMode });
+    if (judge.passed !== false && !formatCheck.ok) {
+        judge = { ...judge, passed: false, verdict: `REJECT:${formatCheck.code}`, code: formatCheck.code, local: true, reason: formatCheck.reason };
+    }
     let attempt = 1;
     if (judge.passed === false && settings.judge_mode === 'ENFORCE') {
         const retryFormat = selectChannelContentFormat({
             recentPosts,
             hasMedia: Boolean(mediaContent || selectedPhoto || settings.media_mode === 'ai_photo'),
             topic,
-            avoidFormat: contentFormat,
+            preferredFormat: contentFormat,
+            avoidFormat: '',
+            editorialMode,
+            formatSequence,
             randomValue: 0
         });
         const retryPrompt = buildChannelSystemPrompt({
@@ -174,7 +196,8 @@ export async function generateChannelPostDraft(overrideSettings = null) {
             publicFacts,
             creativity: settings.creativity,
             ctaStyle: settings.cta_style,
-            contentFormat: retryFormat
+            contentFormat: retryFormat,
+            editorialMode
         });
         generated = await requestDraftText({
             systemPrompt: retryPrompt,
@@ -183,8 +206,12 @@ export async function generateChannelPostDraft(overrideSettings = null) {
             retryReason: `${judge.code || 'CHANNEL_REJECTED'}; используй формат ${retryFormat}`
         });
         text = cleanResponseText(generated.text);
+        formatCheck = validateChannelText(text, retryFormat, editorialMode);
         attempt = 2;
-        judge = await judgeChannelText({ text, topic, publicFacts, recentPosts, profile, settings, contentFormat: retryFormat });
+        judge = await judgeChannelText({ text, topic, publicFacts, recentPosts, profile, settings, contentFormat: retryFormat, editorialMode });
+        if (judge.passed !== false && !formatCheck.ok) {
+            judge = { ...judge, passed: false, verdict: `REJECT:${formatCheck.code}`, code: formatCheck.code, local: true, reason: formatCheck.reason };
+        }
         baseProvenance.content_format = retryFormat;
     }
     const provenance = {
@@ -250,7 +277,7 @@ export async function generateChannelPostDraft(overrideSettings = null) {
     return draft;
 }
 
-async function judgeChannelText({ text, topic, publicFacts, recentPosts, profile, settings, contentFormat = 'life_observation' }) {
+async function judgeChannelText({ text, topic, publicFacts, recentPosts, profile, settings, contentFormat = 'life_observation', editorialMode = 'reference_short' }) {
     const judgeSettings = {
         ...settings,
         channelJudgeMode: settings.judge_mode,
@@ -267,6 +294,7 @@ async function judgeChannelText({ text, topic, publicFacts, recentPosts, profile
         reply: text,
         topic,
         contentFormat,
+        editorialMode,
         publicFacts,
         recentPublicPosts: recentPosts,
         leraRules: getLeraProfileProjection(profile.profile, 'CHANNEL'),
@@ -277,6 +305,7 @@ async function judgeChannelText({ text, topic, publicFacts, recentPosts, profile
 export async function publishChannelDraft(bot, { text, topic, provenance = {}, media_content_id = null, media = null, idempotency_key = null } = {}, overrideSettings = null) {
     if (!bot) throw new Error('Бот не инициализирован');
     const settings = overrideSettings ? { ...(await getChannelPosterSettings()), ...overrideSettings } : await getChannelPosterSettings();
+    const editorialMode = normalizeChannelEditorialMode(settings.editorial_mode);
     const channelId = String(settings.channel_id || '').trim();
     if (!channelId) throw new Error('Юзернейм или ID канала не указан в настройках.');
     let cleanedText = cleanResponseText(text);
@@ -308,7 +337,11 @@ export async function publishChannelDraft(bot, { text, topic, provenance = {}, m
         publicFacts.push(`В Telegram-канале Леры сейчас ${subscribers} подписчиков`);
     }
     const contentFormat = provenance.content_format || settings.content_format || 'life_observation';
-    const judge = await judgeChannelText({ text: cleanedText, topic, publicFacts, recentPosts, profile, settings, contentFormat });
+    const formatCheck = validateChannelText(cleanedText, contentFormat, editorialMode);
+    let judge = await judgeChannelText({ text: cleanedText, topic, publicFacts, recentPosts, profile, settings, contentFormat, editorialMode });
+    if (judge.passed !== false && !formatCheck.ok) {
+        judge = { ...judge, passed: false, verdict: `REJECT:${formatCheck.code}`, code: formatCheck.code, local: true, reason: formatCheck.reason };
+    }
     if (judge.passed === false && settings.judge_mode === 'ENFORCE') {
         const rejectedProvenance = {
             ...provenance,
@@ -419,7 +452,7 @@ export async function generateAndPublishChannelPost(bot, overrideSettings = null
     try {
         const draft = await generateChannelPostDraft(overrideSettings);
         const settings = overrideSettings || await getChannelPosterSettings();
-        const frequencyHours = Math.max(1, Number(settings.frequency_hours || 4));
+        const frequencyHours = Math.max(1, Number(settings.frequency_hours || 12));
         const slot = Math.floor(Date.now() / (frequencyHours * 60 * 60 * 1000));
         draft.idempotency_key = draft.idempotency_key || `channel:${String(settings.channel_id)}:${slot}`;
         return await publishChannelDraft(bot, draft, overrideSettings);
@@ -434,7 +467,15 @@ export function initChannelPoster(bot) {
         try {
             const settings = await getChannelPosterSettings();
             const lastPosted = settings.last_posted_at ? new Date(settings.last_posted_at).getTime() : 0;
-            if (settings.is_enabled && settings.channel_id && Date.now() - lastPosted >= (settings.frequency_hours || 4) * 60 * 60 * 1000) {
+            const dayStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const postsToday = settings.channel_id
+                ? await countChannelPostsSince(settings.channel_id, dayStart.toISOString())
+                : 0;
+            const dailyLimit = Math.max(1, Math.min(2, Number(settings.posts_per_day || 2)));
+            if (settings.is_enabled
+                && settings.channel_id
+                && postsToday < dailyLimit
+                && Date.now() - lastPosted >= (settings.frequency_hours || 12) * 60 * 60 * 1000) {
                 await generateAndPublishChannelPost(bot, settings);
             }
         } catch (error) {
