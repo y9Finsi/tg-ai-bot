@@ -1240,13 +1240,14 @@ export async function generateResponse(userId, text, envelope = {}) {
             content: event.content
         }));
 
-    // Определяем активный режим сессии (TTL = 20 минут = 1200 секунд)
+    // Определяем активный режим сессии (TTL = 5 минут = 300 секунд)
+    const EROTIC_SESSION_TTL_SECONDS = 300;
     const lastCompletedEvent = events.filter(e => e.status === 'COMPLETED').slice(-1)[0];
     const lastEventTime = lastCompletedEvent?.occurred_at ? new Date(lastCompletedEvent.occurred_at).getTime() : 0;
     const now = Date.now();
     const gapSeconds = lastEventTime > 0 ? Math.max(0, Math.floor((now - lastEventTime) / 1000)) : Infinity;
     const lastMode = lastCompletedEvent?.metadata?.mode || lastCompletedEvent?.roleplay_mode || 'CASUAL';
-    const isEroticSceneActive = gapSeconds < 1200 && lastMode === 'EROTIC';
+    const isEroticSceneActive = gapSeconds < EROTIC_SESSION_TTL_SECONDS && lastMode === 'EROTIC';
     const activeMode = isEroticSceneActive ? 'EROTIC' : 'CASUAL';
 
     // 1. Классификация намерения и режима диалога (CASUAL, EROTIC, JOKE, REACTION)
