@@ -193,5 +193,18 @@ test('EROTIC mode suppresses sleeping guidance in context prompt', () => {
     assert.match(prompt, /готов[а|ы] к близости/i);
 });
 
+test('multi-turn history passes real assistant and user messages without embedding text in system prompt', () => {
+    const engine = fs.readFileSync(path.join(root, 'src', 'ai.js'), 'utf8');
+    assert.match(engine, /messages\.push\(\{\s*role:\s*isLera\s*\?\s*'assistant'\s*:\s*'user',\s*content:\s*ev\.content\s*\}\)/);
+    assert.doesNotMatch(engine, /historyInstruction\s*=\s*`\\n\\n=== 💬 ПОСЛЕДНИЕ СООБЩЕНИЯ ДИАЛОГА/);
+});
+
+test('lera_casual prompt prioritizes listening and reacting over self-monologue', () => {
+    const casualPrompt = fs.readFileSync(path.join(root, 'src', 'prompts', 'lera_casual.txt'), 'utf8');
+    assert.match(casualPrompt, /СНАЧАЛА отреагируй на его слова/);
+    assert.match(casualPrompt, /КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО игнорировать реплику собеседника и сразу начинать рассказывать о себе/);
+    assert.doesNotMatch(casualPrompt, /Приоритет:[\s\S]{1,50}1\. Что происходит с Лерой сейчас/);
+});
+
 
 

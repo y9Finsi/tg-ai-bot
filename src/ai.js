@@ -490,107 +490,85 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         console.error("⚠️ Ошибка формирования контекста Леры:", tamagotchiErr.message);
     }
 
-    // Формируем компактный текстовый блок истории сообщений с таймстампами и паузами
+    // Формируем историю предыдущих сообщений для multi-turn контекста
     const chatHistoryEvents = priorEvents.filter(ev =>
         ev.content && (ev.event_type === 'MESSAGE' || ev.event_type === 'INITIATIVE')
     ).slice(-10);
 
-    let historyInstruction = "";
-    if (productionIntentConfig?.promptModules?.history !== false) {
-        if (chatHistoryEvents.length > 0) {
-            let prevTime = null;
-            const formattedLines = [];
-            chatHistoryEvents.forEach(ev => {
-                const isLera = ev.role === 'lera' || ev.role === 'assistant';
-                const roleLabel = isLera ? 'Лера' : 'Собеседник';
-                const initLabel = ev.event_type === 'INITIATIVE' ? ' (написала первой)' : '';
-                const timestamp = ev.occurred_at || ev.created_at;
-                let timeStr = '';
-                let gapNote = '';
-                if (timestamp) {
-                    const date = new Date(timestamp);
-                    if (!isNaN(date.getTime())) {
-                        const hours = String(date.getHours()).padStart(2, '0');
-                        const mins = String(date.getMinutes()).padStart(2, '0');
-                        timeStr = `${hours}:${mins}`;
-                        if (prevTime) {
-                            const diffMin = Math.floor((date.getTime() - prevTime.getTime()) / 60000);
-                            if (diffMin >= 15) {
-                                const gapText = diffMin < 60 ? `${diffMin} мин` : `${Math.floor(diffMin / 60)} ч`;
-                                gapNote = ` [пауза ${gapText}]`;
-                            }
-                        }
-                        prevTime = date;
-                    }
-                }
-                const prefix = timeStr ? `${timeStr}${gapNote} ` : '';
-                formattedLines.push(`• ${prefix}${roleLabel}${initLabel}: ${ev.content}`);
-            });
-            historyInstruction = `\n\n=== 💬 ПОСЛЕДНИЕ СООБЩЕНИЯ ДИАЛОГА (КОНТЕКСТ) ===\n${formattedLines.join('\n')}\n(История выше дана только для понимания контекста разговора и пауз. В новом ответе не копируй этот формат и пиши только обычную реплику Леры).`;
-        }
+    function normalizeTextForComparison(text) {
+        return String(text || '')
+            .toLowerCase()
+            .replace(/[^\p{L}\p{N}]+/gu, ' ')
+            .trim();
     }
 
-function normalizeTextForComparison(text) {
-    return String(text || '')
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}]+/gu, ' ')
-        .trim();
-}
+    function analyzeUserRepetitions(userText, priorEvents = []) {
+        const currentNorm = normalizeTextForComparison(userText);
+        if (!currentNorm) return { isRepeated: false, repeatCount: 0 };
 
-function analyzeUserRepetitions(userText, priorEvents = []) {
-    const currentNorm = normalizeTextForComparison(userText);
-    if (!currentNorm) return { isRepeated: false, repeatCount: 0 };
+        const recentUserEvents = priorEvents
+            .filter(e => (e.role === 'user' || e.role === 'client') && e.content)
+            .slice(-8);
 
-    const recentUserEvents = priorEvents
-        .filter(e => (e.role === 'user' || e.role === 'client') && e.content)
-        .slice(-8);
-
-    let matchCount = 0;
-    for (const ev of recentUserEvents) {
-        const pastNorm = normalizeTextForComparison(ev.content);
-        if (!pastNorm) continue;
-        if (pastNorm === currentNorm) {
-            matchCount++;
-        }
-    }
-
-    return {
-        isRepeated: matchCount > 0,
-        repeatCount: matchCount + 1
-    };
-}
-
-function analyzeAssistantRepetitions(priorEvents = []) {
-    const recentLeraEvents = priorEvents
-        .filter(e => (e.role === 'lera' || e.role === 'assistant') && e.content && e.event_type !== 'REACTION')
-        .slice(-5);
-
-    if (recentLeraEvents.length < 2) return { hasRepetition: false, forbiddenStarters: [] };
-
-    const detected = [];
-    for (const starter of FORBIDDEN_STARTERS) {
-        let count = 0;
-        for (const ev of recentLeraEvents) {
-            const firstMsg = String(ev.content).split('|||')[0].trim();
-            if (starter.pattern.test(firstMsg)) {
-                count++;
+        let matchCount = 0;
+        for (const ev of recentUserEvents) {
+            const pastNorm = normalizeTextForComparison(ev.content);
+            if (!pastNorm) continue;
+            if (pastNorm === currentNorm) {
+                matchCount++;
             }
         }
-        if (count >= 2) {
-            detected.push(starter.label);
-        }
+
+        return {
+            isRepeated: matchCount > 0,
+            repeatCount: matchCount + 1
+        };
     }
 
-    return {
-        hasRepetition: detected.length > 0,
-        forbiddenStarters: detected
-    };
-}
+    function analyzeAssistantRepetitions(priorEvents = []) {
+        const recentLeraEvents = priorEvents
+            .filter(e => (e.role === 'lera' || e.role === 'assistant') && e.content && e.event_type !== 'REACTION')
+            .slice(-5);
+
+        if (recentLeraEvents.length < 2) return { hasRepetition: false, forbiddenStarters: [] };
+
+        const detected = [];
+        for (const starter of FORBIDDEN_STARTERS) {
+            let count = 0;
+            for (const ev of recentLeraEvents) {
+                const firstMsg = String(ev.content).split('|||')[0].trim();
+                if (starter.pattern.test(firstMsg)) {
+                    count++;
+                }
+            }
+            if (count >= 2) {
+                detected.push(starter.label);
+            }
+        }
+
+        return {
+            hasRepetition: detected.length > 0,
+            forbiddenStarters: detected
+        };
+    }
 
     const userRepetition = !isInitiative && userText ? analyzeUserRepetitions(userText, priorEvents) : { isRepeated: false };
     const assistantRepetition = analyzeAssistantRepetitions(priorEvents);
-    const systemPrompt = baseSystemPromptText + mediaLogInstruction + tamagotchiInstruction + modeInstruction + historyInstruction;
+    const systemPrompt = baseSystemPromptText + mediaLogInstruction + tamagotchiInstruction + modeInstruction;
     const messages = [{ role: 'system', content: systemPrompt }];
+
+    // Нативный multi-turn контекст диалога
+    if (productionIntentConfig?.promptModules?.history !== false) {
+        if (chatHistoryEvents.length > 0) {
+            for (const ev of chatHistoryEvents) {
+                const isLera = ev.role === 'lera' || ev.role === 'assistant';
+                messages.push({
+                    role: isLera ? 'assistant' : 'user',
+                    content: ev.content
+                });
+            }
+        }
+    }
 
     if (userRepetition.isRepeated && routingMode !== 'EROTIC') {
         const repetitionDirective = `⚠️ ПОЛЬЗОВАТЕЛЬ ПОВТОРЯЕТСЯ: он уже писал ровно это («${userText}») недавно в этом диалоге (${userRepetition.repeatCount}-й раз подряд).

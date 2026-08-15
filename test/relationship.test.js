@@ -22,5 +22,8 @@ test('relationship decay only reduces irritation over six-hour steps', () => {
 test('unknown or malformed relationship events become neutral', () => {
     assert.deepEqual(normalizeRelationshipEvent({ type: 'made_up', intensity: 9 }), { type: 'NEUTRAL', intensity: 1 });
     assert.match(relationshipToPrompt({ trust: 80, affection: 75, irritation: 65 }), /СИЛЬНО РАЗДРАЖЕНА/);
+    assert.match(relationshipToPrompt({ trust: 80, affection: 75, irritation: 65 }), /БЛИЗКОГО ЧЕЛОВЕКА\/КРАША/);
+    assert.match(relationshipToPrompt({ trust: 20, affection: 20, irritation: 65 }), /отвали/);
+    assert.match(relationshipToPrompt({ trust: 80, affection: 80, irritation: 35 }), /ДУЕШЬСЯ И ПОДКАЛЫВАЕШЬ/);
 });
 
