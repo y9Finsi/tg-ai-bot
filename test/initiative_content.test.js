@@ -39,6 +39,21 @@ test('personal initiative limit overrides the global one and zero disables initi
     }), null);
 });
 
+test('cold start initiative triggers when user has no conversation history', () => {
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 600, state: 'CLOSED', latestEvent: null,
+        counts: available, isColdStart: true
+    }), 'cold_start');
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 600, state: 'CLOSED', latestEvent: null,
+        counts: available, isColdStart: true, stageKinds: ['cold_start']
+    }), null);
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 600, state: 'CLOSED', latestEvent: null,
+        counts: { initiatives: 3, content: 0 }, isColdStart: true
+    }), null);
+});
+
 test('new Moscow day starts one plain initiative regardless of the old dialogue state', () => {
     assert.equal(chooseInitiativeKind({
         ageSeconds: 20 * 3600, state: 'IGNORED', latestEvent: latestText,

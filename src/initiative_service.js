@@ -44,9 +44,13 @@ export function getEffectiveInitiativeLimit(user, settings = {}) {
         : INITIATIVE_LIMIT;
 }
 
-export function chooseInitiativeKind({ ageSeconds, state, latestEvent, counts, dialogueHasContent, contentAvailable, stageKinds = [], newMoscowDay = false, initiativeLimit = INITIATIVE_LIMIT }) {
+export function chooseInitiativeKind({ ageSeconds, state, latestEvent, counts, dialogueHasContent, contentAvailable, stageKinds = [], newMoscowDay = false, initiativeLimit = INITIATIVE_LIMIT, isColdStart = false }) {
     const initiativesAvailable = counts.initiatives < initiativeLimit;
     if (!initiativesAvailable) return null;
+    if (isColdStart) {
+        if (stageKinds.includes('cold_start')) return null;
+        return 'cold_start';
+    }
     if (newMoscowDay) return 'new_day';
     if (state === 'IGNORED') {
         if (ageSeconds >= 10800) return null;
@@ -95,8 +99,48 @@ export async function enqueuePersonalInitiatives(queue) {
         try {
             if (latest.is_blocked || await getActiveMute(latest.user_id)) continue;
             const latestMeta = eventMetadata(latest);
-            if (latestMeta.kind === 'new_day') continue;
+            if (latestMeta.kind === 'new_day' || latestMeta.kind === 'cold_start') continue;
             const clock = getMoscowClock();
+            const hourMsk = Number(clock.hour);
+            const isColdStart = !latest.id || !latest.occurred_at;
+
+            if (isColdStart) {
+                // Разрешаем первое касание в дневное время с 11:00 до 21:00 МСК
+                if (hourMsk < 11 || hourMsk >= 21) continue;
+                // Не раньше 5 минут после регистрации / очистки диалога
+                if (Number(latest.age_seconds || 0) < 300) continue;
+
+                const counts = await getInitiativeDailyCounts(latest.user_id);
+                const initiativeLimit = getEffectiveInitiativeLimit(latest, routingSettings);
+                const stageKinds = await getInitiativeStages(latest.user_id, 0);
+
+                const kind = chooseInitiativeKind({
+                    ageSeconds: Number(latest.age_seconds || 0),
+                    state: 'CLOSED',
+                    latestEvent: null,
+                    counts,
+                    dialogueHasContent: false,
+                    contentAvailable: false,
+                    stageKinds,
+                    newMoscowDay: false,
+                    initiativeLimit,
+                    isColdStart: true
+                });
+                if (!kind) continue;
+
+                await queue.add('initiative', {
+                    userId: Number(latest.user_id),
+                    chatId: Number(latest.user_id),
+                    anchorEventId: 0,
+                    initiativeKind: 'cold_start',
+                    contentCandidateIds: []
+                }, {
+                    jobId: `initiative-${latest.user_id}-0-cold_start`,
+                    attempts: 3
+                });
+                continue;
+            }
+
             const newMoscowDay = isNewMoscowDay(latest);
             if (newMoscowDay && Number(clock.hour) < NEW_DAY_START_HOUR_MSK) continue;
             const ignoredAnchorId = ['ignore_1', 'ignore_2'].includes(latestMeta.kind)
@@ -129,7 +173,6 @@ export async function enqueuePersonalInitiatives(queue) {
                 initiativeLimit
             });
             if (!kind) continue;
-            const hourMsk = Number(clock.hour);
             if (['content_4h', 'idle_4h'].includes(kind) && (hourMsk < 11 || hourMsk >= 21)) continue;
             const candidates = kind === 'content_4h'
                 || (kind === 'open' && !dialogue.some(event => event.event_type === 'CONTENT') && counts.content < CONTENT_LIMIT)
@@ -150,3 +193,4 @@ export async function enqueuePersonalInitiatives(queue) {
         }
     }
 }
+

@@ -680,15 +680,35 @@ export async function getInitiativeDailyCounts(userId) {
 
 export async function getInitiativeSchedulerUsers(limit = 500) {
     const result = await query(
-        `SELECT DISTINCT ON (e.user_id)
-            e.*, u.is_blocked,
-            EXTRACT(EPOCH FROM (NOW() - e.occurred_at))::bigint AS age_seconds
-         FROM conversation_events e
-         JOIN users u ON u.telegram_id = e.user_id
-         WHERE e.status = 'COMPLETED'
-           AND e.event_type IN ('MESSAGE', 'INITIATIVE', 'CONTENT')
-           AND e.role IN ('user', 'lera', 'assistant')
-         ORDER BY e.user_id, e.occurred_at DESC, e.id DESC
+        `SELECT
+            u.telegram_id AS user_id,
+            u.is_blocked,
+            u.initiative_limit,
+            u.created_at AS user_created_at,
+            e.id,
+            e.event_type,
+            e.role,
+            e.content,
+            e.occurred_at,
+            e.local_date,
+            e.metadata,
+            e.status,
+            EXTRACT(EPOCH FROM (NOW() - COALESCE(e.occurred_at, u.created_at)))::bigint AS age_seconds
+         FROM users u
+         LEFT JOIN LATERAL (
+             SELECT * FROM conversation_events
+             WHERE user_id = u.telegram_id
+               AND status = 'COMPLETED'
+               AND event_type IN ('MESSAGE', 'INITIATIVE', 'CONTENT')
+               AND role IN ('user', 'lera', 'assistant')
+               AND occurred_at > COALESCE(u.chat_history_cleared_at, '-infinity'::timestamptz)
+             ORDER BY occurred_at DESC, id DESC
+             LIMIT 1
+         ) e ON TRUE
+         WHERE u.is_blocked = FALSE
+           AND u.telegram_id IS NOT NULL
+           AND u.telegram_id > 1000
+         ORDER BY COALESCE(e.occurred_at, u.created_at) DESC
          LIMIT $1`,
         [limit]
     );

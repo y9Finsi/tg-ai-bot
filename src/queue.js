@@ -144,19 +144,21 @@ async function processContentDeliveryJob(bot, job) {
 
 async function processInitiativeJob(bot, job) {
     const { userId, chatId, anchorEventId, initiativeKind, contentCandidateIds = [] } = job.data;
+    const isColdStart = initiativeKind === 'cold_start';
     const [user, mute, anchor, latest, counts, duplicate, routingSettings] = await Promise.all([
         getUser(userId),
         getActiveMute(userId),
-        getCompletedEvent(anchorEventId, userId),
+        (anchorEventId && !isColdStart) ? getCompletedEvent(anchorEventId, userId) : Promise.resolve(null),
         getLatestMeaningfulEvent(userId),
         getInitiativeDailyCounts(userId),
-        hasInitiativeStage(userId, anchorEventId, initiativeKind),
+        hasInitiativeStage(userId, anchorEventId || 0, initiativeKind),
         getRoutingSettings()
     ]);
     const initiativeLimit = getEffectiveInitiativeLimit(user, routingSettings);
-    if (!user || user.is_blocked || mute || !anchor || duplicate || counts.initiatives >= initiativeLimit) return;
-    if (latest?.role === 'user' && new Date(latest.occurred_at) > new Date(anchor.occurred_at)) return;
-    if (initiativeKind !== 'ignore_2' && Number(latest?.id) !== Number(anchorEventId)) return;
+    if (!user || user.is_blocked || mute || duplicate || counts.initiatives >= initiativeLimit) return;
+    if (!isColdStart && !anchor) return;
+    if (!isColdStart && latest?.role === 'user' && new Date(latest.occurred_at) > new Date(anchor.occurred_at)) return;
+    if (!isColdStart && initiativeKind !== 'ignore_2' && Number(latest?.id) !== Number(anchorEventId)) return;
     const latestLocalDate = String(latest?.local_date || '');
     const todayMsk = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Europe/Moscow',
@@ -169,8 +171,9 @@ async function processInitiativeJob(bot, job) {
         hour: '2-digit',
         hourCycle: 'h23'
     }).format(new Date()));
+    if (isColdStart && (hourMsk < 11 || hourMsk >= 21)) return;
     if (initiativeKind === 'new_day' && (latestLocalDate >= todayMsk || hourMsk < 9)) return;
-    const anchorAgeSeconds = (Date.now() - new Date(anchor.occurred_at).getTime()) / 1000;
+    const anchorAgeSeconds = anchor ? (Date.now() - new Date(anchor.occurred_at).getTime()) / 1000 : 0;
     if (initiativeKind === 'open' && (anchorAgeSeconds < 300 || anchorAgeSeconds > 3600)) return;
     if (initiativeKind === 'ignore_1' && (anchorAgeSeconds < 300 || anchorAgeSeconds > 3600)) return;
     if (initiativeKind === 'ignore_2' && (anchorAgeSeconds < 7200 || anchorAgeSeconds >= 10800)) return;
@@ -183,7 +186,7 @@ async function processInitiativeJob(bot, job) {
     }
 
     let candidates = [];
-    if (!['ignore_1', 'ignore_2', 'new_day', 'idle_4h'].includes(initiativeKind) && counts.content < 3) {
+    if (!['ignore_1', 'ignore_2', 'new_day', 'idle_4h', 'cold_start'].includes(initiativeKind) && counts.content < 3) {
         const rows = await Promise.all(contentCandidateIds.map(id => getLeraContent(id)));
         candidates = rows.filter(item => item?.enabled && item.allow_initiative);
         const sentFlags = await Promise.all(candidates.map(item => wasContentSent(userId, item.id)));
@@ -191,18 +194,20 @@ async function processInitiativeJob(bot, job) {
     }
     if (initiativeKind === 'content_4h' && candidates.length === 0) return;
 
-    const reason = initiativeKind === 'open'
-        ? 'естественно продолжить последний незакрытый диалог'
-        : initiativeKind === 'new_day'
-            ? 'наступил новый день, а вы сегодня ещё не общались'
-        : initiativeKind === 'content_4h'
-            ? 'после паузы самой поделиться контентом'
-        : initiativeKind === 'idle_4h'
-            ? 'после дневной паузы поинтересоваться как дела, связав со своим днем и прошлым разговором'
-            : 'пользователь не ответил на реплику Леры';
+    const reason = initiativeKind === 'cold_start'
+        ? 'написать первой и познакомиться / поинтересоваться как дела, без предыдущей истории переписки'
+        : initiativeKind === 'open'
+            ? 'естественно продолжить последний незакрытый диалог'
+            : initiativeKind === 'new_day'
+                ? 'наступил новый день, а вы сегодня ещё не общались'
+            : initiativeKind === 'content_4h'
+                ? 'после паузы самой поделиться контентом'
+            : initiativeKind === 'idle_4h'
+                ? 'после дневной паузы поинтересоваться как дела, связав со своим днем и прошлым разговором'
+                : 'пользователь не ответил на реплику Леры';
     const response = await generateAiInitiativeResponse(userId, reason, {
         initiativeKind,
-        anchorEventId,
+        anchorEventId: anchorEventId || null,
         contentCandidates: candidates
     });
     if (response?.blockedByJudge || !response?.text || response.text.startsWith('❌')) {
