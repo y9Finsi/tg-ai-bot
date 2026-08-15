@@ -52,7 +52,7 @@ export class GeminiSearchProvider {
     constructor(config = {}) {
         this.web2apiUrl = config.web2apiUrl || process.env.GEMINI_WEB2API_URL || process.env.GEMINI_WEB_URL || 'http://127.0.0.1:8081/v1';
         this.apiKey = config.apiKey || process.env.GEMINI_API_KEY || null;
-        this.model = config.model || process.env.GEMINI_SEARCH_MODEL || 'gemini-2.5-flash';
+        this.model = config.model || process.env.GEMINI_SEARCH_MODEL || 'gemini-2.0-flash';
     }
 
     async search(query) {
