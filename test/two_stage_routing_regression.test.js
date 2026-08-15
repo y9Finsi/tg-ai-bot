@@ -206,5 +206,35 @@ test('lera_casual prompt prioritizes listening and reacting over self-monologue'
     assert.doesNotMatch(casualPrompt, /Приоритет:[\s\S]{1,50}1\. Что происходит с Лерой сейчас/);
 });
 
+test('hasPriorReactionInHistory correctly identifies prior reactions', async () => {
+    const { hasPriorReactionInHistory } = await import('../src/ai/intent_router.js');
+    assert.equal(hasPriorReactionInHistory([]), false);
+    assert.equal(hasPriorReactionInHistory([{ role: 'user', content: 'привет' }]), false);
+    assert.equal(hasPriorReactionInHistory([
+        { role: 'user', content: 'ок' },
+        { role: 'assistant', content: 'Привет! Как дела?' }
+    ]), false);
+    assert.equal(hasPriorReactionInHistory([
+        { role: 'user', content: 'ясно' },
+        { role: 'assistant', content: '[реакция 👍]', event_type: 'REACTION' }
+    ]), true);
+    assert.equal(hasPriorReactionInHistory([
+        { role: 'user', content: 'ясно' },
+        { role: 'assistant', content: 'REACTION:❤️' }
+    ]), true);
+});
 
-
+test('classifyIntent blocks REACTION mode when allowReaction is false or prior reaction exists', async () => {
+    const { classifyIntent } = await import('../src/ai/intent_router.js');
+    const historyWithReaction = [
+        { role: 'user', content: 'спокойной ночи' },
+        { role: 'assistant', content: '[реакция ❤️]', event_type: 'REACTION' }
+    ];
+    const result = await classifyIntent({
+        userText: 'да',
+        history: historyWithReaction,
+        activeMode: 'CASUAL',
+        allowReaction: false
+    });
+    assert.notEqual(result.mode, 'REACTION');
+});

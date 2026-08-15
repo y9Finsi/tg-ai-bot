@@ -342,12 +342,27 @@ export function getReactionFallbackEmoji(random = Math.random) {
     return REACTION_FALLBACK_EMOJIS[index];
 }
 
-function buildClassifierMessages(history = [], userText = '', classifierPrompt = DEFAULT_ROUTING_SETTINGS.classifierPrompt, activeMode = 'CASUAL') {
+export function hasPriorReactionInHistory(history = []) {
+    if (!Array.isArray(history) || history.length === 0) return false;
+    const lastAssistant = [...history].reverse().find(item => item?.role === 'assistant' || item?.role === 'lera');
+    if (!lastAssistant) return false;
+    const content = String(lastAssistant.content || '');
+    return lastAssistant.event_type === 'REACTION'
+        || lastAssistant.mode === 'REACTION'
+        || /^\s*\[реакция\b/iu.test(content)
+        || /^\s*REACTION:/iu.test(content);
+}
+
+function buildClassifierMessages(history = [], userText = '', classifierPrompt = DEFAULT_ROUTING_SETTINGS.classifierPrompt, activeMode = 'CASUAL', allowReaction = true) {
     const recent = history
         .filter(item => item?.content)
         .slice(-4)
         .map(item => `${item.role === 'assistant' || item.role === 'lera' ? 'Лера' : 'Пользователь'}: ${item.content}`)
         .join('\n');
+    const reactionInstruction = allowReaction
+        ? '- REACTION <emoji> допустим только для короткого затухающего диалога без вопросов и без продолжения сцены. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выбирать REACTION для любых вопросов («че», «что», «где», «а?», «?») и эротики.'
+        : '- На предыдущую реплику Лера УЖЕ поставила реакцию. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выбирать REACTION два раза подряд! Выбирай только текстовый ответ (CASUAL, EROTIC или JOKE).';
+
     return [
         {
             role: 'system',
@@ -356,8 +371,8 @@ function buildClassifierMessages(history = [], userText = '', classifierPrompt =
 - Если текущий режим EROTIC: любые короткие фразы, согласие («давай», «начинай», «еще»), опечатки, эмоции или действия пользователя ПРОДОЛЖАЮТ режим EROTIC. Переключай в CASUAL только если пользователь явно останавливает сцену («стоп», «хватит», «не хочу», «я спать», ссора) или переводит тему на отвлеченные бытовые вопросы.
 - Если текущий режим CASUAL: переключай в EROTIC при любых сексуальных намёках, вирте, поцелуях, раздевании, ласках или откровенных предложениях («хочу тебя», «снимай одежду», «повиртим», «целую», «трогаю тебя»). Обычные бытовые фразы («давай кофе», «пошли гулять») остаются CASUAL.
 - JOKE допустим ТОЛЬКО когда текущая новая реплика пользователя прямо просит шутку, мем, анекдот или прикол («пошути», «расскажи анекдот», «скинь мем/прикол»). Любые эмоциональные восклицания («треш», «жесть», «вау», «ахах»), просьбы продолжить разговор («расскажи еще», «что нового», «ну давай») — это СТРОГО CASUAL!
-- REACTION <emoji> допустим только для короткого затухающего диалога без вопросов и без продолжения сцены. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выбирать REACTION для любых вопросов («че», «что», «где», «а?», «?») и эротики.
-- Верни строго CASUAL, EROTIC, JOKE или REACTION <emoji>.`
+${reactionInstruction}
+- Верни строго CASUAL, EROTIC, JOKE${allowReaction ? ' или REACTION <emoji>' : ''}.`
         },
         {
             role: 'user',
@@ -428,13 +443,16 @@ export async function classifyInitiativeState({ userId = 0, history = [], trace 
     }
 }
 
-export async function classifyIntent({ userId = 0, userText = '', history = [], activeMode = 'CASUAL', trace = true } = {}) {
+export async function classifyIntent({ userId = 0, userText = '', history = [], activeMode = 'CASUAL', allowReaction = null, trace = true } = {}) {
     const settings = await getRoutingSettings();
     if (!settings.enabled) {
         return { mode: 'CASUAL', bypassed: true, reason: 'legacy_disabled', settings };
     }
 
-    const messages = buildClassifierMessages(history, userText, settings.classifierPrompt, activeMode);
+    const priorReaction = hasPriorReactionInHistory(history);
+    const canReact = allowReaction === null ? !priorReaction : Boolean(allowReaction);
+
+    const messages = buildClassifierMessages(history, userText, settings.classifierPrompt, activeMode, canReact);
     const providers = await getClassifierProviders(settings);
     try {
         const result = await requestLlmCompletion(
@@ -468,7 +486,7 @@ export async function classifyIntent({ userId = 0, userText = '', history = [], 
             mode = activeMode === 'EROTIC' ? 'EROTIC' : 'CASUAL';
         }
         const hasQuestionMark = String(userText || '').includes('?') || String(userText || '').includes('¿');
-        if (mode === 'REACTION' && hasQuestionMark) {
+        if (mode === 'REACTION' && (!canReact || hasQuestionMark)) {
             mode = activeMode === 'EROTIC' ? 'EROTIC' : 'CASUAL';
         }
         const classifierReactionEmoji = mode === 'REACTION'

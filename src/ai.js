@@ -1354,13 +1354,20 @@ export async function generateResponse(userId, text, envelope = {}) {
     let actionRouting = null;
 
     const events = await getRecentConversationEvents(userId, 6).catch(() => []);
+    const lastLeraEvent = events
+        .filter(e => e.status === 'COMPLETED' && (e.role === 'lera' || e.role === 'assistant'))
+        .slice(-1)[0];
+    const lastWasReaction = lastLeraEvent?.event_type === 'REACTION' || lastLeraEvent?.metadata?.mode === 'REACTION';
+    const allowReaction = !lastWasReaction;
+
     const history = events
         .filter(event => event.status === 'COMPLETED'
             && event.content
-            && (event.event_type === 'MESSAGE' || event.event_type === 'INITIATIVE'))
+            && (event.event_type === 'MESSAGE' || event.event_type === 'INITIATIVE' || event.event_type === 'REACTION'))
         .map(event => ({
             role: event.role === 'lera' || event.role === 'assistant' ? 'assistant' : 'user',
-            content: event.content
+            content: event.event_type === 'REACTION' ? `[реакция ${event.content}]` : event.content,
+            event_type: event.event_type
         }));
 
     // Определяем активный режим сессии (TTL = 5 минут = 300 секунд)
@@ -1375,7 +1382,7 @@ export async function generateResponse(userId, text, envelope = {}) {
 
     // 1. Классификация намерения и режима диалога (CASUAL, EROTIC, JOKE, REACTION)
     try {
-        classifierResult = await classifyIntent({ userId, userText: text, history, activeMode });
+        classifierResult = await classifyIntent({ userId, userText: text, history, activeMode, allowReaction });
         routingMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(classifierResult.mode)
             ? classifierResult.mode
             : 'CASUAL';
@@ -1390,7 +1397,7 @@ export async function generateResponse(userId, text, envelope = {}) {
     }
 
     const hasIncomingPhoto = Array.isArray(envelope.photoUrls) && envelope.photoUrls.length > 0;
-    if (classifierResult?.mode === 'REACTION' && !hasIncomingPhoto && !envelope.forceText) {
+    if (classifierResult?.mode === 'REACTION' && allowReaction && !hasIncomingPhoto && !envelope.forceText) {
         const reactionEmoji = classifierResult.reactionEmoji;
         savePromptLog({
             userId,
