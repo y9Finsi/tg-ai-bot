@@ -115,6 +115,23 @@ test('core facts bypass threshold and repository may use object contract', async
     assert.deepEqual(result.facts.map((fact) => fact.text), ['Профильный факт']);
 });
 
+test('retriever preserves repository method context for object-style search', async () => {
+    const repository = {
+        prefix: 'Локальный факт',
+        getCoreFacts: async () => [],
+        async search({ query }) {
+            return [{ id: 'bound', text: `${this.prefix}: ${query}`, score: 0.9 }];
+        }
+    };
+
+    const result = await createContextRetriever({
+        mode: 'disabled',
+        repository
+    })({ userId: 'u', query: 'работа' });
+
+    assert.equal(result.facts[0].text, 'Локальный факт: работа');
+});
+
 test('client aborts a slow sidecar request within configured 150ms floor', async () => {
     const client = new SemanticaClient({ baseUrl: 'http://slow', mode: 'active', timeoutMs: 1, fetchImpl: (_url, { signal }) => new Promise((resolve, reject) => {
         signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
