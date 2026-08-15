@@ -275,6 +275,7 @@ async function processAiJob(bot, job) {
                 batchId,
                 metadata: {
                     ...metadata,
+                    mode: response?.routingMode || metadata?.mode || 'CASUAL',
                     state_snapshot: response?.debugInfo?.state_snapshot || job.data.state_snapshot || {},
                     memory_used: response?.debugInfo?.memory_used || job.data.memory_used || {},
                     raw_prompt: response?.debugInfo?.rawPrompt || job.data.raw_prompt || '',

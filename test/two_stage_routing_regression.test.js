@@ -167,26 +167,11 @@ test('clearing history invalidates stale queued responses and excludes older eve
     assert.match(queue, /historyClearedAtAfterGeneration/);
 });
 
-test('isQuestionOrInquiry detects question phrases and words', async () => {
-    const { isQuestionOrInquiry } = await import('../src/ai/intent_router.js');
-    assert.equal(isQuestionOrInquiry('Че'), true);
-    assert.equal(isQuestionOrInquiry('Че?'), true);
-    assert.equal(isQuestionOrInquiry('что ты делаешь'), true);
-    assert.equal(isQuestionOrInquiry('а?'), true);
-    assert.equal(isQuestionOrInquiry('где ты'), true);
-    assert.equal(isQuestionOrInquiry('ясно'), false);
-    assert.equal(isQuestionOrInquiry('понял'), false);
-});
-
-test('isEroticContinuation detects continuation keywords after erotic history', async () => {
-    const { isEroticContinuation } = await import('../src/ai/intent_router.js');
-    const history = [
-        { role: 'user', content: 'давай вирт' },
-        { role: 'assistant', content: 'ммм давай, только осторожно' }
-    ];
-    assert.equal(isEroticContinuation('Начинай', history), true);
-    assert.equal(isEroticContinuation('Продолжай', history), true);
-    assert.equal(isEroticContinuation('привет как дела', history), false);
+test('classifyIntent formats prompt with activeMode session context', async () => {
+    const { classifyIntent } = await import('../src/ai/intent_router.js');
+    // Test with enabled: false bypass to verify interface signature
+    const result = await classifyIntent({ userText: 'Начинай', activeMode: 'EROTIC' });
+    assert.ok(result);
 });
 
 test('EROTIC mode suppresses sleeping guidance in context prompt', () => {

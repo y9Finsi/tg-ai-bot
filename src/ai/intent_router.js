@@ -342,16 +342,22 @@ export function getReactionFallbackEmoji(random = Math.random) {
     return REACTION_FALLBACK_EMOJIS[index];
 }
 
-function buildClassifierMessages(history = [], userText = '', classifierPrompt = DEFAULT_ROUTING_SETTINGS.classifierPrompt) {
+function buildClassifierMessages(history = [], userText = '', classifierPrompt = DEFAULT_ROUTING_SETTINGS.classifierPrompt, activeMode = 'CASUAL') {
     const recent = history
         .filter(item => item?.content)
-        .slice(-3)
+        .slice(-4)
         .map(item => `${item.role === 'assistant' || item.role === 'lera' ? 'Лера' : 'Пользователь'}: ${item.content}`)
         .join('\n');
     return [
         {
             role: 'system',
-            content: `${classifierPrompt}\n\nОБЯЗАТЕЛЬНОЕ ДОПОЛНЕНИЕ К ТЕКУЩЕЙ ИНСТРУКЦИИ: верни ровно CASUAL, EROTIC, JOKE или REACTION <emoji>. Для REACTION обязательно выбери ровно один emoji. JOKE допустим только когда текущая новая реплика пользователя прямо просит шутку, мем, анекдот или иронию. История сама по себе никогда не является причиной выбрать JOKE. REACTION допустим только для короткого затухающего диалога; если новая реплика требует любого содержательного ответа, выбери CASUAL или EROTIC.`
+            content: `${classifierPrompt}\n\nОБЯЗАТЕЛЬНЫЙ КОНТЕКСТ СЕССИИ И ПРАВИЛА:
+- ТЕКУЩИЙ АКТИВНЫЙ РЕЖИМ ДИАЛОГА: ${activeMode}.
+- Если текущий режим EROTIC: любые короткие фразы, согласие («давай», «начинай», «еще»), опечатки, эмоции или действия пользователя ПРОДОЛЖАЮТ режим EROTIC. Переключай в CASUAL только если пользователь явно останавливает сцену («стоп», «хватит», «не хочу», «я спать», ссора) или переводит тему на отвлеченные бытовые вопросы.
+- Если текущий режим CASUAL: не включай EROTIC, если нет явного флирта, интима или сексуального контекста (обычные фразы «давай», «пошли», «сделай» — это CASUAL).
+- JOKE допустим только когда текущая новая реплика пользователя прямо просит шутку, мем, анекдот или иронию.
+- REACTION <emoji> допустим только для короткого затухающего диалога без вопросов и без продолжения сцены. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выбирать REACTION для любых вопросов («че», «что», «где», «а?», «?») и эротики.
+- Верни строго CASUAL, EROTIC, JOKE или REACTION <emoji>.`
         },
         {
             role: 'user',
@@ -362,23 +368,6 @@ function buildClassifierMessages(history = [], userText = '', classifierPrompt =
 
 export function isExplicitJokeRequest(userText = '') {
     return /(?:пошути|шутк[ауие]|анекдот|мем(?:чик)?|прикол|смешн(?:ое|ую)|ироничн|порофли)/iu.test(String(userText));
-}
-
-export function isQuestionOrInquiry(text = '') {
-    const trimmed = String(text || '').trim();
-    if (!trimmed) return false;
-    if (trimmed.includes('?') || trimmed.includes('¿')) return true;
-    const lower = trimmed.toLowerCase();
-    return /^(?:ч[еёо]|чоо+|че|что|чего|а|где|куда|зачем|как|кто|почему|откуда|скок|сколько|какой|какая|какие|когда|правда|рил|серьезно|серьёзно)(?:[\s\p{P}]|$)/iu.test(lower);
-}
-
-export function isEroticContinuation(userText = '', history = []) {
-    const trimmed = String(userText || '').trim().toLowerCase();
-    if (!trimmed) return false;
-    const isEroticKeyword = /^(?:начинай|давай|продолжай|ещ[её]|хочу|дальше|быстрее|не останавливайся|входи|раздевай|трахай|целуй|соси|лижи|трогай|снимай|покажи|ляг|ложись|повернись|раком|на колени)(?:[\s\p{P}]|$)/iu.test(trimmed);
-    if (!isEroticKeyword) return false;
-    const recent = history.slice(-4).map(h => String(h.content || '').toLowerCase()).join(' ');
-    return /(?:вирт|трах|член|соск|попк|писечк|поцелу|губк|кроват|раздет|раздева|трусик|секс|шлюшк|папочк|возбужд)/iu.test(recent);
 }
 
 const INITIATIVE_STATE_PROMPT = `Ты определяешь, можно ли Лере снова написать после последней реплики.
@@ -439,13 +428,13 @@ export async function classifyInitiativeState({ userId = 0, history = [], trace 
     }
 }
 
-export async function classifyIntent({ userId = 0, userText = '', history = [], trace = true } = {}) {
+export async function classifyIntent({ userId = 0, userText = '', history = [], activeMode = 'CASUAL', trace = true } = {}) {
     const settings = await getRoutingSettings();
     if (!settings.enabled) {
         return { mode: 'CASUAL', bypassed: true, reason: 'legacy_disabled', settings };
     }
 
-    const messages = buildClassifierMessages(history, userText, settings.classifierPrompt);
+    const messages = buildClassifierMessages(history, userText, settings.classifierPrompt, activeMode);
     const providers = await getClassifierProviders(settings);
     try {
         const result = await requestLlmCompletion(
@@ -476,13 +465,11 @@ export async function classifyIntent({ userId = 0, userText = '', history = [], 
         const normalizedMode = normalizeIntent(result.rawText);
         let mode = normalizedMode;
         if (mode === 'JOKE' && !isExplicitJokeRequest(userText)) {
-            mode = 'CASUAL';
+            mode = activeMode === 'EROTIC' ? 'EROTIC' : 'CASUAL';
         }
-        if (mode === 'REACTION' && isQuestionOrInquiry(userText)) {
-            mode = isEroticContinuation(userText, history) ? 'EROTIC' : 'CASUAL';
-        }
-        if (mode === 'CASUAL' && isEroticContinuation(userText, history)) {
-            mode = 'EROTIC';
+        const hasQuestionMark = String(userText || '').includes('?') || String(userText || '').includes('¿');
+        if (mode === 'REACTION' && hasQuestionMark) {
+            mode = activeMode === 'EROTIC' ? 'EROTIC' : 'CASUAL';
         }
         const classifierReactionEmoji = mode === 'REACTION'
             ? extractReactionEmoji(result.rawText)
@@ -504,7 +491,7 @@ export async function classifyIntent({ userId = 0, userText = '', history = [], 
             settings
         };
     } catch (error) {
-        return { mode: 'CASUAL', rawText: '', error: error.message, settings };
+        return { mode: activeMode === 'EROTIC' ? 'EROTIC' : 'CASUAL', rawText: '', error: error.message, settings };
     }
 }
 

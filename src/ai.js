@@ -1163,6 +1163,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     }
     return {
         text: text || "",
+        routingMode,
         blockedByJudge,
         photo,
         photoRecordId,
@@ -1229,7 +1230,7 @@ export async function generateResponse(userId, text, envelope = {}) {
     let classifierResult = null;
     let actionRouting = null;
 
-    const events = await getRecentConversationEvents(userId, 3).catch(() => []);
+    const events = await getRecentConversationEvents(userId, 6).catch(() => []);
     const history = events
         .filter(event => event.status === 'COMPLETED'
             && event.content
@@ -1239,9 +1240,18 @@ export async function generateResponse(userId, text, envelope = {}) {
             content: event.content
         }));
 
+    // Определяем активный режим сессии (TTL = 20 минут = 1200 секунд)
+    const lastCompletedEvent = events.filter(e => e.status === 'COMPLETED').slice(-1)[0];
+    const lastEventTime = lastCompletedEvent?.occurred_at ? new Date(lastCompletedEvent.occurred_at).getTime() : 0;
+    const now = Date.now();
+    const gapSeconds = lastEventTime > 0 ? Math.max(0, Math.floor((now - lastEventTime) / 1000)) : Infinity;
+    const lastMode = lastCompletedEvent?.metadata?.mode || lastCompletedEvent?.roleplay_mode || 'CASUAL';
+    const isEroticSceneActive = gapSeconds < 1200 && lastMode === 'EROTIC';
+    const activeMode = isEroticSceneActive ? 'EROTIC' : 'CASUAL';
+
     // 1. Классификация намерения и режима диалога (CASUAL, EROTIC, JOKE, REACTION)
     try {
-        classifierResult = await classifyIntent({ userId, userText: text, history });
+        classifierResult = await classifyIntent({ userId, userText: text, history, activeMode });
         routingMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(classifierResult.mode)
             ? classifierResult.mode
             : 'CASUAL';
@@ -1250,8 +1260,9 @@ export async function generateResponse(userId, text, envelope = {}) {
             + (Number(usage.completion_tokens || 0) * 0.28 / 1000000);
         if (classifierCost > 0) await addApiCost(userId, classifierCost);
     } catch (routingError) {
-        console.error('[INTENT ROUTER] fallback to CASUAL:', routingError.message);
-        classifierResult = { mode: 'CASUAL', error: routingError.message };
+        console.error('[INTENT ROUTER] fallback:', routingError.message);
+        classifierResult = { mode: activeMode === 'EROTIC' ? 'EROTIC' : 'CASUAL', error: routingError.message };
+        routingMode = classifierResult.mode;
     }
 
     const hasIncomingPhoto = Array.isArray(envelope.photoUrls) && envelope.photoUrls.length > 0;
