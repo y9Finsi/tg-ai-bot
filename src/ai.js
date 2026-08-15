@@ -337,11 +337,22 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         }
     }
 
+    if (routingMode === 'EROTIC') {
+        modeInstruction += `\n\n[РЕЖИМ БЛИЗОСТИ И ВИРТА]:
+- СТРОЖАЙШИЙ ЗАПРЕТ НА ОТГОВОРКИ ПРО СОН И УСТАЛОСТЬ: В интимном контексте КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО говорить «я усну», «я засыпаю», «я сонная», «мозг отключается», «устала».
+- СТРОЖАЙШИЙ ЗАПРЕТ НА СМЕХ («ахах», «хихи») И ШАБЛОННЫЕ ФРАЗЫ: Никаких «ахах ну ты и зверь/наглец».
+- Полная вовлечённость в процесс, живость ощущений, отклик на действия партнёра без нытья и прерываний.`;
+    }
+
     if (isInitiative) {
         const initiativePrompt = productionRoutingSettings.initiativePrompt
             ? `\n\n[ОБЩИЕ ПРАВИЛА ИНИЦИАТИВ]\n${productionRoutingSettings.initiativePrompt}`
             : '';
-        modeInstruction = `\n\n[ТИП ИНИЦИАТИВЫ]: ${initiativeKind || 'open'}\n[ПРИЧИНА]: ${initiativeReason || 'естественное продолжение разговора'}\nНе раскрывай приватные данные других пользователей.${initiativePrompt}`;
+        const isNightOrLongGap = gapSeconds >= 14400;
+        const freshDayRule = isNightOrLongGap
+            ? '\nВАЖНО (ДЛИННАЯ ПАУЗА / НОВЫЙ ДЕНЬ): Прошло много времени с прошлого разговора. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО отвечать на старые ночные реплики или продолжать прошлые обиды/споры. Начинай сообщение с чистого листа в контексте текущего времени (утро/день).'
+            : '';
+        modeInstruction = `\n\n[ТИП ИНИЦИАТИВЫ]: ${initiativeKind || 'open'}\n[ПРИЧИНА]: ${initiativeReason || 'естественное продолжение разговора'}${freshDayRule}\nНе раскрывай приватные данные других пользователей.${initiativePrompt}`;
     }
 
     if (contentCandidates.length > 0) {
@@ -357,8 +368,9 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     let radiantLayers = {};
     try {
         const detailedContext = await ContextBuilder.buildTelegramContextDetailed(userId, {
-            overrides: { preMessageGapSeconds: gapSeconds, previousActivityAt: lastEvent?.occurred_at, currentTime },
-            actionResult
+            overrides: { preMessageGapSeconds: gapSeconds, previousActivityAt: lastEvent?.occurred_at, currentTime, routingMode },
+            actionResult,
+            routingMode
         });
         const radiantContext = detailedContext.text;
         radiantContextText = radiantContext;
@@ -446,7 +458,45 @@ function analyzeUserRepetitions(userText, priorEvents = []) {
     };
 }
 
+const FORBIDDEN_STARTERS = [
+    { pattern: /^(я тут|я щас?|я вот)\b/i, label: 'я тут / я ща' },
+    { pattern: /^(бля|блять)\b/i, label: 'бля' },
+    { pattern: /^(ну кароч|кароче|короче)\b/i, label: 'короче / кароч' },
+    { pattern: /^(ну блин|блин)\b/i, label: 'ну блин' },
+    { pattern: /^(слушай|слышь)\b/i, label: 'слушай' },
+    { pattern: /^(ахахах|хахах)\b/i, label: 'ахахах' },
+    { pattern: /^(пипец|пипяу|пепец)\b/i, label: 'пипец / пипяу' }
+];
+
+function analyzeAssistantRepetitions(priorEvents = []) {
+    const recentLeraEvents = priorEvents
+        .filter(e => (e.role === 'lera' || e.role === 'assistant') && e.content && e.event_type !== 'REACTION')
+        .slice(-5);
+
+    if (recentLeraEvents.length < 2) return { hasRepetition: false, forbiddenStarters: [] };
+
+    const detected = [];
+    for (const starter of FORBIDDEN_STARTERS) {
+        let count = 0;
+        for (const ev of recentLeraEvents) {
+            const firstMsg = String(ev.content).split('|||')[0].trim();
+            if (starter.pattern.test(firstMsg)) {
+                count++;
+            }
+        }
+        if (count >= 2) {
+            detected.push(starter.label);
+        }
+    }
+
+    return {
+        hasRepetition: detected.length > 0,
+        forbiddenStarters: detected
+    };
+}
+
     const userRepetition = !isInitiative && userText ? analyzeUserRepetitions(userText, priorEvents) : { isRepeated: false };
+    const assistantRepetition = analyzeAssistantRepetitions(priorEvents);
     const systemPrompt = baseSystemPromptText + mediaLogInstruction + tamagotchiInstruction + modeInstruction + historyInstruction;
     const messages = [{ role: 'system', content: systemPrompt }];
 
@@ -460,6 +510,39 @@ function analyzeUserRepetitions(userText, priorEvents = []) {
 - «тебя заклинило ахах?» / «пластинку заело?»
 - «ты робот что ли?»`;
         messages.push({ role: 'system', content: repetitionDirective });
+    }
+
+    if (assistantRepetition.hasRepetition) {
+        const antiRepDirective = `⚠️ АНТИПОВТОР СТАРТА ФРАЗЫ: Твои недавние сообщения уже начинались со слов «${assistantRepetition.forbiddenStarters.join(', ')}».
+КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО начинать следующее сообщение с этих заезженных слов! Начни фразу свежо — сразу с прямого ответа, действия, вопроса или другой реакции.`;
+        messages.push({ role: 'system', content: antiRepDirective });
+    }
+
+    if (isInitiative) {
+        let initiativeDirective = '';
+        if (initiativeKind === 'ignore_1' || initiativeKind === 'ignore_2') {
+            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: СОБЕСЕДНИК ПРОИГНОРИЛ ТВОЮ РЕПЛИКУ И ЗАМОЛЧАЛ!
+Задача Леры: напиши короткий, живой и слегка возмущенный или подкалывающий пинг:
+- Напрямую спроси или подколи за игнор: «ты че игноришь?», «алоо ты куда пропал?», «ты че слился?», «аууу», «э», «че молчишь?»
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: продолжать старый спор, оправдываться или объяснять что-то длинно. Нужен именно короткий пинг за молчание.`;
+        } else if (initiativeKind === 'new_day') {
+            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: НАСТУПИЛ НОВЫЙ ДЕНЬ!
+Задача Леры: сегодня вы ещё не общались. Прошлый ночной диалог закончен и закрыт.
+- Начни новый день легко и естественно: напиши, чем сейчас занята (проснулась, пью кофе, собираюсь по делам в Питере) или просто коротко спроси как спалось / как настрой («доброе/утречко/привет», «как спалось?», «ты как там?»).
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: мусолить ночную ссору, обижаться за вчерашнее или отвечать на старое ночное «споки».`;
+        } else if (initiativeKind === 'idle_4h' || initiativeKind === 'content_4h') {
+            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ДНЕВНАЯ ПАУЗА (ПРОШЛО БОЛЬШЕ 4 ЧАСОВ)!
+Задача Леры: с момента прошлого разговора прошло много времени.
+- Смени тему и поделись своим текущим моментом/вайбом из дня в Питере (кофейня на Петроградке, работа над постом, трек, погода) и ненавязчиво спроси как его день («ты как там?», «как день ваще?», «че делаешь?»).
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: продолжать старый конфликт или оправдываться за старые фразы.`;
+        } else if (initiativeKind === 'open') {
+            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ВОЗВРАТ К НЕЗАВЕРШЕННОЙ ТЕМЕ!
+Задача Леры: диалог прервался недавно на полуслове. Естественно докинь мысль по теме последнего разговора или коротко подколи.`;
+        } else {
+            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ${initiativeReason || 'естественное продолжение разговора'}`;
+        }
+
+        messages.push({ role: 'system', content: initiativeDirective });
     }
 
     // Передаем последнее текущее сообщение пользователя (с поддержкой Vision)
@@ -510,7 +593,7 @@ function analyzeUserRepetitions(userText, priorEvents = []) {
     };
 }
 
-async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingRecommendationPost = null, preselectedPhoto = null, contentCandidates = [], isVoiceRequest = false) {
+async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingRecommendationPost = null, preselectedPhoto = null, contentCandidates = [], isVoiceRequest = false, recentReplies = []) {
     let workingText = rawText || '';
     let imagePrompt = null;
     let voiceText = null;
@@ -553,6 +636,21 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
     let voicePayload = null;
     let showBuyButton = false;
     let finalAiText = cleanResponseText(workingText);
+
+    // Мягкая очистка застрявших вводных префиксов на старте, если они дублируются с прошлым сообщением
+    if (Array.isArray(recentReplies) && recentReplies.length > 0 && finalAiText) {
+        const lastLeraMsg = recentReplies[recentReplies.length - 1] || '';
+        const lastStarter = String(lastLeraMsg).split('|||')[0].trim();
+        for (const starter of FORBIDDEN_STARTERS) {
+            if (starter.pattern.test(lastStarter) && starter.pattern.test(finalAiText)) {
+                finalAiText = finalAiText.replace(starter.pattern, '').replace(/^[,\s—-]+/, '').trim();
+                if (finalAiText.length > 0) {
+                    finalAiText = finalAiText.charAt(0).toLowerCase() + finalAiText.slice(1);
+                }
+                break;
+            }
+        }
+    }
 
     if (imagePrompt) {
         const photoObj = await generatePhotoForPrompt(user, imagePrompt, preselectedPhoto);
@@ -798,7 +896,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     }
 
     // 3. Чистка текста и генерация/выборка фото и голоса
-    let { text, photo, photoRecordId, photoCaption, voice, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates, isVoiceRequest);
+    let { text, photo, photoRecordId, photoCaption, voice, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates, isVoiceRequest, recentReplyTexts);
     const generationTrace = [{
         step: 'first',
         response: text,
@@ -912,7 +1010,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         providerName = retry.providerName || providerName;
         latencyMs = retry.latencyMs || latencyMs;
         ({ text, photo, photoRecordId, photoCaption, voice, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(
-            userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates, isVoiceRequest
+            userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates, isVoiceRequest, recentReplyTexts
         ));
         generationTrace.push({
             step: 'retry',

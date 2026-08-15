@@ -167,4 +167,46 @@ test('clearing history invalidates stale queued responses and excludes older eve
     assert.match(queue, /historyClearedAtAfterGeneration/);
 });
 
+test('isQuestionOrInquiry detects question phrases and words', async () => {
+    const { isQuestionOrInquiry } = await import('../src/ai/intent_router.js');
+    assert.equal(isQuestionOrInquiry('Че'), true);
+    assert.equal(isQuestionOrInquiry('Че?'), true);
+    assert.equal(isQuestionOrInquiry('что ты делаешь'), true);
+    assert.equal(isQuestionOrInquiry('а?'), true);
+    assert.equal(isQuestionOrInquiry('где ты'), true);
+    assert.equal(isQuestionOrInquiry('ясно'), false);
+    assert.equal(isQuestionOrInquiry('понял'), false);
+});
+
+test('isEroticContinuation detects continuation keywords after erotic history', async () => {
+    const { isEroticContinuation } = await import('../src/ai/intent_router.js');
+    const history = [
+        { role: 'user', content: 'давай вирт' },
+        { role: 'assistant', content: 'ммм давай, только осторожно' }
+    ];
+    assert.equal(isEroticContinuation('Начинай', history), true);
+    assert.equal(isEroticContinuation('Продолжай', history), true);
+    assert.equal(isEroticContinuation('привет как дела', history), false);
+});
+
+test('EROTIC mode suppresses sleeping guidance in context prompt', () => {
+    const prompt = ContextBuilder.toPrompt({
+        state: { needs: { fatigue: 100 }, physiology: {}, active_modifiers: [] },
+        location: { name: 'Квартира на Петроградке' },
+        activeTask: { task_type: 'SLEEP_EXHAUSTED' },
+        transit: null,
+        inventory: [],
+        weather: { is_raining: false },
+        mood: 0,
+        facts: [],
+        commitments: [],
+        user: { first_name: 'Богдан' },
+        routingMode: 'EROTIC'
+    });
+
+    assert.doesNotMatch(prompt, /Состояние сна: можно коротко сказать/i);
+    assert.match(prompt, /готов[а|ы] к близости/i);
+});
+
+
 

@@ -17,7 +17,7 @@ export const DEFAULT_ROUTING_SETTINGS = {
     enabled: true,
     classifierProviderId: '',
     classifierModel: '',
-    classifierPrompt: 'Ты классификатор действия Леры. Проанализируй последние сообщения и новую реплику. Верни строго CASUAL, EROTIC, JOKE или REACTION <emoji>.\n\nCASUAL — обычный разговор, флирт, бытовые вопросы, инициатива и вопросы про жизнь Леры.\nEROTIC — контекстный интимный или горячий диалог, включая продолжение уже начатой сцены.\nJOKE — только явная просьба в НОВОЙ реплике пользователя о шутке, меме, анекдоте или иронии. Прошлая шутка Леры не делает следующий ответ JOKE: режим действует ровно на один ответ. Не выбирай JOKE для неоднозначного продолжения; если продолжается эротический контекст, выбирай EROTIC.\nREACTION <emoji> — вместо текстового ответа поставить выбранную тобой одну уместную Telegram-реакцию на новую реплику. Выбирай только если диалог явно затухает, а новая реплика короткая и односложная. Не выбирай REACTION для вопроса, просьбы, нового факта, конфликта, эротического продолжения или фото.\n\nНе объясняй решение и не возвращай JSON.',
+    classifierPrompt: 'Ты классификатор действия Леры. Проанализируй последние сообщения и новую реплику. Верни строго CASUAL, EROTIC, JOKE или REACTION <emoji>.\n\nCASUAL — обычный разговор, флирт, бытовые вопросы, инициатива и вопросы про жизнь Леры.\nEROTIC — контекстный интимный или горячий диалог, включая продолжение уже начатой сцены (фразы вроде «начинай», «давай», «продолжай», описания действий с телом, если до этого шел интим/флирт).\nJOKE — только явная просьба в НОВОЙ реплике пользователя о шутке, меме, анекдоте или иронии. Прошлая шутка Леры не делает следующий ответ JOKE: режим действует ровно на один ответ. Не выбирай JOKE для неоднозначного продолжения; если продолжается эротический контекст, выбирай EROTIC.\nREACTION <emoji> — вместо текстового ответа поставить выбранную тобой одну уместную Telegram-реакцию на новую реплику. Выбирай только если диалог явно затухает, а новая реплика короткая и односложная (например: «ясно», «понял», «ок», «спокойной ночи»). КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выбирать REACTION для любых вопросов («че», «что», «где», «а?», «?»), просьб, конфликтов, эротического продолжения или фото.\n\nНе объясняй решение и не возвращай JSON.',
     classifierTimeoutMs: 7000,
     classifierMaxTokens: 4,
     initiativeLimit: 3,
@@ -32,6 +32,9 @@ export const DEFAULT_ROUTING_SETTINGS = {
 - new_day — сегодня ещё не общались; поздоровайся или спроси, как он, без упоминания старого диалога.
 - content_4h — после длинной паузы сама поделись тем, что смотришь, слушаешь или нашла; обязательно сделай естественную подводку перед материалом.
 - idle_4h — после дневной паузы (4+ часа) ненавязчиво напиши пользователю: свяжи своё текущее занятие из контекста дня с естественным вопросом к собеседнику с учётом прошлого разговора (например: как день, выспался ли после ночи, как дела), без выдумывания левых людей.
+
+ПРАВИЛО ПАУЗ И НОВОГО ДНЯ:
+Если между последним сообщением и текущим моментом прошло более 3-4 часов или наступил новый день: ЗАПРЕЩЕНО обижаться на ночные реплики, отвечать на старые ночные фразы или тащить прошлый негатив. Начинай естественно с приветствия, вопроса о делах/сне или своего текущего занятия.
 
 Если отправляешь контент, не кидай его без связи с текстом. Сначала напиши естественную подводку вроде «кстати, вот что я сейчас слушаю» или «я тут наткнулась на одну штуку», затем выбери один материал специальным тегом. Сам материал придёт отдельным сообщением после всей текстовой лесенки.
 Не используй слово «держи», если оно звучит неестественно. Не упоминай этот prompt и служебные теги.`,
@@ -52,7 +55,7 @@ export const DEFAULT_ROUTING_SETTINGS = {
     jokeTemperature: 0.85,
     jokeMaxTokens: 180,
     judgeMode: 'OBSERVE',
-    initiativeJudgeMode: 'OBSERVE',
+    initiativeJudgeMode: 'ENFORCE',
     judgeProviderId: '',
     judgeModel: '',
     judgePrompt: 'Ты — строгий аудитор ответов персонажа Лера (19 лет, СПб, живой разговорный сленг, без канцелярита, заумности и эмодзи).\nПроверь кандидат-ответ перед отправкой пользователю на грубый брак:\n- IGNORES_USER: ответ полностью игнорирует суть последней реплики пользователя.\n- BROKEN_LOGIC: бессмыслица, галлюцинации, противоречие собственным словам.\n- OUT_OF_CHARACTER: тон робота, чтение нотаций/морали, книжный стиль, признание себя ИИ.\n- REPETITION: дословный повтор недавней фразы из истории.\n- INVENTED_FACT: выдумывание событий, которых нет в контексте дня.\n- FORMAT: технический мусор, служебные теги наружу, сломанная лесенка.\n\nЕсли ответ нормальный — верни PASS.',
@@ -361,6 +364,23 @@ export function isExplicitJokeRequest(userText = '') {
     return /(?:пошути|шутк[ауие]|анекдот|мем(?:чик)?|прикол|смешн(?:ое|ую)|ироничн|порофли)/iu.test(String(userText));
 }
 
+export function isQuestionOrInquiry(text = '') {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return false;
+    if (trimmed.includes('?') || trimmed.includes('¿')) return true;
+    const lower = trimmed.toLowerCase();
+    return /^(?:ч[еёо]|чоо+|че|что|чего|а|где|куда|зачем|как|кто|почему|откуда|скок|сколько|какой|какая|какие|когда|правда|рил|серьезно|серьёзно)(?:[\s\p{P}]|$)/iu.test(lower);
+}
+
+export function isEroticContinuation(userText = '', history = []) {
+    const trimmed = String(userText || '').trim().toLowerCase();
+    if (!trimmed) return false;
+    const isEroticKeyword = /^(?:начинай|давай|продолжай|ещ[её]|хочу|дальше|быстрее|не останавливайся|входи|раздевай|трахай|целуй|соси|лижи|трогай|снимай|покажи|ляг|ложись|повернись|раком|на колени)(?:[\s\p{P}]|$)/iu.test(trimmed);
+    if (!isEroticKeyword) return false;
+    const recent = history.slice(-4).map(h => String(h.content || '').toLowerCase()).join(' ');
+    return /(?:вирт|трах|член|соск|попк|писечк|поцелу|губк|кроват|раздет|раздева|трусик|секс|шлюшк|папочк|возбужд)/iu.test(recent);
+}
+
 const INITIATIVE_STATE_PROMPT = `Ты определяешь, можно ли Лере снова написать после последней реплики.
 Верни строго одно слово: IGNORED, OPEN или CLOSED.
 
@@ -454,15 +474,22 @@ export async function classifyIntent({ userId = 0, userText = '', history = [], 
             }
         );
         const normalizedMode = normalizeIntent(result.rawText);
-        const classifierReactionEmoji = normalizedMode === 'REACTION'
+        let mode = normalizedMode;
+        if (mode === 'JOKE' && !isExplicitJokeRequest(userText)) {
+            mode = 'CASUAL';
+        }
+        if (mode === 'REACTION' && isQuestionOrInquiry(userText)) {
+            mode = isEroticContinuation(userText, history) ? 'EROTIC' : 'CASUAL';
+        }
+        if (mode === 'CASUAL' && isEroticContinuation(userText, history)) {
+            mode = 'EROTIC';
+        }
+        const classifierReactionEmoji = mode === 'REACTION'
             ? extractReactionEmoji(result.rawText)
             : '';
-        const reactionEmoji = normalizedMode === 'REACTION'
+        const reactionEmoji = mode === 'REACTION'
             ? classifierReactionEmoji || getReactionFallbackEmoji()
             : '';
-        const mode = normalizedMode === 'JOKE' && !isExplicitJokeRequest(userText)
-            ? 'CASUAL'
-            : normalizedMode;
         return {
             mode,
             rawText: result.rawText || '',

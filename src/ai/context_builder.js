@@ -52,7 +52,8 @@ export class ContextBuilder {
             preMessageGapSeconds: overrides.preMessageGapSeconds,
             previousActivityAt: overrides.previousActivityAt,
             currentTime: overrides.currentTime,
-            outfitText: overrides.outfit_text
+            outfitText: overrides.outfit_text,
+            routingMode: overrides.routingMode || null
         };
     }
 
@@ -127,20 +128,27 @@ export class ContextBuilder {
     }
 
     static toAnalysis(snapshot) {
+        const isErotic = snapshot.routingMode === 'EROTIC';
         const needs = snapshot.state.needs || {}; const task = snapshot.activeTask;
         const facts = uniqueLines((snapshot.facts || []).map(humanizeFact)).slice(0, 6);
         const plans = uniqueLines((snapshot.commitments || []).map(humanizePlan)).slice(0, 4);
         const events = uniqueLines([...facts, ...plans]).slice(0, 8);
-        const sleepGuidance = isSleepingTask(task)
+        const sleepGuidance = !isErotic && isSleepingTask(task)
             ? '\n• Состояние сна: можно коротко сказать, что Лера спала или только проснулась. Не имитируй голос, слух, шёпот, дыхание или звуки; не используй многоточия в начале фразы.'
             : '';
+        const currentStatus = isErotic && isSleepingTask(task)
+            ? 'Дома'
+            : humanizeCurrentStatus(task, snapshot.transit);
+        const wellbeing = isErotic
+            ? 'Чувствует себя хорошо, возбуждена и готова к близости'
+            : humanizeWellbeing(snapshot.mood, needs);
         return `${relationshipToPrompt(snapshot.relationship || {})}
 
 [СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ]
 • Время: ${formatContextDate(snapshot.currentTime)}
 • Локация: ${humanizeLocation(snapshot.location.name)}
-• Текущий статус: ${humanizeCurrentStatus(task, snapshot.transit)}
-• Самочувствие: ${humanizeWellbeing(snapshot.mood, needs)}
+• Текущий статус: ${currentStatus}
+• Самочувствие: ${wellbeing}
 • Одежда дома: ${humanizeOutfit(snapshot.outfitText || this.describeOutfit(snapshot.inventory, task).text)}
 • Погода за окном: ${humanizeWeather(snapshot.weather)}${sleepGuidance}
 • Telegram-канал (ТГК Леры): ${snapshot.channelSubscribers !== null && snapshot.channelSubscribers !== undefined ? `${snapshot.channelSubscribers} подписчиков (актуальное число)` : 'ведёт личный ТГК'}

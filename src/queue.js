@@ -74,6 +74,30 @@ async function sendTextLadder(bot, chatId, text, tempMsgId = null, finalOptions 
     return messages;
 }
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function sendVoiceWithSimulation(bot, chatId, voiceObj, voiceText = '') {
+    const voiceBuffer = voiceObj?.buffer || voiceObj?.source;
+    if (!voiceObj || !voiceBuffer) return null;
+
+    try {
+        // Сразу включаем статус записи голосового в Telegram
+        await bot.telegram.sendChatAction(chatId, 'record_voice').catch(() => {});
+
+        // Короткая имитация записи пропорционально длине реплики (от 1.5 до 3.5 сек)
+        const textLen = String(voiceText || '').length;
+        const recordingMs = Math.min(Math.max(textLen * 35, 1500), 3500);
+        await sleep(recordingMs);
+
+        const voicePayload = { source: voiceBuffer, filename: voiceObj.filename || 'voice.ogg' };
+        const sentVoiceMsg = await bot.telegram.sendVoice(chatId, voicePayload);
+        return sentVoiceMsg;
+    } catch (voiceSendErr) {
+        console.error(`[TELEGRAM VOICE ERROR] Не удалось отправить голосовое юзеру ${chatId}:`, voiceSendErr.message);
+        return null;
+    }
+}
+
 async function enqueueContentDelivery(data) {
     await aiQueue.add('content-delivery', data, {
         jobId: `content-${data.userId}-${data.contentId}`,
@@ -190,6 +214,12 @@ async function processInitiativeJob(bot, job) {
         return;
     }
     await sendTextLadder(bot, chatId, response.text);
+
+    // Отправка голосового сообщения в инициативе с имитацией записи
+    if (response.voice) {
+        await sendVoiceWithSimulation(bot, chatId, response.voice, response.voiceText || response.text);
+    }
+
     const initiativeEvent = await appendConversationEvent({
         userId,
         eventType: 'INITIATIVE',
@@ -442,20 +472,13 @@ async function processAiJob(bot, job) {
                 }
             }
 
-            // Отправка голосового сообщения (если сгенерировано голосовое)
-            const voiceBuffer = response.voice?.buffer || response.voice?.source;
-            if (response.voice && voiceBuffer) {
-                try {
-                    await bot.telegram.sendChatAction(chatId, 'record_voice').catch(() => {});
-                    const voicePayload = { source: voiceBuffer, filename: response.voice.filename || 'voice.ogg' };
-                    const sentVoiceMsg = await bot.telegram.sendVoice(chatId, voicePayload);
-                    const sentVoiceFileId = sentVoiceMsg?.voice?.file_id || 'ai_generated_voice';
-                    const spokenVoiceText = response.voiceText || response.voice.text || '';
-                    const eventContent = spokenVoiceText ? `[Лера отправила голосовое сообщение: "${spokenVoiceText}"]` : '[Лера отправила голосовое сообщение]';
-                    await saveLeraEvent(eventContent, 'VOICE', { file_id: sentVoiceFileId, text: spokenVoiceText });
-                } catch (voiceSendErr) {
-                    console.error(`[TELEGRAM VOICE ERROR] Не удалось отправить голосовое юзеру ${userId}:`, voiceSendErr.message);
-                }
+            // Отправка голосового сообщения с имитацией записи
+            if (response.voice) {
+                const sentVoiceMsg = await sendVoiceWithSimulation(bot, chatId, response.voice, response.voiceText || response.text);
+                const sentVoiceFileId = sentVoiceMsg?.voice?.file_id || 'ai_generated_voice';
+                const spokenVoiceText = response.voiceText || response.voice.text || '';
+                const eventContent = spokenVoiceText ? `[Лера отправила голосовое сообщение: "${spokenVoiceText}"]` : '[Лера отправила голосовое сообщение]';
+                await saveLeraEvent(eventContent, 'VOICE', { file_id: sentVoiceFileId, text: spokenVoiceText });
             }
 
             if (response.contentId) {
