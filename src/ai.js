@@ -44,6 +44,16 @@ function isUsableTelegramPhotoId(value) {
     return /^https?:\/\/\S+$/.test(photoId) || /^[A-Za-z0-9_-]+$/.test(photoId);
 }
 
+const FORBIDDEN_STARTERS = [
+    { pattern: /^(я тут|я щас?|я вот)\b/i, label: 'я тут / я ща' },
+    { pattern: /^(бля|блять)\b/i, label: 'бля' },
+    { pattern: /^(ну кароч|кароче|короче)\b/i, label: 'короче / кароч' },
+    { pattern: /^(ну блин|блин)\b/i, label: 'ну блин' },
+    { pattern: /^(слушай|слышь)\b/i, label: 'слушай' },
+    { pattern: /^(ахахах|хахах)\b/i, label: 'ахахах' },
+    { pattern: /^(пипец|пипяу|пепец)\b/i, label: 'пипец / пипяу' }
+];
+
 export async function reloadAIClient() {
     try {
         activeProviderCache = await getActiveAiProvider();
@@ -459,16 +469,6 @@ function analyzeUserRepetitions(userText, priorEvents = []) {
         repeatCount: matchCount + 1
     };
 }
-
-const FORBIDDEN_STARTERS = [
-    { pattern: /^(я тут|я щас?|я вот)\b/i, label: 'я тут / я ща' },
-    { pattern: /^(бля|блять)\b/i, label: 'бля' },
-    { pattern: /^(ну кароч|кароче|короче)\b/i, label: 'короче / кароч' },
-    { pattern: /^(ну блин|блин)\b/i, label: 'ну блин' },
-    { pattern: /^(слушай|слышь)\b/i, label: 'слушай' },
-    { pattern: /^(ахахах|хахах)\b/i, label: 'ахахах' },
-    { pattern: /^(пипец|пипяу|пепец)\b/i, label: 'пипец / пипяу' }
-];
 
 function analyzeAssistantRepetitions(priorEvents = []) {
     const recentLeraEvents = priorEvents
