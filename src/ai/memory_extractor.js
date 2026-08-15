@@ -60,6 +60,7 @@ export async function extractFactsInBackground(userId, userText, { sourceEventId
     if (!userText || !isMemoryCandidate(userText)) return { success: false, reason: "Filtered out trivial/greeting" };
 
     let lastRaw = null;
+    let savedCount = 0;
     try {
         const memSettings = await getMemorySettings();
         if (!memSettings.is_enabled) return { success: false, reason: "Memory disabled" };
