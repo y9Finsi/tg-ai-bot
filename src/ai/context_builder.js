@@ -130,9 +130,9 @@ export class ContextBuilder {
     static toAnalysis(snapshot) {
         const isErotic = snapshot.routingMode === 'EROTIC';
         const needs = snapshot.state.needs || {}; const task = snapshot.activeTask;
-        const facts = uniqueLines((snapshot.facts || []).map(humanizeFact)).slice(0, 6);
-        const plans = uniqueLines((snapshot.commitments || []).map(humanizePlan)).slice(0, 4);
-        const events = uniqueLines([...facts, ...plans]).slice(0, 8);
+        const facts = uniqueLines((snapshot.facts || []).map(humanizeFact)).filter(Boolean).slice(0, 4);
+        const plans = uniqueLines((snapshot.commitments || []).map(humanizePlan)).filter(Boolean).slice(0, 2);
+        const events = uniqueLines([...facts, ...plans]).slice(0, 5);
         const sleepGuidance = !isErotic && isSleepingTask(task)
             ? '\n• Состояние сна: можно коротко сказать, что Лера спала или только проснулась. Не имитируй голос, слух, шёпот, дыхание или звуки; не используй многоточия в начале фразы.'
             : '';

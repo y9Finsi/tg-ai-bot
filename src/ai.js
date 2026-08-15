@@ -478,7 +478,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         radiantContextText = radiantContext;
         radiantLayers = detailedContext.layers;
         const memoryText = memories.length > 0
-            ? memories.map(m => `- ${m.text ?? m.fact ?? m.normalizedText ?? ''}`).filter(line => line !== '- ').join('\n')
+            ? memories.slice(0, 5).map(m => `- ${m.text ?? m.fact ?? m.normalizedText ?? ''}`).filter(line => line !== '- ').join('\n')
             : 'Пока нет сохраненных фактов о пользователе.';
 
         const promptModules = productionIntentConfig?.promptModules || {};
