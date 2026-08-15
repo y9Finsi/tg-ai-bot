@@ -4,6 +4,8 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    environment:
+      - GEMINI_WEB2API_URL=http://gemini_search:8080/v1
     ports:
       - "3000:3000"
     deploy:
@@ -15,6 +17,17 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  gemini_search:
+    container_name: evabot_gemini_search
+    build: ./services/gemini-search
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 384M
 
   postgres:
     container_name: evabot_postgres
