@@ -276,6 +276,9 @@ async function processAiJob(bot, job) {
                 metadata: {
                     ...metadata,
                     mode: response?.routingMode || metadata?.mode || 'CASUAL',
+                    climax_stage: response?.climaxState?.stage || null,
+                    arousal: response?.climaxState?.arousal ?? null,
+                    climax_turns: response?.climaxState?.turns ?? null,
                     state_snapshot: response?.debugInfo?.state_snapshot || job.data.state_snapshot || {},
                     memory_used: response?.debugInfo?.memory_used || job.data.memory_used || {},
                     raw_prompt: response?.debugInfo?.rawPrompt || job.data.raw_prompt || '',

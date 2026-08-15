@@ -16,6 +16,7 @@ import { ContextBuilder } from './ai/context_builder.js';
 import { validateUserCommand } from './ai/command_gate.js';
 import { evaluateLeraReply, getQualityFallback, requiresReplyRetry } from './ai/response_quality.js';
 import { classifyIntent, getModeGenerationParams, getModeIntentConfig, getRoutingSettings } from './ai/intent_router.js';
+import { computeClimaxState, getClimaxPromptInstruction, CLIMAX_STAGES } from './ai/climax_engine.js';
 import { judgeLeraReply } from './ai/response_judge.js';
 import { cleanResponseText } from './utils/response_text.js';
 import { generateLeraPhoto } from './services/image_generator.js';
@@ -264,7 +265,7 @@ async function generateVoiceForText(user, voiceText) {
 
 // --- 3. ПАЙПЛАЙН AI ДВИЖКА ---
 
-async function buildMessagePayload(user, userId, { userText, photoUrls = [], isInitiative, routingMode = 'CASUAL', initiativeReason = null, initiativeKind = null, contentCandidates = [], batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, actionResult = null }) {
+async function buildMessagePayload(user, userId, { userText, photoUrls = [], isInitiative, routingMode = 'CASUAL', initiativeReason = null, initiativeKind = null, contentCandidates = [], batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, actionResult = null, climaxState = null }) {
     const productionRoutingSettings = await getRoutingSettings();
     const productionIntentConfig = getModeIntentConfig(routingMode, productionRoutingSettings);
     const [baseSystemPromptText, conversationEvents, memories] = await Promise.all([
@@ -338,7 +339,8 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     }
 
     if (routingMode === 'EROTIC') {
-        modeInstruction += `\n\n[РЕЖИМ БЛИЗОСТИ И ВИРТА]:
+        const climaxPrompt = getClimaxPromptInstruction(climaxState);
+        modeInstruction += `\n\n[РЕЖИМ БЛИЗОСТИ И ВИРТА]:${climaxPrompt}
 - СТРОЖАЙШИЙ ЗАПРЕТ НА ОТГОВОРКИ ПРО СОН И УСТАЛОСТЬ: В интимном контексте КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО говорить «я усну», «я засыпаю», «я сонная», «мозг отключается», «устала».
 - СТРОЖАЙШИЙ ЗАПРЕТ НА СМЕХ («ахах», «хихи») И ШАБЛОННЫЕ ФРАЗЫ: Никаких «ахах ну ты и зверь/наглец».
 - Полная вовлечённость в процесс, живость ощущений, отклик на действия партнёра без нытья и прерываний.`;
@@ -700,7 +702,7 @@ async function recordAiTransaction(userId, usage) {
 
 // --- 4. ДЕКЛАРАТИВНЫЙ ЕДИНЫЙ ДВИЖОК ---
 
-async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', isVoiceRequest = false, classifierResult = null, actionRouting = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null } = {}) {
+async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', isVoiceRequest = false, classifierResult = null, actionRouting = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, climaxState = null } = {}) {
     const user = await getUser(userId);
     if (!user) return null;
 
@@ -714,7 +716,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     } = await buildMessagePayload(user, userId, {
         userText, photoUrls, isInitiative, routingMode, initiativeReason,
         initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds,
-        firstMessageAt, actionResult: resolvedActionRouting?.actionResult || null
+        firstMessageAt, actionResult: resolvedActionRouting?.actionResult || null,
+        climaxState
     });
     const routingSettings = await getRoutingSettings();
     const generationParams = getModeGenerationParams(routingMode, routingSettings);
@@ -1164,6 +1167,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     return {
         text: text || "",
         routingMode,
+        climaxState,
         blockedByJudge,
         photo,
         photoRecordId,
@@ -1314,11 +1318,25 @@ export async function generateResponse(userId, text, envelope = {}) {
         }
     }
 
+    let finalRoutingMode = routingMode;
+    let climaxState = null;
+    if (finalRoutingMode === 'EROTIC') {
+        climaxState = computeClimaxState({
+            recentEvents: events,
+            userText: text,
+            isEroticMode: true
+        });
+        if (climaxState.isFinished) {
+            finalRoutingMode = 'CASUAL';
+            climaxState = null;
+        }
+    }
+
     return await runAiEngine(userId, {
         userText: text,
         photoUrls: envelope.photoUrls || [],
         isInitiative: false,
-        routingMode,
+        routingMode: finalRoutingMode,
         isVoiceRequest,
         classifierResult,
         actionRouting,
@@ -1327,7 +1345,8 @@ export async function generateResponse(userId, text, envelope = {}) {
         batchId: envelope.batchId,
         eventIds: envelope.eventIds || [],
         preMessageGapSeconds: envelope.preMessageGapSeconds,
-        firstMessageAt: envelope.firstMessageAt
+        firstMessageAt: envelope.firstMessageAt,
+        climaxState
     });
 }
 
