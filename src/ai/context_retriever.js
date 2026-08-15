@@ -2,6 +2,7 @@ import { createSemanticaClient } from '../memory/semantica_client.js';
 
 const DEFAULT_LIMIT = 8;
 const DEFAULT_THRESHOLD = 0.65;
+const CORE_FACT_LIMIT = 3;
 
 function validUserId(userId) {
     return userId !== undefined && userId !== null && String(userId).trim() !== '';
@@ -23,6 +24,27 @@ function normalizeFact(item, index) {
 
 function normalizeFacts(facts) {
     return asArray(facts).map(normalizeFact);
+}
+
+function isCoreFact(fact) {
+    const category = String(fact?.payload?.category || fact?.payload?.type || '').toLowerCase();
+    const text = String(fact?.text || '').toLocaleLowerCase('ru-RU');
+
+    if (!category) {
+        // Preserve compatibility with lightweight repository fakes and legacy
+        // core records that do not carry typed payload metadata.
+        return true;
+    }
+    if (['identity', 'name', 'profession', 'home_location'].includes(category)) return true;
+    return category === 'location'
+        && (text.includes('живёт') || text.includes('живет'))
+        && !text.includes('сейчас находится');
+}
+
+function selectCoreFacts(facts) {
+    return normalizeFacts(facts)
+        .filter(isCoreFact)
+        .slice(0, CORE_FACT_LIMIT);
 }
 
 function factKey(fact) {
@@ -104,9 +126,14 @@ export function createContextRetriever({ repository, semantica, client, mode, th
         const effectiveThreshold = Number.isFinite(Number(requestThreshold)) ? Number(requestThreshold) : threshold;
         const request = { userId, query, limit: effectiveLimit, threshold: effectiveThreshold };
         const core = dedupe(
-            await callRepository(repository, ['getCoreFacts', 'getCoreMemory', 'listCoreFacts'], [userId], { userId }),
+            selectCoreFacts(await callRepository(
+                repository,
+                ['getCoreFacts', 'getCoreMemory', 'listCoreFacts'],
+                [userId],
+                { userId }
+            )),
             0,
-            Number.MAX_SAFE_INTEGER
+            CORE_FACT_LIMIT
         );
         const repositoryCandidates = normalizeFacts(
             await callRepository(
@@ -118,8 +145,8 @@ export function createContextRetriever({ repository, semantica, client, mode, th
         ).map((fact) => ({ ...fact, source: fact.source || 'repository' }));
         const trace = {
             query_text: String(query || ''),
-            source: 'repository',
-            strategy: selectedMode === 'active' ? 'semantica_active' : selectedMode === 'shadow' ? 'semantica_shadow' : 'repository',
+            source: selectedMode === 'active' ? 'semantic_empty' : 'repository_fallback',
+            strategy: selectedMode === 'active' ? 'semantic_retrieval' : 'repository_retrieval',
             latency_ms: 0,
             fallbackReason: null,
             selected: [],
@@ -128,7 +155,12 @@ export function createContextRetriever({ repository, semantica, client, mode, th
             metadata: {
                 mode: selectedMode,
                 threshold: effectiveThreshold,
-                limit: effectiveLimit
+                limit: effectiveLimit,
+                semantic_candidates: 0,
+                semantic_selected: 0,
+                repository_selected: 0,
+                core_selected: core.length,
+                injected_count: 0
             }
         };
         let derived = [];
@@ -154,10 +186,32 @@ export function createContextRetriever({ repository, semantica, client, mode, th
             ...core.map((fact) => ({ ...fact, score: 1 })),
             ...candidates
         ], effectiveThreshold, Number.MAX_SAFE_INTEGER);
-        trace.source = selectedMode === 'active' && derived.length
-            ? (repositoryCandidates.length ? 'hybrid' : 'semantica')
-            : 'repository';
+        const semanticSelectedCount = selected.filter(fact => fact.source === 'semantica').length;
+        const repositorySelectedCount = selected.filter(fact => fact.source === 'repository').length;
+        if (selectedMode === 'active') {
+            if (semanticSelectedCount > 0 && repositorySelectedCount > 0) trace.source = 'hybrid';
+            else if (semanticSelectedCount > 0) trace.source = 'semantic';
+            else if (trace.fallbackReason) trace.source = 'semantic_error';
+            else if (repositorySelectedCount > 0) trace.source = 'repository_fallback';
+            else trace.source = 'semantic_empty';
+        } else if (repositorySelectedCount > 0 || core.length > 0) {
+            trace.source = 'repository_fallback';
+        } else {
+            trace.source = 'semantic_empty';
+        }
         trace.metadata.source = trace.source;
+        trace.metadata.semantic_candidates = derived.length;
+        trace.metadata.semantic_selected = semanticSelectedCount;
+        trace.metadata.repository_selected = repositorySelectedCount;
+        trace.metadata.injected_count = selected.length;
+        trace.metadata.memory = {
+            source: trace.source,
+            semantic_candidates: derived.length,
+            semantic_selected: semanticSelectedCount,
+            repository_selected: repositorySelectedCount,
+            injected_count: selected.length,
+            fallback_reason: trace.fallbackReason
+        };
         trace.metadata.latency_ms = Date.now() - startedAt;
         trace.metadata.fallbackReason = trace.fallbackReason;
         trace.latency = trace.metadata.latency_ms;

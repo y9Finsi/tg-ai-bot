@@ -1,9 +1,10 @@
 import {
     getUser,
-    getUserMemories,
-    getUserRelationship,
     getChannelPosterSettings,
-    getChannelPostHistory,
+    getChannelPostByTelegramMessageId,
+    claimChannelProcessedMessage,
+    getChannelDiscussionThread,
+    upsertChannelDiscussionThread,
     getOrderedAiProviders,
     getLeraProfile,
     getLeraProfileProjection
@@ -13,6 +14,8 @@ import { getCachedOpenAIClient, logLlmTrace } from './ai/llm_client.js';
 import { parseLlmJson } from './utils/robust_json.js';
 import { getRoutingSettings, getModeGenerationParams } from './ai/intent_router.js';
 import { getRoutedSystemPrompt } from './prompts.js';
+import { cleanResponseText } from './utils/response_text.js';
+import { judgeLeraReply } from './ai/response_judge.js';
 
 // Valid Telegram emoji reactions
 const ALLOWED_REACTIONS = new Set([
@@ -26,7 +29,7 @@ const ALLOWED_REACTIONS = new Set([
     '🤷', '🤷‍♀️', '😡'
 ]);
 
-// In-memory caches for thread awareness
+// Hot caches only. PostgreSQL remains the source of truth across restarts.
 const rootPosts = new Map();
 const threadHistory = new Map();
 const postReplyCounts = new Map();
@@ -34,33 +37,17 @@ const postReplyCounts = new Map();
 export async function getCommenterContext(userId) {
     if (!userId) return { isKnown: false };
     try {
-        const [user, memories, rel] = await Promise.all([
-            getUser(userId),
-            getUserMemories(userId).catch(() => []),
-            getUserRelationship(userId).catch(() => null)
-        ]);
+        const user = await getUser(userId);
         if (!user) return { isKnown: false };
 
         const name = user.first_name || user.username || 'друг';
-        const INTIMATE_FILTER = /(?:секс|интим|вирт|дроч|постел|член|груд|возбужд|голая|нюдс|трах|порно|фетиш|конч|минет|куни)/iu;
-        const facts = (memories || [])
-            .map(m => m?.fact || '')
-            .filter(Boolean)
-            .filter(fact => !INTIMATE_FILTER.test(fact))
-            .slice(0, 3);
-
-        let relStatus = 'знакомый';
-        if (rel && (rel.affection > 60 || rel.trust > 60)) relStatus = 'близкий друг';
-        else if (rel && rel.irritation > 50) relStatus = 'вредный знакомый';
 
         return {
             isKnown: true,
             userId,
             name,
-            relationshipStatus: relStatus,
-            trust: rel?.trust ?? 50,
-            affection: rel?.affection ?? 50,
-            facts
+            facts: [],
+            relationshipStatus: 'известный подписчик'
         };
     } catch {
         return { isKnown: false };
@@ -80,16 +67,10 @@ export async function generateCommentDecision({
 
     let commenterContext = 'Собеседник: обычный подписчик канала. Отвечай дружелюбно, дерзко, с юмором и на «ты».';
     if (commenter.isKnown && channelSettings.recognize_users !== false) {
-        const factsList = commenter.facts?.length
-            ? `\nФакты из памяти: ${commenter.facts.join('; ')}`
-            : '';
-        commenterContext = `Ты лично знаешь этого подписчика из личной переписки!
+        commenterContext = `Известный подписчик канала.
 Имя: ${commenter.name}
-Статус отношений: ${commenter.relationshipStatus}${factsList}
-
-ВАЖНОЕ ПРАВИЛО БЕЗОПАСНОСТИ:
-Общайся с ним как со старым знакомым (можешь обратиться по имени, подколоть за привычки или вспомнить безобидный факт).
-Но СТРОГО ЗАПРЕЩЕНО раскрывать интимные тайны, эротику или личные секреты в публичных комментариях.`;
+Можно обратиться по имени, если это естественно.
+Не используй сведения из личной переписки, памяти пользователя или статуса отношений.`;
     }
 
     const taskInstruction = isDirectMention
@@ -161,12 +142,25 @@ ${taskInstruction}
                     userId: commenter.userId || 0,
                     kind: 'CHANNEL_COMMENT',
                     mode: 'comment_decision',
+                    surface: 'CHANNEL_COMMENT',
+                    userText: commentText,
                     model: provider.model_name,
                     providerName: provider.name,
                     systemPrompt,
                     messages,
+                    memoryUsed: [],
                     rawResponse,
-                    usage: result.usage || {}
+                    usage: result.usage || {},
+                    generationTrace: [{
+                        step: 'memory_retrieval',
+                        source: 'public_comment_identity_only',
+                        strategy: 'public_identity_only',
+                        semanticCandidates: 0,
+                        semanticSelected: 0,
+                        repositorySelected: 0,
+                        injectedCount: 0,
+                        facts: []
+                    }]
                 });
 
                 const parsed = parseLlmJson(rawResponse) || {};
@@ -178,17 +172,42 @@ ${taskInstruction}
 
                 let cleanReply = typeof parsed.reply === 'string' ? parsed.reply.trim() : null;
                 if (cleanReply) {
-                    cleanReply = cleanReply
-                        .replace(/^["'«»]+|["'«»]+$/g, '')
-                        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-                        .replace(/^[\s\-–—]+/gm, '')
-                        .trim();
+                    cleanReply = cleanResponseText(cleanReply);
+                }
+
+                let commentJudge = { skipped: true, verdict: 'SKIPPED', passed: true, code: null };
+                if (cleanReply) {
+                    const judgeSettings = {
+                        ...channelSettings,
+                        channelJudgeMode: channelSettings.judge_mode,
+                        judgeProviderId: channelSettings.judge_provider_id,
+                        judgeModel: channelSettings.judge_model,
+                        judgePrompt: channelSettings.judge_prompt || 'Проверяй публичный комментарий строго и не пропускай приватные детали.',
+                        judgeTimeoutMs: channelSettings.judge_timeout_ms,
+                        judgeMaxTokens: channelSettings.judge_max_tokens
+                    };
+                    commentJudge = await judgeLeraReply({
+                        userId: commenter.userId || 0,
+                        surface: 'CHANNEL_COMMENT',
+                        mode: 'CHANNEL_COMMENT',
+                        userText: commentText,
+                        reply: cleanReply,
+                        topic: 'комментарий под постом',
+                        publicFacts: [],
+                        recentPublicPosts: [{ text: postText }],
+                        leraRules: 'Публичный комментарий без утечки личных данных, служебных деталей и интимных секретов.',
+                        settings: judgeSettings
+                    });
+                    if (commentJudge.passed === false && channelSettings.judge_mode === 'ENFORCE') {
+                        cleanReply = null;
+                    }
                 }
 
                 return {
                     reaction: cleanReaction || null,
                     reply: cleanReply || null,
-                    reason: parsed.reason || ''
+                    reason: parsed.reason || '',
+                    judge: commentJudge
                 };
             }
         } catch (error) {
@@ -205,7 +224,15 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
     const settings = await getChannelPosterSettings();
     if (!settings.comments_enabled) return false;
 
-    const rootMessageId = msg.message_thread_id || msg.reply_to_message?.message_id || msg.message_id;
+    const sourcePostMessageId = msg.reply_to_message?.forward_from_message_id
+        || msg.reply_to_message?.forward_origin?.message_id
+        || null;
+    const rootMessageId = sourcePostMessageId
+        || msg.message_thread_id
+        || msg.reply_to_message?.message_id
+        || msg.message_id;
+    const discussionId = String(ctx.chat.id);
+    const sourceChannelId = String(msg.reply_to_message?.forward_from_chat?.id || settings.channel_id || '');
 
     // 1. If this message or reply is an automatic channel forward, save post text
     const isChannelForward = Boolean(msg.reply_to_message?.is_automatic_forward || msg.reply_to_message?.forward_from_chat);
@@ -214,31 +241,46 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
         if (text) {
             rootPosts.set(rootMessageId, text);
             rootPosts.set(msg.reply_to_message.message_id, text);
+            await upsertChannelDiscussionThread({
+                channelId: discussionId,
+                rootMessageId,
+                sourcePostMessageId,
+                postText: text,
+                threadHistory: threadHistory.get(rootMessageId) || [],
+                replyCount: postReplyCounts.get(rootMessageId) || 0
+            });
         }
     }
 
-    // 2. Resolve original post text: cache -> reply -> DB fallback
+    // 2. Resolve original post text: cache -> persisted exact mapping -> forward.
     let postText = rootPosts.get(rootMessageId) || rootPosts.get(msg.reply_to_message?.message_id) || '';
     if (!postText && isChannelForward) {
         postText = msg.reply_to_message.text || msg.reply_to_message.caption || '';
     }
-    if (!postText) {
-        try {
-            const recentLogs = await getChannelPostHistory(1);
-            if (recentLogs?.[0]?.text) {
-                postText = recentLogs[0].text;
-                rootPosts.set(rootMessageId, postText);
-            }
-        } catch { /* ignore fallback error */ }
+    const persistedThread = await getChannelDiscussionThread(discussionId, rootMessageId).catch(() => null);
+    if (!postText && persistedThread?.post_text) {
+        postText = persistedThread.post_text;
+        rootPosts.set(rootMessageId, postText);
     }
+    if (!postText && sourcePostMessageId) {
+        const exactPost = await getChannelPostByTelegramMessageId(sourceChannelId, sourcePostMessageId).catch(() => null);
+        if (exactPost?.text) {
+            postText = exactPost.text;
+            rootPosts.set(rootMessageId, postText);
+        }
+    }
+    if (!postText) return false;
 
     const isReply = Boolean(msg.reply_to_message);
-    const isBotTagged = msg.text.includes(`@${ctx.botInfo?.username}`);
+    const isBotTagged = Boolean(ctx.botInfo?.username)
+        && msg.text.toLowerCase().includes(`@${ctx.botInfo.username.toLowerCase()}`);
     const isReplyToBot = msg.reply_to_message?.from?.id === ctx.botInfo?.id;
 
     if (!isReply && !isBotTagged && !isChannelForward) return false;
+    if (!(await claimChannelProcessedMessage(ctx.chat.id, msg.message_id))) return false;
 
-    const currentRepliesOnPost = postReplyCounts.get(rootMessageId) || 0;
+    const currentRepliesOnPost = postReplyCounts.get(rootMessageId)
+        ?? Number(persistedThread?.reply_count || 0);
     const isDirectMention = isBotTagged || isReplyToBot;
 
     // For background comments, respect configured chances
@@ -250,7 +292,8 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
     }
 
     // Get current thread context
-    const currentThread = threadHistory.get(rootMessageId) || [];
+    const currentThread = threadHistory.get(rootMessageId)
+        || (Array.isArray(persistedThread?.thread_history) ? persistedThread.thread_history : []);
 
     try {
         const commenter = await getCommenterContext(msg.from?.id);
@@ -267,6 +310,14 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
         currentThread.push({ sender: commenter.name || 'Подписчик', text: msg.text });
         if (currentThread.length > 10) currentThread.shift();
         threadHistory.set(rootMessageId, currentThread);
+        await upsertChannelDiscussionThread({
+            channelId: discussionId,
+            rootMessageId,
+            sourcePostMessageId,
+            postText,
+            threadHistory: currentThread,
+            replyCount: currentRepliesOnPost
+        });
 
         // 1. Emoji reaction if chosen
         if (decision.reaction) {
@@ -286,6 +337,14 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
             currentThread.push({ sender: 'Лера', text: decision.reply });
             if (currentThread.length > 10) currentThread.shift();
             threadHistory.set(rootMessageId, currentThread);
+            await upsertChannelDiscussionThread({
+                channelId: discussionId,
+                rootMessageId,
+                sourcePostMessageId,
+                postText,
+                threadHistory: currentThread,
+                replyCount: currentRepliesOnPost + 1
+            });
 
             return true;
         }

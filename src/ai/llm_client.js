@@ -11,6 +11,7 @@ export function logLlmTrace(entry = {}) {
         mode: entry.mode || 'trace',
         model: entry.model || null,
         providerName: entry.providerName || null,
+        surface: entry.surface || null,
         userText: entry.userText || null,
         systemPrompt: entry.systemPrompt || null,
         radiantContext: entry.radiantContext || null,

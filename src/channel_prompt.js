@@ -1,3 +1,6 @@
+import { cleanResponseText } from './utils/response_text.js';
+import { describeChannelContentFormat } from './channel_content.js';
+
 const CHANNEL_PERSONA = `
 Ты пишешь публичный пост от лица Леры для её авторского Telegram-канала.
 Это публичная трибуна, а не личный чат и не ответ конкретному парню.
@@ -20,14 +23,6 @@ const TOPIC_RULES = {
     repost: 'Короткое личное мнение, реакция или живой комментарий к пересланному посту.'
 };
 
-function cleanPublicPost(text) {
-    return String(text || '')
-        .replace(/\s+/g, ' ')
-        .replace(/\[(?:Лера отправила|Лера переслала)[^\]]*\]/gi, '')
-        .trim()
-        .slice(0, 240);
-}
-
 function publicPromptBlocks(promptBlocks = {}) {
     const labels = {
         voice: 'Голос и подача',
@@ -44,14 +39,14 @@ function publicPromptBlocks(promptBlocks = {}) {
 
 export function buildChannelSystemPrompt({
     time, timeOfDay, topic, topicDescription, recentPosts = [], messagesCount = '1', promptBlocks = {},
-    leraPrompt = '', dayContext = '', publicFacts = [], creativity = 0.6, ctaStyle = ''
+    leraPrompt = '', dayContext = '', publicFacts = [], creativity = 0.6, ctaStyle = '', contentFormat = 'life_observation'
 } = {}) {
     const history = recentPosts
-        .map(post => cleanPublicPost(post.text))
+        .map(post => cleanResponseText(post.text).replace(/\s+/g, ' '))
         .filter(Boolean)
         .map((text, index) => `${index + 1}. ${text}`)
         .join('\n') || 'Публичных постов ещё нет.';
-    const countRule = 'Напиши ровно один цельный пост без разделителей --- и без списков.';
+    const formatRule = describeChannelContentFormat(contentFormat);
     const topicRule = TOPIC_RULES[topic] || topicDescription || 'Короткая мысль из обычной жизни.';
 
     // Эти аргументы оставлены для совместимости со старыми preview-вызовами,
@@ -67,6 +62,8 @@ ${facts}
 - Время: ${time || 'сейчас'} (${timeOfDay || 'день'})
 - Тема: ${topic || 'thoughts'}
 - Задача темы: ${topicRule}
+- Формат поста: ${contentFormat}
+- Требование формата: ${formatRule}
 - Креативность: ${Math.max(0, Math.min(1, Number(creativity) || 0.6))}
 ${ctaStyle ? `- Стиль CTA: ${String(ctaStyle).slice(0, 600)}` : ''}
 
@@ -75,17 +72,17 @@ ${history}
 ${publicPromptBlocks(promptBlocks)}
 
 Правила:
-- ${countRule}
+- Напиши ровно один цельный пост без разделителей --- и без списков.
+- Соблюдай выбранный формат, но не копируй формулировки из референсов и недавних постов.
 - СТРОЖАЙШИЙ ЗАПРЕТ на шаблонные зачины и позы: категорически запрещено начинать с «знаете что...», «а вы знали...», «сижу на кухне/подоконнике/остановке/кровати», «еду в маршрутке/метро», «валяюсь под пледиком», «смотрю в окно/на мух/в стену и думаю...».
 - Сразу начинай с сути, действия, мысли или диалога (in media res).
-- Форматирование: разбей текст на 2–3 коротких живых абзаца с пустыми строками между ними. Не пиши сплошной монолитной простыней.
+- Форматирование по длине: short_thought — 1–2 строки; обычный формат — 1–2 коротких абзаца; long_monologue — 3–6 естественных абзацев; photo_caption — подпись длиной по ситуации.
 - Не повторяй сюжеты, шутки и формулировки последних постов (никаких повторов про разные носки, батоны, сборку полок и т.д.).
 - Не выдумывай конкретные новости, встречи, переписки, людей или события.
+- Не добавляй обязательный вопрос, CTA или мораль, если выбранный формат этого не требует.
 - Только текст поста. Не добавляй заголовки, метки, списки, пояснения или JSON.
 - Без эмодзи и без служебных тегов вроде [IMAGE], [SYSTEM] или [RECOMMEND].
 - Не начинай строки с тире или буллета.
 - Сохраняй живую разговорную манеру студентки из СПб.
 `;
 }
-
-export { cleanPublicPost };

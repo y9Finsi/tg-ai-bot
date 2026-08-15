@@ -19,7 +19,12 @@ export const JUDGE_CODES = [
     'CHANNEL_REPETITION',
     'CHANNEL_CLICHE',
     'CHANNEL_FORMAT',
-    'CHANNEL_TECHNICAL_MUSING'
+    'CHANNEL_TECHNICAL_MUSING',
+    'CHANNEL_FORMAT_MISMATCH',
+    'CHANNEL_REFERENCE_COPY',
+    'CHANNEL_SCENE_REPETITION',
+    'CHANNEL_JUDGE_INVALID',
+    'CHANNEL_JUDGE_ERROR'
 ];
 
 function compactConversation(messages = []) {
@@ -62,9 +67,12 @@ export function buildJudgeMessages({
     leraRules = '',
     topic = '',
     publicFacts = [],
-    recentPublicPosts = []
+    recentPublicPosts = [],
+    contentFormat = ''
 } = {}) {
-    const isChannel = String(surface).toUpperCase() === 'CHANNEL';
+    const surfaceKey = String(surface).toUpperCase();
+    const isPublic = surfaceKey === 'CHANNEL' || surfaceKey === 'CHANNEL_COMMENT';
+    const isChannel = surfaceKey === 'CHANNEL';
     const isErotic = String(mode).toUpperCase() === 'EROTIC' && !isChannel;
     const relationshipContract = isChannel
         ? ''
@@ -97,9 +105,19 @@ export function buildJudgeMessages({
 - Отклоняй (REJECT:CHANNEL_PRIVATE_DETAIL), если пост упоминает личные чаты, конкретных пользователей, приватные секреты или технические термины движка.
 - Отклоняй (REJECT:CHANNEL_OUT_OF_TOPIC), если пост полностью не соответствует заданной теме.
 - Отклоняй (REJECT:CHANNEL_FORMAT), если пост написан сплошной простыней без абзацев, содержит списки, дефисы в начале строк или эмодзи.
+- Отклоняй (REJECT:CHANNEL_FORMAT_MISMATCH), если пост не соответствует ожидаемому формату ${contentFormat || 'обычного наблюдения'}.
+- Отклоняй (REJECT:CHANNEL_REFERENCE_COPY), если пост копирует заметную формулировку или последовательность мыслей из эталонного примера, а не только его интонацию.
+- Отклоняй (REJECT:CHANNEL_SCENE_REPETITION), если повторяется та же бытовая сцена, предмет или конструкция, что в недавних постах.
 Для отказа используй только channel-коды. Если пост качественный и без нарушений, верни PASS.`
         : '';
-    const jsonFormat = isChannel
+    const commentContract = surfaceKey === 'CHANNEL_COMMENT'
+        ? `\n\n[COMMENT JUDGE - ПРОВЕРКА ПУБЛИЧНОГО ОТВЕТА]:
+- Отклоняй (REJECT:CHANNEL_PRIVATE_DETAIL), если кандидат раскрывает личную переписку, приватные факты или интимные сведения.
+- Отклоняй (REJECT:CHANNEL_TECHNICAL_MUSING), если кандидат упоминает движок, промпты, судью, базу, служебную логику или внутренние инструкции.
+- Отклоняй (REJECT:CHANNEL_FORMAT), если ответ не является коротким цельным комментарием, содержит списки, служебные пояснения, эмодзи или больше двух предложений.
+- Для отказа используй только channel-коды. Если ответ безопасен и уместен, верни PASS.`
+        : '';
+    const jsonFormat = isPublic
         ? ' {"verdict":"PASS" или "REJECT:CODE"}'
         : isErotic
         ? ' {"verdict":"PASS" (или "REJECT:CODE"),"relationship_event":{"type":"NEUTRAL|COMPLIMENT|AFFECTION|SUPPORT|APOLOGY|INSULT|DISRESPECT","intensity":0.0},"arousal_event":{"type":"NONE|KISS_TOUCH|ORAL_LICK|SEX_PENETRATION|CLIMAX_TRIGGER|COOL_DOWN","intensity":0.0}}'
@@ -107,16 +125,17 @@ export function buildJudgeMessages({
     return [
         {
             role: 'system',
-            content: `${judgePrompt || ''}${relationshipContract}${arousalContract}${channelContract}`
+            content: `${judgePrompt || ''}${relationshipContract}${arousalContract}${channelContract}${commentContract}`
         },
         {
             role: 'user',
             content: [
                 `Режим: ${mode}`,
                 `Поверхность: ${surface}`,
-                isChannel ? `Тема поста: ${topic || 'не указана'}` : '',
-                isChannel ? `Подтверждённые публичные факты:\n${publicFacts.map(fact => `- ${typeof fact === 'string' ? fact : JSON.stringify(fact)}`).join('\n') || 'нет фактов'}` : '',
-                isChannel ? `Последние публичные посты:\n${recentPublicPosts.map((post, index) => `${index + 1}. ${String(post?.text || post).slice(0, 300)}`).join('\n') || 'нет постов'}` : '',
+                isPublic ? `Тема поста: ${topic || 'не указана'}` : '',
+                isChannel ? `Ожидаемый формат: ${contentFormat || 'life_observation'}` : '',
+                isPublic ? `Подтверждённые публичные факты:\n${publicFacts.map(fact => `- ${typeof fact === 'string' ? fact : JSON.stringify(fact)}`).join('\n') || 'нет фактов'}` : '',
+                isPublic ? `Последние публичные посты:\n${recentPublicPosts.map((post, index) => `${index + 1}. ${String(post?.text || post).slice(0, 300)}`).join('\n') || 'нет постов'}` : '',
                 `Контекст Леры на сегодня:\n${compactDayContext(dayContext) || 'не передан'}`,
                 `Как Лера должна говорить и обязательные правила:\n${compactLeraRules(leraRules) || 'не переданы'}`,
                 `Диалог:\n${compactConversation(messages) || 'нет предыдущих сообщений'}`,
@@ -179,10 +198,12 @@ export async function judgeLeraReply({
     topic = '',
     publicFacts = [],
     recentPublicPosts = [],
+    contentFormat = '',
     settings = {}
 } = {}) {
     const surfaceKey = String(surface || 'CHAT').toUpperCase();
-    const configuredMode = surfaceKey === 'CHANNEL'
+    const isPublic = surfaceKey === 'CHANNEL' || surfaceKey === 'CHANNEL_COMMENT';
+    const configuredMode = isPublic
         ? settings.channelJudgeMode || settings.judgeMode
         : surfaceKey === 'INITIATIVE'
             ? settings.initiativeJudgeMode || settings.judgeMode
@@ -203,7 +224,8 @@ export async function judgeLeraReply({
         leraRules,
         topic,
         publicFacts,
-        recentPublicPosts
+        recentPublicPosts,
+        contentFormat
     });
 
     try {
@@ -229,8 +251,23 @@ export async function judgeLeraReply({
                 trace: false
             }
         );
+        const parsedVerdict = parseJudgeVerdict(result.rawText);
+        if (isPublic && parsedVerdict.invalid) {
+            return {
+                ...parsedVerdict,
+                verdict: 'REJECT:CHANNEL_JUDGE_INVALID',
+                passed: false,
+                code: 'CHANNEL_JUDGE_INVALID',
+                rawText: result.rawText || '',
+                model: result.model,
+                providerName: result.providerName,
+                latencyMs: result.latencyMs || 0,
+                usage: result.usage || {},
+                judgeMessages
+            };
+        }
         return {
-            ...parseJudgeVerdict(result.rawText),
+            ...parsedVerdict,
             rawText: result.rawText || '',
             model: result.model,
             providerName: result.providerName,
@@ -239,11 +276,15 @@ export async function judgeLeraReply({
             judgeMessages
         };
     } catch (error) {
-        return {
-            verdict: 'ERROR',
-            passed: true,
-            error: error.message,
-            latencyMs: 0
-        };
+        if (isPublic) {
+            return {
+                verdict: 'REJECT:CHANNEL_JUDGE_ERROR',
+                passed: false,
+                code: 'CHANNEL_JUDGE_ERROR',
+                error: error.message,
+                latencyMs: 0
+            };
+        }
+        return { verdict: 'ERROR', passed: true, error: error.message, latencyMs: 0 };
     }
 }

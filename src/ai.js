@@ -388,7 +388,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     const priorEvents = conversationEvents.filter(event => !currentBatchIds.has(Number(event.id)) && event.status === 'COMPLETED');
     const lastEvent = priorEvents.at(-1);
     const lastLeraText = [...priorEvents].reverse().find(event => event.role === 'lera' && event.content)?.content || '';
-    const memoryQuery = buildMemoryRetrievalQuery({ userText, lastLeraText, routingMode });
+    const memoryQuery = buildMemoryRetrievalQuery({ userText });
     let memoryRetrieval;
     try {
         memoryRetrieval = await contextRetriever({
@@ -397,7 +397,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         });
     } catch (memoryError) {
         const fallbackStartedAt = Date.now();
-        const legacyMemories = await getUserMemories(userId, 30).catch(() => []);
+        const legacyMemories = await getUserMemories(userId, 3).catch(() => []);
         memoryRetrieval = legacyRetrievalResult(
             legacyMemories,
             memoryQuery,
@@ -1297,7 +1297,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         anchorEventId,
         debugInfo: {
             state_snapshot: leraState,
-            memory_used: (memories && memories.length > 0) ? memories.map(m => m.text || m.fact || m.normalizedText || m) : "Память пока пуста (в БД PostgreSQL для этого юзера еще нет фактов)",
+            memory_used: (memories || []).map(m => m.text || m.fact || m.normalizedText || m),
             memory_retrieval: memoryRetrieval?.trace || null,
             rawPrompt: messages,
             rawText,

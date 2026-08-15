@@ -1840,6 +1840,112 @@ export async function getChannelPostHistory(limit = 5) {
 }
 export const getChannelPostLogs = getChannelPostHistory;
 
+export async function getChannelPostByTelegramMessageId(channelId, messageId) {
+    if (!channelId || !messageId) return null;
+    const result = await query(
+        `SELECT * FROM channel_post_logs
+         WHERE channel_id = $1
+           AND telegram_message_ids @> $2::jsonb
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [String(channelId), JSON.stringify([Number(messageId)])]
+    );
+    return result.rows[0] || null;
+}
+
+export async function claimChannelProcessedMessage(channelId, messageId) {
+    if (!channelId || !messageId) return true;
+    const result = await query(
+        `INSERT INTO channel_processed_messages (channel_id, message_id)
+         VALUES ($1, $2)
+         ON CONFLICT (channel_id, message_id) DO NOTHING
+         RETURNING message_id`,
+        [String(channelId), Number(messageId)]
+    );
+    return result.rowCount > 0;
+}
+
+export async function getChannelDiscussionThread(channelId, rootMessageId) {
+    if (!channelId || !rootMessageId) return null;
+    const result = await query(
+        `SELECT * FROM channel_discussion_threads
+         WHERE channel_id = $1 AND root_message_id = $2`,
+        [String(channelId), Number(rootMessageId)]
+    );
+    return result.rows[0] || null;
+}
+
+export async function upsertChannelDiscussionThread({
+    channelId,
+    rootMessageId,
+    sourcePostMessageId = null,
+    postText = '',
+    threadHistory = [],
+    replyCount = 0
+} = {}) {
+    if (!channelId || !rootMessageId) return null;
+    const result = await query(
+        `INSERT INTO channel_discussion_threads
+            (channel_id, root_message_id, source_post_message_id, post_text, thread_history, reply_count)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+         ON CONFLICT (channel_id, root_message_id) DO UPDATE SET
+            source_post_message_id = COALESCE(EXCLUDED.source_post_message_id, channel_discussion_threads.source_post_message_id),
+            post_text = CASE WHEN EXCLUDED.post_text <> '' THEN EXCLUDED.post_text ELSE channel_discussion_threads.post_text END,
+            thread_history = EXCLUDED.thread_history,
+            reply_count = EXCLUDED.reply_count,
+            updated_at = NOW()
+         RETURNING *`,
+        [
+            String(channelId),
+            Number(rootMessageId),
+            sourcePostMessageId ? Number(sourcePostMessageId) : null,
+            String(postText || ''),
+            JSON.stringify(Array.isArray(threadHistory) ? threadHistory.slice(-10) : []),
+            Math.max(0, Number(replyCount) || 0)
+        ]
+    );
+    return result.rows[0] || null;
+}
+
+export async function claimChannelPublication(idempotencyKey, channelId, payload = {}) {
+    if (!idempotencyKey || !channelId) return { claimed: true, record: null };
+    const result = await query(
+        `INSERT INTO channel_publication_outbox (idempotency_key, channel_id, payload)
+         VALUES ($1, $2, $3::jsonb)
+         ON CONFLICT (idempotency_key) DO NOTHING
+         RETURNING *`,
+        [String(idempotencyKey), String(channelId), JSON.stringify(payload || {})]
+    );
+    if (result.rowCount > 0) return { claimed: true, record: result.rows[0] };
+    const existing = await query(
+        `UPDATE channel_publication_outbox
+         SET status = 'UNCERTAIN', error_text = 'Telegram send may have completed; manual reconciliation required', updated_at = NOW()
+         WHERE idempotency_key = $1
+           AND status = 'SENDING'
+           AND updated_at < NOW() - INTERVAL '15 minutes'
+         RETURNING *`,
+        [String(idempotencyKey)]
+    );
+    if (existing.rowCount > 0) return { claimed: false, record: existing.rows[0] };
+    const current = await query(
+        `SELECT * FROM channel_publication_outbox WHERE idempotency_key = $1`,
+        [String(idempotencyKey)]
+    );
+    return { claimed: false, record: current.rows[0] || null };
+}
+
+export async function completeChannelPublication(idempotencyKey, { status = 'PUBLISHED', telegramMessageIds = [], errorText = null } = {}) {
+    if (!idempotencyKey) return null;
+    const result = await query(
+        `UPDATE channel_publication_outbox
+         SET status = $2, telegram_message_ids = $3::jsonb, error_text = $4, updated_at = NOW()
+         WHERE idempotency_key = $1
+         RETURNING *`,
+        [String(idempotencyKey), status, JSON.stringify(telegramMessageIds || []), errorText]
+    );
+    return result.rows[0] || null;
+}
+
 export async function deleteChannelPostLog(id) {
     const result = await query('DELETE FROM channel_post_logs WHERE id = $1 RETURNING *', [id]);
     return result.rows[0] || null;

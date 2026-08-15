@@ -17,7 +17,8 @@ test('buildChannelSystemPrompt contains anti-cliche bans, life context, and para
     assert.match(prompt, /сижу на кухне/);
     assert.match(prompt, /еду в маршрутке/);
     assert.match(prompt, /валяюсь под пледиком/);
-    assert.match(prompt, /разбей текст на 2–3 коротких живых абзаца/);
+    assert.match(prompt, /Форматирование по длине/);
+    assert.match(prompt, /life_observation/);
 });
 
 test('buildJudgeMessages for surface CHANNEL includes CHANNEL_CLICHE and CHANNEL_REPETITION rules', () => {

@@ -8,14 +8,14 @@ import { MemoryRepository } from '../src/memory/memory_repository.js';
 const root = new URL('..', import.meta.url);
 const read = relative => fs.readFileSync(new URL(relative, root), 'utf8');
 
-test('memory retrieval query is compact, ordered and omits blank parts', () => {
+test('memory retrieval query uses only topical user text', () => {
     assert.equal(
         buildMemoryRetrievalQuery({
-            userText: '  чай  ',
+            userText: '  какой дизайн я делаю сейчас CASUAL  ',
             lastLeraText: '\nСлушай, я дома\n',
             routingMode: 'EROTIC'
         }),
-        'чай\nСлушай, я дома\nEROTIC'
+        'какой дизайн делаю сейчас'
     );
     assert.equal(
         buildMemoryRetrievalQuery({ userText: 'тема', lastLeraText: '', routingMode: '' }),
@@ -162,6 +162,12 @@ test('admin retrieval trace consumes the persisted query, metadata and candidate
     assert.match(source, /trace\.candidate_rank/);
     assert.match(source, /trace\.exclusion_reason/);
     assert.match(source, /trace\.final_score/);
+});
+
+test('prompt debug memory_used is always the exact injected fact array', () => {
+    const source = read('src/ai.js');
+    assert.match(source, /memory_used:\s*\(memories \|\| \[\]\)\.map/);
+    assert.doesNotMatch(source, /Память пока пуста/);
 });
 
 test('user memory cleanup removes every memory surface and enqueues one tenant purge', () => {

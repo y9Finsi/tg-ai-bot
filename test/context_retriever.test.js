@@ -48,7 +48,7 @@ test('retriever keeps core facts, uses repository in disabled mode, dedupes and 
     } });
     const result = await retriever({ userId: 9, query: 'чай' });
     assert.deepEqual(result.facts.map((item) => item.text), ['Имя: Маша', 'Любит чай']);
-    assert.equal(result.trace.source, 'repository');
+    assert.equal(result.trace.source, 'repository_fallback');
     assert.match(result.promptText, /Имя: Маша/);
 });
 
@@ -57,7 +57,7 @@ test('shadow mode selects repository but exposes semantica candidates in trace',
         getCoreFacts: async () => [{ id: 'core', text: 'Питер' }],
         search: async () => [{ id: 'r', text: 'Работает в SMM', score: .8 }]
     }, client: { search: async () => [{ id: 's', text: 'Любит графы', score: .95 }] } })({ userId: 1, query: 'работа' });
-    assert.equal(result.trace.source, 'repository');
+    assert.equal(result.trace.source, 'repository_fallback');
     assert.equal(result.trace.shadow[0].id, 's');
     assert.equal(result.facts.at(-1).id, 'r');
 });
@@ -67,9 +67,37 @@ test('active mode falls back to repository on Semantica failure and records reas
         getCoreFacts: async () => [{ id: 'core', text: 'Питер' }],
         search: async () => [{ id: 'r', text: 'fallback', score: .9 }]
     }, client: { search: async () => { const error = new Error('boom'); error.name = 'AbortError'; throw error; } } })({ userId: 1, query: 'x' });
-    assert.equal(result.trace.source, 'repository');
+    assert.equal(result.trace.source, 'semantic_error');
     assert.equal(result.trace.fallbackReason, 'timeout');
     assert.equal(result.facts.at(-1).text, 'fallback');
+});
+
+test('active retrieval keeps only a small core and reports selected sources', async () => {
+    const result = await createContextRetriever({
+        mode: 'active',
+        repository: {
+            getCoreFacts: async () => [
+                { id: 'profession', text: 'Пользователь работает дизайнером', payload: { category: 'profession' } },
+                { id: 'home', text: 'Пользователь живёт в Петербурге', payload: { category: 'location' } },
+                { id: 'sister', text: 'У пользователя есть сестра', payload: { category: 'family' } },
+                { id: 'current', text: 'Пользователь сейчас находится в Челнах', payload: { category: 'location' } }
+            ],
+            search: async () => []
+        },
+        client: {
+            search: async () => [{ id: 'design', text: 'Пользователь учится на дизайнера', score: .9 }]
+        }
+    })({ userId: 1, query: 'дизайн' });
+
+    assert.deepEqual(result.facts.map(fact => fact.text), [
+        'Пользователь работает дизайнером',
+        'Пользователь живёт в Петербурге',
+        'Пользователь учится на дизайнера'
+    ]);
+    assert.equal(result.trace.source, 'semantic');
+    assert.equal(result.trace.metadata.semantic_selected, 1);
+    assert.equal(result.trace.metadata.repository_selected, 0);
+    assert.equal(result.trace.metadata.injected_count, 3);
 });
 
 test('active mode merges semantic and repository candidates instead of hiding pending outbox facts', async () => {
