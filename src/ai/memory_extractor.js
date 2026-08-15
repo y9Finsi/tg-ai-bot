@@ -33,10 +33,12 @@ function memoryTypeFor(item) {
 
 export function isMemoryCandidate(text) {
     const value = String(text || '').trim();
-    if (value.length < 5) return false;
-    if (/(?:^|[^\p{L}\p{N}])(?:я|мне)(?:[^\p{L}\p{N}][\s\S]{0,40}[^\p{L}\p{N}]|[^\p{L}\p{N}])(?:спать|спть|поспать|ложиться|отбой|устал(?:а|ый)?|сон)(?=[^\p{L}\p{N}]|$)/iu.test(value)) return false;
-    if (/^(?:кароче\s+)?(?:ладно\s+)?(?:я\s+)?(?:спать|спть|пойду\s+спать|ложусь)[^\p{L}\p{N}]*$/iu.test(value)) return false;
-    return /(?:^|[^\p{L}\p{N}])(?:я|мне|меня|мой|моя|моё|мое|мои|моем|моей|моих|моего|у меня|люблю|ненавижу|обожаю|работаю|учусь|живу|зовут|родом|занимаюсь|хочу|могу|не люблю|еду|поеду|родился|родилась|мама|папа|брат|сестра|девушка|парень|жена|муж|друг|подруга|кот|кошка|собака)(?=[^\p{L}\p{N}]|$)/iu.test(value);
+    if (value.length < 3) return false;
+    // Отсекаем только чистый мусор, однословные междометия и шаблонные приветствия
+    if (/^(привет|приветик|хай|ку|хей|хеллоу|ага|угу|да|нет|неа|ок|окей|лан|ладно|спасибо|спасиб|хах+|ахах+|лол|рофл|ясно|понял(?:а)?|пон|как дела|че делаешь|споки|сладких|доброй ночи|доброе утро|пока|до завтра|бай|бб)$/i.test(value)) {
+        return false;
+    }
+    return true;
 }
 
 function renderMemoryPrompt(template, existingListText, userText) {
@@ -55,12 +57,7 @@ function parseMemoryPayload(raw) {
 }
 
 export async function extractFactsInBackground(userId, userText, { sourceEventId = null } = {}) {
-    if (!userText || userText.trim().length < 3) return { success: false, reason: "Text too short" };
-    if (!isMemoryCandidate(userText)) return { success: false, reason: "No personal assertion candidate" };
-    // Игнорируем простые приветствия и общие фан-реакции
-    if (/^(привет|приветик|хай|ку|ага|угу|да|нет|неа|ок|окей|спасибо|спасиб|хаха+|ахах+|ясно|понял(?:а)?|пон|как дела|че делаешь)$/i.test(userText.trim())) {
-        return { success: false, reason: "Generic greeting or reaction" };
-    }
+    if (!userText || !isMemoryCandidate(userText)) return { success: false, reason: "Filtered out trivial/greeting" };
 
     let lastRaw = null;
     try {
