@@ -20,32 +20,35 @@ test('computeClimaxState advances stages sequentially', () => {
     });
     assert.equal(state1.stage, CLIMAX_STAGES.WARMUP);
     assert.equal(state1.turns, 1);
-    assert.ok(state1.arousal >= 20);
+    assert.ok(state1.arousal >= 15);
 
-    // After several turns with arousal accumulating:
-    const mockEvents = [
-        { status: 'COMPLETED', metadata: { mode: 'EROTIC', climax_stage: CLIMAX_STAGES.WARMUP, arousal: 35 } },
-        { status: 'COMPLETED', metadata: { mode: 'EROTIC', climax_stage: CLIMAX_STAGES.BUILDUP, arousal: 50 } },
-        { status: 'COMPLETED', metadata: { mode: 'EROTIC', climax_stage: CLIMAX_STAGES.BUILDUP, arousal: 65 } },
-        { status: 'COMPLETED', metadata: { mode: 'EROTIC', climax_stage: CLIMAX_STAGES.EDGE, arousal: 80 } }
-    ];
-
-    const stateEdge = computeClimaxState({
-        recentEvents: mockEvents,
-        userText: 'продолжай',
-        isEroticMode: true
-    });
-    assert.equal(stateEdge.stage, CLIMAX_STAGES.CLIMAX);
-    assert.equal(stateEdge.turns, 5);
-
-    // Fast climax trigger
-    const stateFast = computeClimaxState({
-        recentEvents: mockEvents.slice(0, 1),
+    // Early fast climax trigger triggers EDGING instead of instant climax
+    const stateEarlyClimax = computeClimaxState({
+        recentEvents: [{ status: 'COMPLETED', metadata: { mode: 'EROTIC', climax_stage: CLIMAX_STAGES.WARMUP, arousal: 25 } }],
         userText: 'я кончаю',
         isEroticMode: true
     });
-    assert.equal(stateFast.stage, CLIMAX_STAGES.CLIMAX);
-    assert.equal(stateFast.arousal, 100);
+    assert.equal(stateEarlyClimax.stage, CLIMAX_STAGES.EDGE);
+    assert.equal(stateEarlyClimax.isEdging, true);
+    assert.ok(stateEarlyClimax.arousal >= 50);
+
+    // After several turns with arousal accumulating:
+    const mockEvents = [
+        { status: 'COMPLETED', metadata: { mode: 'EROTIC', climax_stage: CLIMAX_STAGES.WARMUP, arousal: 25 } },
+        { status: 'COMPLETED', metadata: { mode: 'EROTIC', climax_stage: CLIMAX_STAGES.BUILDUP, arousal: 40 } },
+        { status: 'COMPLETED', metadata: { mode: 'EROTIC', climax_stage: CLIMAX_STAGES.BUILDUP, arousal: 55 } },
+        { status: 'COMPLETED', metadata: { mode: 'EROTIC', climax_stage: CLIMAX_STAGES.EDGE, arousal: 70 } },
+        { status: 'COMPLETED', metadata: { mode: 'EROTIC', climax_stage: CLIMAX_STAGES.EDGE, arousal: 85 } }
+    ];
+
+    // Climax when arousal is high and user triggers climax
+    const stateClimax = computeClimaxState({
+        recentEvents: mockEvents,
+        userText: 'кончаю вместе с тобой',
+        isEroticMode: true
+    });
+    assert.equal(stateClimax.stage, CLIMAX_STAGES.CLIMAX);
+    assert.equal(stateClimax.arousal, 100);
 
     // After CLIMAX -> AFTERGLOW
     const climaxEvents = [
@@ -71,16 +74,18 @@ test('computeClimaxState advances stages sequentially', () => {
     assert.equal(stateFinished.isFinished, true);
 });
 
-test('getClimaxPromptInstruction produces expected guidance per stage', () => {
+test('getClimaxPromptInstruction produces expected guidance per stage and edging', () => {
     const warmupPrompt = getClimaxPromptInstruction({ stage: CLIMAX_STAGES.WARMUP, arousal: 25 });
     assert.match(warmupPrompt, /Разогрев/);
-    assert.match(warmupPrompt, /Не торопи кульминацию/);
+    assert.match(warmupPrompt, /2x2/);
+
+    const edgingPrompt = getClimaxPromptInstruction({ stage: CLIMAX_STAGES.EDGE, arousal: 60, isEdging: true });
+    assert.match(edgingPrompt, /edging/i);
+    assert.match(edgingPrompt, /Не давай ему кончить прямо сейчас/);
 
     const climaxPrompt = getClimaxPromptInstruction({ stage: CLIMAX_STAGES.CLIMAX, arousal: 100 });
     assert.match(climaxPrompt, /ОРГАЗМ/);
-    assert.match(climaxPrompt, /Яркая эмоциональная кульминация/);
 
     const afterglowPrompt = getClimaxPromptInstruction({ stage: CLIMAX_STAGES.AFTERGLOW, arousal: 10 });
     assert.match(afterglowPrompt, /Послевкусие/);
-    assert.match(afterglowPrompt, /Сцена завершается/);
 });

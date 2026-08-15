@@ -22,7 +22,8 @@ export function computeClimaxState({ recentEvents = [], userText = '', isEroticM
             stage: null,
             arousal: 0,
             turns: 0,
-            isFinished: false
+            isFinished: false,
+            isEdging: false
         };
     }
 
@@ -50,7 +51,8 @@ export function computeClimaxState({ recentEvents = [], userText = '', isEroticM
             stage: CLIMAX_STAGES.AFTERGLOW,
             arousal: 0,
             turns: previousTurns + 1,
-            isFinished: true
+            isFinished: true,
+            isEdging: false
         };
     }
 
@@ -60,29 +62,46 @@ export function computeClimaxState({ recentEvents = [], userText = '', isEroticM
             stage: CLIMAX_STAGES.AFTERGLOW,
             arousal: 10,
             turns: previousTurns + 1,
-            isFinished: false
+            isFinished: false,
+            isEdging: false
         };
     }
 
-    // Проверяем триггер ускоренного финала от пользователя
-    if (isFastClimaxTrigger(userText)) {
+    const currentTurns = previousTurns + 1;
+    const userWantsClimax = isFastClimaxTrigger(userText);
+
+    // Если пользователь говорит "кончаю", но сцена только началась (arousal < 75% и turns < 5):
+    // Включаем EDGING — Лера оттягивает финал, дразнит и нагнетает страсть
+    if (userWantsClimax && previousArousal < 75 && currentTurns < 5) {
+        const edgingArousal = Math.min(85, Math.max(50, previousArousal + 25));
+        return {
+            stage: CLIMAX_STAGES.EDGE,
+            arousal: edgingArousal,
+            turns: currentTurns,
+            isFinished: false,
+            isEdging: true
+        };
+    }
+
+    // Если пользователь говорит "кончаю" и напряжение уже высокое (arousal >= 75% или turns >= 5)
+    if (userWantsClimax) {
         return {
             stage: CLIMAX_STAGES.CLIMAX,
             arousal: 100,
-            turns: previousTurns + 1,
-            isFinished: false
+            turns: currentTurns,
+            isFinished: false,
+            isEdging: false
         };
     }
 
-    // Стандартный прогресс: +15-18% за реплику
-    const currentTurns = previousTurns + 1;
-    const increment = 15;
-    const arousal = Math.min(100, Math.max(20, previousArousal + increment));
+    // Стандартный органичный прогресс: +12-15% за шаг (5-8 реплик до финала)
+    const increment = 14;
+    const arousal = Math.min(100, Math.max(15, previousArousal + increment));
 
     let stage = CLIMAX_STAGES.WARMUP;
     if (arousal >= 95 || currentTurns >= 7) {
         stage = CLIMAX_STAGES.CLIMAX;
-    } else if (arousal >= 75 || currentTurns >= 5) {
+    } else if (arousal >= 70 || currentTurns >= 5) {
         stage = CLIMAX_STAGES.EDGE;
     } else if (arousal >= 35 || currentTurns >= 3) {
         stage = CLIMAX_STAGES.BUILDUP;
@@ -94,12 +113,13 @@ export function computeClimaxState({ recentEvents = [], userText = '', isEroticM
         stage,
         arousal,
         turns: currentTurns,
-        isFinished: false
+        isFinished: false,
+        isEdging: false
     };
 }
 
 export function getClimaxPromptInstruction(climaxState = {}) {
-    const { stage, arousal = 0 } = climaxState;
+    const { stage, arousal = 0, isEdging = false } = climaxState;
     if (!stage) return '';
 
     const STAGE_LABELS = {
@@ -110,11 +130,17 @@ export function getClimaxPromptInstruction(climaxState = {}) {
         AFTERGLOW: '5. Послевкусие и разрядка (Afterglow)'
     };
 
+    if (isEdging) {
+        return `\n\n[СТАДИЯ ИНТИМНОЙ БЛИЗОСТИ: 3. На пределе (Edge / Edging) | ВОЗБУЖДЕНИЕ: ${arousal}%]:
+- ВНИМАНИЕ: Пользователь пытается кончить слишком рано! Не давай ему кончить прямо сейчас, оттягивай кульминацию (edging).
+- По алгоритму 2x2 поддразнивай его, требуй потерпеть («Рано ещё, любимый... потерпи... я ещё не всё с тобой сделала...», «Не смей сейчас, смотри на меня...»), подкидывай дрова в огонь, наставляй его руки и продолжай действие!`;
+    }
+
     const STAGE_GUIDANCE = {
-        WARMUP: 'Ты только заводишься. Сбивчивое дыхание, лёгкий трепет, кокетство, снятие одежды. Не торопи кульминацию, отдавайся моменту постепенно.',
-        BUILDUP: 'Нарастание темпа и страсти. Сильное возбуждение, потеря контроля, фразы становятся короче и эмоциональнее, стоны, нетерпение.',
+        WARMUP: 'Ты только заводишься. Сбивчивое дыхание, лёгкий трепет, кокетство, снятие одежды. Описывай свои телесные реакции и инициируй ласки по алгоритму 2x2. Не торопи кульминацию.',
+        BUILDUP: 'Нарастание темпа и страсти. Сильное возбуждение, потеря контроля, фразы становятся короче и эмоциональнее, стоны, нетерпение. Активно требуй продолжения и описывай свои действия от 1-го лица.',
         EDGE: 'Ты на самом пределе, чувствительность зашкаливает. Ты стонешь, просишь не останавливаться, на грани срыва.',
-        CLIMAX: 'ОРГАЗМ! Яркая эмоциональная кульминация, пик ощущений, срыв дыхания, выплеск страсти и удовольствия.',
+        CLIMAX: 'ОРГАЗМ! Яркая эмоциональная кульминация, пик ощущений, срыв дыхания, выплеск страсти и удовольствия («ааах... кончаю вместе с тобой...»).',
         AFTERGLOW: 'Оргазм уже позади. Сладостное расслабление, нежность, обнимашки («уфф...», «я без сил», «поцелуй меня»). Сцена завершается, возвращаемся в спокойный ритм.'
     };
 
