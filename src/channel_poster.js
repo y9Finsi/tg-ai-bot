@@ -18,11 +18,11 @@ import { judgeLeraReply } from './ai/response_judge.js';
 import { generateLeraPhoto } from './services/image_generator.js';
 
 const TOPIC_DESCRIPTIONS = {
-    thoughts: 'Мысли вслух о жизни, парнях и настроении',
-    flirt: 'Пикантный флирт, кокетство и интригующие намеки',
-    life: 'Личные фейлы, милые случайности и истории из дня',
-    jokes: 'Ироничный юмор, жизненные мемы и дерзкие шутки',
-    questions: 'Провокационный вопрос подписчикам или интерактив',
+    thoughts: 'Мысли вслух о людях, Питере, музыке и неожиданных наблюдениях',
+    flirt: 'Пикантный флирт, кокетство, ирония и интригующие намёки',
+    life: 'Учёба в СПбГИК, СММ-правки от клиентов, питерская погода, неловкие ситуации и фейлы',
+    jokes: 'Ироничный юмор, постирония, мемы и дерзкие шутки',
+    questions: 'Провокационный или жизненный вопрос подписчикам, интерактив',
     meme: 'Дерзкая, жизненная или ироничная подпись к мему/картинке',
     repost: 'Личное мнение и реакция на пересланный пост'
 };
@@ -43,14 +43,19 @@ function getFormattedTimeMSK() {
 }
 
 function cleanGeneratedPost(rawText) {
-    return String(rawText || '')
+    let text = String(rawText || '')
         .replace(/<think>[\s\S]*?<\/think>/gi, '')
         .replace(/\[IMAGE:[\s\S]*?\]/gi, '')
         .replace(/\[RECOMMEND\]/gi, '')
-        .replace(/---/g, '\n')
+        .replace(/---/g, '\n\n')
         .replace(/^[\s\-–—]+/gm, '')
-        .replace(/^знаете что[,\s]*(?:я\s+)?(?:сделала|заметила|бесит)?[,:\s]*/iu, '')
+        .replace(/^знаете что[,\s]*(?:я\s+)?(?:сделала|заметила|бесит|поняла)?[,:\s]*/iu, '')
+        .replace(/^а вы знали[,\s]*/iu, '')
         .trim();
+
+    // Нормализация переносов строк: сохраняем максимум 2 переноса (параграфы)
+    text = text.replace(/\n{3,}/g, '\n\n');
+    return text;
 }
 
 function safeProvenance({ topic, timeOfDay, messagesCount, settings, model }) {
@@ -108,7 +113,7 @@ async function requestDraftText({ systemPrompt, topicDescription, temperature, r
 export async function generateChannelPostDraft(overrideSettings = null) {
     const settings = overrideSettings ? { ...(await getChannelPosterSettings()), ...overrideSettings } : await getChannelPosterSettings();
     const [recentPosts, profile] = await Promise.all([
-        getChannelPostHistory(5),
+        getChannelPostHistory(8),
         getLeraProfile()
     ]);
     const time = getFormattedTimeMSK();
@@ -225,7 +230,7 @@ export async function publishChannelDraft(bot, { text, topic, provenance = {}, m
     const cleanedText = cleanGeneratedPost(text);
     if (!cleanedText || cleanedText.length > 4000) throw new Error('Черновик пустой или слишком длинный.');
     const profile = await getLeraProfile();
-    const recentPosts = await getChannelPostHistory(5);
+    const recentPosts = await getChannelPostHistory(8);
     let publicFacts = settings.public_facts_enabled ? (settings.public_facts || []) : [];
     const subscribers = await getChannelSubscriberCount(bot).catch(() => null);
     if (subscribers !== null && subscribers !== undefined) {

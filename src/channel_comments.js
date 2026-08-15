@@ -42,10 +42,12 @@ export async function getCommenterContext(userId) {
         if (!user) return { isKnown: false };
 
         const name = user.first_name || user.username || 'друг';
+        const INTIMATE_FILTER = /(?:секс|интим|вирт|дроч|постел|член|груд|возбужд|голая|нюдс|трах|порно|фетиш|конч|минет|куни)/iu;
         const facts = (memories || [])
-            .map(m => m.fact)
+            .map(m => m?.fact || '')
             .filter(Boolean)
-            .slice(0, 5);
+            .filter(fact => !INTIMATE_FILTER.test(fact))
+            .slice(0, 3);
 
         let relStatus = 'знакомый';
         if (rel && (rel.affection > 60 || rel.trust > 60)) relStatus = 'близкий друг';
