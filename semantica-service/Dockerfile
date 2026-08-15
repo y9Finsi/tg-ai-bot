@@ -7,13 +7,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md constraints-cpu.txt ./
 COPY src ./src
 
 ARG INSTALL_SEMANTICA=1
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && if [ "$INSTALL_SEMANTICA" = "1" ]; then \
-         python -m pip install --no-cache-dir ".[semantica]"; \
+         python -m pip install --no-cache-dir . \
+           && python -m pip install --no-cache-dir \
+             numpy pandas scipy networkx rdflib python-dateutil six \
+             "semantica==0.6.0" --no-deps; \
        else \
          python -m pip install --no-cache-dir .; \
        fi
@@ -27,4 +30,3 @@ USER sidecar
 EXPOSE 8081
 
 CMD ["uvicorn", "semantica_service.main:app", "--host", "0.0.0.0", "--port", "8081"]
-

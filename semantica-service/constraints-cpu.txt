@@ -1,0 +1,3 @@
+# Keep the Semantica sidecar CPU-only. The default PyPI torch wheel pulls
+# hundreds of megabytes of CUDA libraries that this host cannot use.
+torch==2.9.0+cpu

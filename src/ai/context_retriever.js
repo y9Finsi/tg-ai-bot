@@ -72,9 +72,10 @@ async function callRepository(repository, names, args, objectArgs = null) {
     for (const name of names) {
         if (typeof repository?.[name] === 'function') {
             const method = repository[name];
-            const value = objectArgs && method.length <= 1
-                ? await method(objectArgs)
-                : await method(...args);
+            const objectStyle = objectArgs && ['search', 'searchMemory', 'searchFacts', 'searchArchiveMemory'].includes(name);
+            const value = objectStyle && method.length <= 1
+                ? await method.call(repository, objectArgs)
+                : await method.call(repository, ...args);
             return asArray(value);
         }
     }

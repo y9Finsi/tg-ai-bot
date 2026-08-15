@@ -6,7 +6,7 @@ services:
     env_file: .env
     environment:
       SEMANTICA_URL: ${SEMANTICA_URL:-http://semantica-service:8081}
-      SEMANTICA_MODE: ${SEMANTICA_MODE:-disabled}
+      SEMANTICA_MODE: ${SEMANTICA_MODE:-active}
       SEMANTICA_TIMEOUT_MS: ${SEMANTICA_TIMEOUT_MS:-180}
       SEMANTICA_MUTATION_TIMEOUT_MS: ${SEMANTICA_MUTATION_TIMEOUT_MS:-2000}
       SEMANTICA_THRESHOLD: ${SEMANTICA_THRESHOLD:-0.65}
@@ -29,6 +29,8 @@ services:
     container_name: evabot_semantica
     build:
       context: ./semantica-service
+      args:
+        INSTALL_SEMANTICA: ${INSTALL_SEMANTICA:-1}
     restart: unless-stopped
     environment:
       SEMANTICA_URL: http://semantica-service:8081

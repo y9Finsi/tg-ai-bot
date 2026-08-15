@@ -7,6 +7,7 @@ import {
 } from './memory_normalizer.js';
 import { MEMORY_TYPE, normalizeMemoryType } from './memory_types.js';
 import { rerankMemoryFacts } from './memory_policy.js';
+import { createSemanticaClient } from './semantica_client.js';
 
 const DEFAULT_SEARCH_LIMIT = 8;
 const DEFAULT_CANDIDATE_LIMIT = 200;
@@ -143,12 +144,14 @@ export class MemoryRepository {
         poolImpl = pool,
         queryImpl = query,
         now = () => new Date(),
-        uuid = randomUUID
+        uuid = randomUUID,
+        semanticaClient = createSemanticaClient()
     } = {}) {
         this.pool = poolImpl;
         this.query = queryImpl;
         this.now = now;
         this.uuid = uuid;
+        this.semanticaClient = semanticaClient;
     }
 
     async withTransaction(callback) {
@@ -595,7 +598,41 @@ export class MemoryRepository {
             }),
             { now: this.now(), limit: asPositiveInteger(limit, 5, 20) }
         );
-        return ranked.map(fact => ({ ...fact, score: fact.retrievalScore }));
+        const lexical = ranked.map(fact => ({ ...fact, score: fact.retrievalScore }));
+        if (this.semanticaClient?.mode !== 'active') return lexical;
+
+        try {
+            const semantic = await this.semanticaClient.search({
+                userId: tenantId,
+                query: queryValue,
+                limit: asPositiveInteger(limit, 5, 20),
+                threshold: 0.2
+            });
+            const semanticFacts = semantic.map(item => ({
+                id: item.memory?.memory_id ?? item.id,
+                memoryType: item.memory?.metadata?.memory_type ?? item.memory?.metadata?.type ?? MEMORY_TYPE.DECISION_TRACE,
+                normalizedText: item.text,
+                payload: item.memory?.metadata?.payload || {},
+                provenance: item.memory?.provenance || {},
+                confidence: Number(item.memory?.metadata?.confidence ?? 0.5),
+                importance: Number(item.memory?.metadata?.importance ?? 50),
+                isActive: item.memory?.status === 'active',
+                score: Number(item.score ?? 0),
+                retrievalScore: Number(item.score ?? 0),
+                retrievalSignals: { relevance: Number(item.score ?? 0) },
+                source: 'semantica'
+            })).filter(item => item.id && item.normalizedText);
+            const seen = new Set();
+            return [...semanticFacts, ...lexical].filter(item => {
+                const key = String(item.id);
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            }).slice(0, asPositiveInteger(limit, 5, 20));
+        } catch (error) {
+            console.warn('[SIMULATION SEMANTICA FALLBACK]:', error.message);
+            return lexical;
+        }
     }
 
     async recordToolObservation({

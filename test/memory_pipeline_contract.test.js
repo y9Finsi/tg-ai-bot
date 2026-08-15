@@ -125,6 +125,35 @@ test('simulation retrieves only global precedents and records their ids in the d
     assert.equal((simulationSource.match(/getSimulationPrecedents\(/g) || []).length, 1);
 });
 
+test('simulation merges active Semantica precedents before lexical Postgres fallback', async () => {
+    const repository = new MemoryRepository({
+        poolImpl: {},
+        queryImpl: async () => ({ rows: [] }),
+        semanticaClient: {
+            mode: 'active',
+            search: async () => [{
+                id: 'semantic-decision-1',
+                text: 'Ранее после работы Лера выбрала отдых дома',
+                score: 0.91,
+                memory: {
+                    memory_id: 'semantic-decision-1',
+                    status: 'active',
+                    metadata: { memory_type: 'DECISION_TRACE' }
+                }
+            }]
+        }
+    });
+
+    const precedents = await repository.getSimulationPrecedents('отдых дома', {
+        userId: '0',
+        limit: 5
+    });
+
+    assert.equal(precedents[0].id, 'semantic-decision-1');
+    assert.equal(precedents[0].source, 'semantica');
+    assert.equal(precedents[0].score, 0.91);
+});
+
 test('admin retrieval trace consumes the persisted query, metadata and candidate traces', () => {
     const source = read('admin-v2/src/main.jsx');
     assert.match(source, /item\.query_text/);
