@@ -502,7 +502,7 @@ function analyzeAssistantRepetitions(priorEvents = []) {
     const systemPrompt = baseSystemPromptText + mediaLogInstruction + tamagotchiInstruction + modeInstruction + historyInstruction;
     const messages = [{ role: 'system', content: systemPrompt }];
 
-    if (userRepetition.isRepeated) {
+    if (userRepetition.isRepeated && routingMode !== 'EROTIC') {
         const repetitionDirective = `⚠️ ПОЛЬЗОВАТЕЛЬ ПОВТОРЯЕТСЯ: он уже писал ровно это («${userText}») недавно в этом диалоге (${userRepetition.repeatCount}-й раз подряд).
 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО отвечать так, будто это новое сообщение, здороваться заново или выдавать новую бытовую сводку!
 Отреагируй дерзко, с подколом или удивлением в характере Леры:
