@@ -268,7 +268,38 @@ export async function generateLeraPhoto({
             return null;
         }
 
-        const extracted = await extractImageFromResponse(data, rawText, isReferenceMode);
+        let extracted = await extractImageFromResponse(data, rawText, isReferenceMode);
+
+        // Fallback: если multimodal chat не вернул готовые байты картинки, делаем вызов images/generations
+        if (!extracted && isReferenceMode) {
+            console.log(`🔄 [IMAGE GENERATOR] Multimodal chat вернул текст без картинки, переключаюсь на images/generations...`);
+            try {
+                const imgEndpoint = `${String(provider.base_url).replace(/\/+$/, '')}/images/generations`;
+                const imgPayload = {
+                    model: selectedModel,
+                    prompt: fullPrompt,
+                    size: '1024x1024',
+                    n: 1,
+                    response_format: 'b64_json'
+                };
+                const imgRes = await fetch(imgEndpoint, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${provider.api_key}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(imgPayload),
+                    signal: controller.signal
+                });
+                if (imgRes.ok) {
+                    const imgData = await imgRes.json();
+                    extracted = await extractImageFromResponse(imgData, '', false);
+                }
+            } catch (fallbackErr) {
+                console.warn('[IMAGE GENERATOR] Ошибка fallback генерации:', fallbackErr.message);
+            }
+        }
+
         if (!extracted || !extracted.buffer || extracted.buffer.length < 1000) {
             console.warn('⚠️ [IMAGE GENERATOR] Провайдер ответил успешно, но байты картинки не найдены в ответе:', rawText.slice(0, 300));
             return null;

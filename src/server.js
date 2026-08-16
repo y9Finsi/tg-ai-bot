@@ -1729,6 +1729,28 @@ export function startAdminServer() {
                             }
                         }
                     }
+
+                    if (!b64Json) {
+                        try {
+                            const imgEndpoint = `${String(provider.base_url).replace(/\/+$/, '')}/images/generations`;
+                            const imgRes = await fetch(imgEndpoint, {
+                                method: 'POST',
+                                headers: { Authorization: `Bearer ${provider.api_key}`, 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ model: selectedModel, prompt: fullPrompt, size, n: 1, response_format: 'b64_json' }),
+                                signal: controller.signal
+                            });
+                            if (imgRes.ok) {
+                                const imgData = await imgRes.json();
+                                const imgItem = imgData?.data?.[0];
+                                if (imgItem?.b64_json) {
+                                    b64Json = imgItem.b64_json;
+                                    resultImageDataUrl = `data:image/png;base64,${b64Json}`;
+                                }
+                            }
+                        } catch (fbErr) {
+                            console.warn('[ADMIN TEST] Ошибка fallback images/generations:', fbErr.message);
+                        }
+                    }
                 } else {
                     const image = data?.data?.[0];
                     if (image?.b64_json) {
