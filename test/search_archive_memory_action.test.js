@@ -75,3 +75,24 @@ test('два context.userId изолированы друг от друга', as
 
     assert.deepEqual(repository.calls.map(call => call.userId), [101, 202]);
 });
+
+test('объединяет результаты Semantica и репозитория и возвращает явный вердикт при отсутствии', async () => {
+    const semanticaClient = {
+        async searchMemory({ query }) {
+            if (query === 'кофе') return [{ id: 'sem-1', text: 'Пользователь пьет кофе по утрам' }];
+            return [];
+        }
+    };
+    const repository = makeRepository([]);
+    const action = createSearchArchiveMemoryAction({ repository, semanticaClient });
+
+    const found = await action.execute({ query: 'кофе' }, { userId: 500 });
+    assert.equal(found.data.count, 1);
+    assert.match(found.data.text, /Пользователь пьет кофе по утрам/);
+
+    const notFound = await action.execute({ query: 'гольф' }, { userId: 500 });
+    assert.equal(notFound.data.count, 0);
+    assert.match(notFound.data.text, /НИЧЕГО не найдено/);
+    assert.match(notFound.data.text, /Лера этого НЕ говорила/);
+});
+
