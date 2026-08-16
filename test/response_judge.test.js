@@ -58,3 +58,20 @@ test('reply judge parses relationship event without changing PASS/REJECT semanti
         { type: 'APOLOGY', intensity: 0.4 }
     );
 });
+
+test('reply judge payload includes verified long-term memories when passed', () => {
+    const messages = buildJudgeMessages({
+        mode: 'CASUAL',
+        surface: 'CHAT',
+        memories: [
+            { text: 'Пользователь работает дизайнером на фрилансе' },
+            { text: 'Пользователь живёт в Санкт-Петербурге' }
+        ],
+        userText: 'Какой сериал',
+        reply: 'Ну тот сериал'
+    });
+
+    assert.match(messages[1].content, /Долгосрочная память о пользователе/);
+    assert.match(messages[1].content, /Пользователь работает дизайнером на фрилансе/);
+    assert.match(messages[1].content, /Пользователь живёт в Санкт-Петербурге/);
+});

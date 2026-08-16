@@ -46,6 +46,15 @@ function compactDayContext(dayContext = '') {
     return text.slice(0, 500);
 }
 
+function compactMemories(memories = []) {
+    if (!Array.isArray(memories) || memories.length === 0) return '';
+    return memories
+        .map(item => `- ${String(item?.text ?? item?.fact ?? item?.normalizedText ?? item ?? '').trim()}`)
+        .filter(line => line !== '- ')
+        .slice(0, 10)
+        .join('\n');
+}
+
 function compactLeraRules(leraRules = '') {
     if (!leraRules) return '';
     const text = String(leraRules).trim();
@@ -66,6 +75,7 @@ export function buildJudgeMessages({
     judgePrompt = '',
     dayContext = '',
     leraRules = '',
+    memories = [],
     topic = '',
     publicFacts = [],
     recentPublicPosts = [],
@@ -141,6 +151,7 @@ export function buildJudgeMessages({
                 isChannel ? `Редакционный режим: ${editorialMode}` : '',
                 isPublic ? `Подтверждённые публичные факты:\n${publicFacts.map(fact => `- ${typeof fact === 'string' ? fact : JSON.stringify(fact)}`).join('\n') || 'нет фактов'}` : '',
                 isPublic ? `Последние публичные посты:\n${recentPublicPosts.map((post, index) => `${index + 1}. ${String(post?.text || post).slice(0, 300)}`).join('\n') || 'нет постов'}` : '',
+                !isPublic ? `Долгосрочная память о пользователе (подтверждённые факты):\n${compactMemories(memories) || 'нет сохраненных фактов'}` : '',
                 `Контекст Леры на сегодня:\n${compactDayContext(dayContext) || 'не передан'}`,
                 `Как Лера должна говорить и обязательные правила:\n${compactLeraRules(leraRules) || 'не переданы'}`,
                 `Диалог:\n${compactConversation(messages) || 'нет предыдущих сообщений'}`,
@@ -200,6 +211,7 @@ export async function judgeLeraReply({
     reply = '',
     dayContext = '',
     leraRules = '',
+    memories = [],
     topic = '',
     publicFacts = [],
     recentPublicPosts = [],
@@ -228,6 +240,7 @@ export async function judgeLeraReply({
         judgePrompt: settings.judgePrompt,
         dayContext,
         leraRules,
+        memories,
         topic,
         publicFacts,
         recentPublicPosts,

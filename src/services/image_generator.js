@@ -114,9 +114,10 @@ export function pickImageProvider(providers = [], preferredProviderId = null) {
 /**
  * Преобразует ответ Gemini / Image Bridge в буфер и dataUrl
  */
-function extractImageFromResponse(data, rawText, isReferenceMode) {
+async function extractImageFromResponse(data, rawText, isReferenceMode) {
     let base64Data = null;
     let mimeType = 'image/png';
+    let buffer = null;
 
     if (isReferenceMode) {
         const content = data?.choices?.[0]?.message?.content;
@@ -129,18 +130,51 @@ function extractImageFromResponse(data, rawText, isReferenceMode) {
             mimeType = `image/${dataUrlMatch[2] || 'png'}`;
             base64Data = dataUrlMatch[3] || dataUrlMatch[1].split(',')[1];
         }
+
+        // 2. Ищем URL картинки в формате ![image](https://...) или прямую ссылку
+        if (!base64Data) {
+            const urlMatch = text.match(/!\[(?:image|.*?)\]\((https?:\/\/[^\s\)]+)\)/i)
+                || text.match(/(https:\/\/[a-zA-Z0-9.\-_/]+\.(?:png|jpg|jpeg|webp)(?:\?[^\s\)]*)?)/i)
+                || text.match(/(https:\/\/lh3\.googleusercontent\.com\/[^\s\)]+)/i);
+            if (urlMatch) {
+                const imgUrl = urlMatch[1];
+                try {
+                    const imgRes = await fetch(imgUrl);
+                    if (imgRes.ok) {
+                        const arrBuf = await imgRes.arrayBuffer();
+                        buffer = Buffer.from(arrBuf);
+                        mimeType = imgRes.headers.get('content-type') || 'image/png';
+                        base64Data = buffer.toString('base64');
+                    }
+                } catch (e) {
+                    console.warn('[IMAGE GENERATOR] Ошибка скачивания сгенерированной картинки по URL:', e.message);
+                }
+            }
+        }
     }
 
-    // 2. Ищем в стандартном формате /images/generations b64_json
+    // 3. Ищем в стандартном формате /images/generations b64_json или url
     if (!base64Data && data?.data?.[0]?.b64_json) {
         base64Data = data.data[0].b64_json;
         mimeType = 'image/png';
+    } else if (!base64Data && data?.data?.[0]?.url) {
+        try {
+            const imgRes = await fetch(data.data[0].url);
+            if (imgRes.ok) {
+                const arrBuf = await imgRes.arrayBuffer();
+                buffer = Buffer.from(arrBuf);
+                mimeType = imgRes.headers.get('content-type') || 'image/png';
+                base64Data = buffer.toString('base64');
+            }
+        } catch (e) {
+            console.warn('[IMAGE GENERATOR] Ошибка скачивания сгенерированной картинки по data.url:', e.message);
+        }
     }
 
     if (!base64Data) return null;
 
     const cleanB64 = base64Data.replace(/\s+/g, '');
-    const buffer = Buffer.from(cleanB64, 'base64');
+    buffer = buffer || Buffer.from(cleanB64, 'base64');
     const dataUrl = `data:${mimeType};base64,${cleanB64}`;
 
     return { buffer, dataUrl, mimeType };
@@ -234,7 +268,7 @@ export async function generateLeraPhoto({
             return null;
         }
 
-        const extracted = extractImageFromResponse(data, rawText, isReferenceMode);
+        const extracted = await extractImageFromResponse(data, rawText, isReferenceMode);
         if (!extracted || !extracted.buffer || extracted.buffer.length < 1000) {
             console.warn('⚠️ [IMAGE GENERATOR] Провайдер ответил успешно, но байты картинки не найдены в ответе:', rawText.slice(0, 300));
             return null;

@@ -1712,12 +1712,40 @@ export function startAdminServer() {
                         || null;
                     if (resultImageDataUrl) {
                         b64Json = resultImageDataUrl.split(',')[1];
+                    } else {
+                        const urlMatch = text.match(/!\[(?:image|.*?)\]\((https?:\/\/[^\s\)]+)\)/i)
+                            || text.match(/(https:\/\/lh3\.googleusercontent\.com\/[^\s\)]+)/i);
+                        if (urlMatch) {
+                            try {
+                                const imgRes = await fetch(urlMatch[1]);
+                                if (imgRes.ok) {
+                                    const buf = Buffer.from(await imgRes.arrayBuffer());
+                                    const mime = imgRes.headers.get('content-type') || 'image/png';
+                                    b64Json = buf.toString('base64');
+                                    resultImageDataUrl = `data:${mime};base64,${b64Json}`;
+                                }
+                            } catch (e) {
+                                console.warn('[ADMIN TEST] Ошибка скачивания картинки по ссылке:', e.message);
+                            }
+                        }
                     }
                 } else {
                     const image = data?.data?.[0];
                     if (image?.b64_json) {
                         b64Json = image.b64_json;
                         resultImageDataUrl = `data:image/png;base64,${image.b64_json}`;
+                    } else if (image?.url) {
+                        try {
+                            const imgRes = await fetch(image.url);
+                            if (imgRes.ok) {
+                                const buf = Buffer.from(await imgRes.arrayBuffer());
+                                const mime = imgRes.headers.get('content-type') || 'image/png';
+                                b64Json = buf.toString('base64');
+                                resultImageDataUrl = `data:${mime};base64,${b64Json}`;
+                            }
+                        } catch (e) {
+                            console.warn('[ADMIN TEST] Ошибка скачивания картинки по data.url:', e.message);
+                        }
                     }
                 }
 
