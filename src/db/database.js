@@ -1859,10 +1859,16 @@ export async function saveChannelPostLog({ channel_id, topic, text, photo_url = 
 }
 
 export async function getChannelPostHistory(limit = 5) {
-    const result = await query('SELECT * FROM channel_post_logs ORDER BY created_at DESC LIMIT $1', [limit]);
+    const result = await query(
+        `SELECT * FROM channel_post_logs WHERE status = 'PUBLISHED' ORDER BY created_at DESC LIMIT $1`,
+        [limit]
+    );
     return result.rows.reverse();
 }
-export const getChannelPostLogs = getChannelPostHistory;
+export async function getChannelPostLogs(limit = 30) {
+    const result = await query('SELECT * FROM channel_post_logs ORDER BY created_at DESC LIMIT $1', [limit]);
+    return result.rows;
+}
 
 export async function countChannelPostsSince(channelId, since) {
     if (!channelId || !since) return 0;

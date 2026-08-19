@@ -57,6 +57,7 @@ import {
     getPromptLogById,
     getChannelPosterSettings,
     getChannelPostHistory,
+    getChannelPostLogs,
     deleteChannelPostLog,
     setBlockStatus,
     adminSetTextBalance,
@@ -2278,8 +2279,8 @@ export function startAdminServer() {
 
     app.get('/api/admin/channel/history', async (req, res) => {
         try {
-            const posts = await getChannelPostHistory(Math.min(parseInt(req.query.limit, 10) || 30, 100));
-            res.json({ success: true, posts: posts.slice().reverse() });
+            const posts = await getChannelPostLogs(Math.min(parseInt(req.query.limit, 10) || 30, 100));
+            res.json({ success: true, posts });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
