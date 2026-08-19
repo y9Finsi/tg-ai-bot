@@ -905,6 +905,11 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     }
 
     // Обработка Native Tool Calling (параллельный запуск всех запрошенных действий через Promise.allSettled)
+    let toolPhotoPayload = null;
+    let toolPhotoRecordId = null;
+    let toolPhotoCaption = null;
+    let toolContentId = null;
+
     if (Array.isArray(llmResult?.tool_calls) && llmResult.tool_calls.length > 0) {
         const toolExecutionPromises = llmResult.tool_calls.map(async (tc) => {
             const funcName = tc.function?.name;
@@ -949,10 +954,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             };
         });
 
-        let toolPhotoPayload = null;
-        let toolPhotoRecordId = null;
-        let toolPhotoCaption = null;
-        let toolContentId = null;
+
 
         const settledResults = await Promise.allSettled(toolExecutionPromises);
         for (const settled of settledResults) {
