@@ -909,6 +909,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     let toolPhotoRecordId = null;
     let toolPhotoCaption = null;
     let toolContentId = null;
+    const toolsExecuted = [];
 
     if (Array.isArray(llmResult?.tool_calls) && llmResult.tool_calls.length > 0) {
         const toolExecutionPromises = llmResult.tool_calls.map(async (tc) => {
