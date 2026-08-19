@@ -4,7 +4,7 @@ import {
     decrementFreeRequest, appendConversationEvent, updateConversationEventStatus, refundReservedRequest,
     getUser, getActiveMute, getCompletedEvent, getLatestMeaningfulEvent, getInitiativeDailyCounts,
     hasInitiativeStage, getLeraContent, wasContentSent, recordPhotoSent, getChatHistoryClearedAt,
-    toLocalDateString
+    toLocalDateString, setBlockStatus
 } from './database.js';
 import { splitResponseMessages } from './utils/response_text.js';
 import { sendCatalogContent } from './content_service.js';
@@ -218,11 +218,20 @@ async function processInitiativeJob(bot, job) {
     if (initiativeKind === 'content_4h' && !response.contentId) {
         console.warn(`[INITIATIVE WARN] user ${userId}: AI did not select content for content_4h initiative, sending as plain text`);
     }
-    await sendTextLadder(bot, chatId, response.text);
+    try {
+        await sendTextLadder(bot, chatId, response.text);
 
-    // Отправка голосового сообщения в инициативе с имитацией записи
-    if (response.voice) {
-        await sendVoiceWithSimulation(bot, chatId, response.voice, response.voiceText || response.text);
+        // Отправка голосового сообщения в инициативе с имитацией записи
+        if (response.voice) {
+            await sendVoiceWithSimulation(bot, chatId, response.voice, response.voiceText || response.text);
+        }
+    } catch (sendErr) {
+        if (sendErr.response?.error_code === 403 || sendErr.message?.includes('bot was blocked') || sendErr.message?.includes('user is deactivated') || sendErr.message?.includes('chat not found')) {
+            console.warn(`[INITIATIVE BLOCKED] User ${userId} blocked the bot or chat unavailable, marking is_blocked=true`);
+            await setBlockStatus(userId, true).catch(() => {});
+            return;
+        }
+        throw sendErr;
     }
 
     const initiativeEvent = await appendConversationEvent({
