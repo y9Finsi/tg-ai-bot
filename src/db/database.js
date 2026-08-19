@@ -1391,6 +1391,18 @@ export async function setSetting(key, value) {
     return res.rows[0] || { key, value: normalizedValue };
 }
 
+export async function getAdminDebugLogEnabled(userId) {
+    if (!userId) return false;
+    const val = await getSetting(`admin_debug_log_${userId}`, 'false');
+    return val === 'true' || val === '1';
+}
+
+export async function setAdminDebugLogEnabled(userId, enabled) {
+    if (!userId) return false;
+    await setSetting(`admin_debug_log_${userId}`, enabled ? 'true' : 'false');
+    return Boolean(enabled);
+}
+
 export async function updateLastActive(userId) {
     await query('UPDATE users SET last_active_at = CURRENT_TIMESTAMP, promo_24h_sent = FALSE WHERE telegram_id = $1', [userId]);
 }
