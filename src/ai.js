@@ -1254,9 +1254,15 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         });
     }
 
+    let relationshipTrace = null;
     if (shouldJudge && relationshipEvent && relationshipEvent.type !== 'NEUTRAL' && relationshipEvent.intensity > 0) {
         try {
             const relationship = await applyUserRelationshipEvent(userId, relationshipEvent, userText);
+            relationshipTrace = {
+                event: relationship.event,
+                deltas: relationship.deltas,
+                state: relationship
+            };
             generationTrace.push({
                 step: 'relationship',
                 event: relationship.event,
@@ -1319,6 +1325,19 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             console.error(`⚠️ Ошибка фонового извлечения памяти (${userId}):`, mErr.message)
         );
     }
+    const debugTrace = {
+        meta: {
+            routingMode,
+            model,
+            providerName,
+            latencyMs,
+            judgeVerdict: generationTrace.filter(item => item.step === 'judge').at(-1)?.verdict || 'PASS',
+            judgeCode: generationTrace.filter(item => item.step === 'judge').at(-1)?.code || null
+        },
+        tools: toolsExecuted,
+        relationship: relationshipTrace
+    };
+
     return {
         text: text || "",
         routingMode,
@@ -1332,6 +1351,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         contentId,
         initiativeKind,
         anchorEventId,
+        debugTrace,
         debugInfo: {
             state_snapshot: leraState,
             memory_used: (memories || []).map(m => m.text || m.fact || m.normalizedText || m),

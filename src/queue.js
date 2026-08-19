@@ -4,7 +4,7 @@ import {
     decrementFreeRequest, appendConversationEvent, updateConversationEventStatus, refundReservedRequest,
     getUser, getActiveMute, getCompletedEvent, getLatestMeaningfulEvent, getInitiativeDailyCounts,
     hasInitiativeStage, getLeraContent, wasContentSent, recordPhotoSent, getChatHistoryClearedAt,
-    toLocalDateString, setBlockStatus
+    toLocalDateString, setBlockStatus, getAdminDebugLogEnabled
 } from './database.js';
 import { splitResponseMessages } from './utils/response_text.js';
 import { sendCatalogContent } from './content_service.js';
@@ -115,6 +115,51 @@ async function deliverContentOrRetry(bot, data) {
         await enqueueContentDelivery(data);
         console.warn(`[CONTENT DELIVERY] queued retry for user ${data.userId}, content ${data.contentId}:`, error.message);
     }
+}
+
+export function formatAdminDebugMessage(debugTrace) {
+    if (!debugTrace) return null;
+    const { meta = {}, tools = [], relationship = null } = debugTrace;
+
+    const lines = ['🛠 <b>[DEBUG LOG]</b>'];
+
+    const mode = meta.routingMode || 'CASUAL';
+    const model = meta.model ? meta.model.split('/').pop() : 'default';
+    const latency = meta.latencyMs ? `${meta.latencyMs} ms` : '-';
+    lines.push(`▫️ <b>Режим:</b> <code>${mode}</code> | <b>Модель:</b> <code>${model}</code> (${latency})`);
+
+    if (Array.isArray(tools) && tools.length > 0) {
+        lines.push('▫️ <b>Инструменты:</b>');
+        for (const t of tools) {
+            const argsStr = t.args && Object.keys(t.args).length > 0
+                ? Object.entries(t.args).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ')
+                : '';
+            const statusIcon = t.status === 'success' ? '✅' : '❌';
+            const summaryClean = t.summary ? ` ➔ <i>${String(t.summary).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</i>` : '';
+            lines.push(`  • <code>${t.name}</code>(${argsStr}) ${statusIcon}${summaryClean}`);
+        }
+    } else {
+        lines.push('▫️ <b>Инструменты:</b> <i>не вызывались</i>');
+    }
+
+    if (relationship && relationship.event) {
+        const ev = relationship.event;
+        const deltas = relationship.deltas || {};
+        const state = relationship.state || {};
+        const formatDelta = (d) => (d > 0 ? `+${d}` : `${d}`);
+
+        const deltaParts = [];
+        if (deltas.trust !== undefined && deltas.trust !== 0) deltaParts.push(`Доверие: ${Math.round(state.trust || 0)} (${formatDelta(deltas.trust)})`);
+        if (deltas.affection !== undefined && deltas.affection !== 0) deltaParts.push(`Симпатия: ${Math.round(state.affection || 0)} (${formatDelta(deltas.affection)})`);
+        if (deltas.irritation !== undefined && deltas.irritation !== 0) deltaParts.push(`Раздражение: ${Math.round(state.irritation || 0)} (${formatDelta(deltas.irritation)})`);
+
+        const deltaStr = deltaParts.length > 0 ? deltaParts.join(' | ') : 'дельт нет';
+        lines.push(`▫️ <b>Отношения (${ev.type || 'EVENT'}, инт. ${ev.intensity || 1}):</b>\n  • ${deltaStr}`);
+    } else {
+        lines.push('▫️ <b>Отношения:</b> <i>без изменений</i>');
+    }
+
+    return lines.join('\n');
 }
 
 async function processContentDeliveryJob(bot, job) {
@@ -270,6 +315,19 @@ async function processInitiativeJob(bot, job) {
             userId, chatId, contentId: response.contentId, source: 'initiative',
             anchorEventId, initiativeEventId: initiativeEvent.id
         });
+    }
+
+    // Отправка отладочного лога для админа при включенном режиме /log
+    try {
+        const debugLogEnabled = await getAdminDebugLogEnabled(userId);
+        if (debugLogEnabled && response.debugTrace) {
+            const debugText = formatAdminDebugMessage(response.debugTrace);
+            if (debugText) {
+                await bot.telegram.sendMessage(chatId, debugText, { parse_mode: 'HTML' }).catch(() => {});
+            }
+        }
+    } catch (debugErr) {
+        console.warn(`[DEBUG LOG ERROR] user ${userId}:`, debugErr.message);
     }
 }
 
@@ -529,6 +587,19 @@ async function processAiJob(bot, job) {
                     source: 'dialogue',
                     anchorEventId: eventIds.at(-1) || null
                 });
+            }
+
+            // Отправка отладочного лога для админа при включенном режиме /log
+            try {
+                const debugLogEnabled = await getAdminDebugLogEnabled(userId);
+                if (debugLogEnabled && response.debugTrace) {
+                    const debugText = formatAdminDebugMessage(response.debugTrace);
+                    if (debugText) {
+                        await bot.telegram.sendMessage(chatId, debugText, { parse_mode: 'HTML' }).catch(() => {});
+                    }
+                }
+            } catch (debugErr) {
+                console.warn(`[DEBUG LOG ERROR] user ${userId}:`, debugErr.message);
             }
 
             await markInputEvents('COMPLETED');

@@ -11,7 +11,8 @@ import {
     createPromocode, activatePromocode, getPaymentHistory,
     getAllPromocodes, getPromocodeById, togglePromoStatus, togglePromoNewUsersOnly, deletePromocode, updatePromoField, getUsersForBonusNotify, markBonusNotified,
     addLeraPhoto, addLeraContent, findDuplicateLeraContent, appendConversationEvent, updateConversationEventStatus,
-    reserveFreeRequest, reserveImageRequest, reserveVoiceRequest, refundReservedRequest
+    reserveFreeRequest, reserveImageRequest, reserveVoiceRequest, refundReservedRequest,
+    getAdminDebugLogEnabled, setAdminDebugLogEnabled
 } from './database.js';
 import { createPlategaInvoice, checkPlategaInvoice } from './platega.js';
 import { processReferral } from './referral.js';
@@ -508,6 +509,19 @@ bot.command('admin', (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
     delete userState[ctx.from.id];
     return renderAdminPanel(ctx, false);
+});
+
+bot.command('log', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+    const currentStatus = await getAdminDebugLogEnabled(ctx.from.id);
+    const nextStatus = !currentStatus;
+    await setAdminDebugLogEnabled(ctx.from.id, nextStatus);
+
+    if (nextStatus) {
+        return ctx.replyWithHTML('🛠 <b>Режим отладки включен (ON)</b>\n\nТеперь при каждом ответе Леры ты будешь получать сервисное сообщение с:\n• Вызовами инструментов (аргументы и статус)\n• Изменением отношений (дельты trust / affection / irritation)\n• Режимом роутинга, моделью и задержкой ответа.');
+    } else {
+        return ctx.replyWithHTML('🛠 <b>Режим отладки выключен (OFF)</b>\n\nСервисные сообщения с логами отключены.');
+    }
 });
 
 bot.action('toggle_free_mode', async (ctx) => {
