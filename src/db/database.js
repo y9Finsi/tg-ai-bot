@@ -1953,7 +1953,9 @@ export async function claimChannelPublication(idempotencyKey, channelId, payload
     const result = await query(
         `INSERT INTO channel_publication_outbox (idempotency_key, channel_id, payload)
          VALUES ($1, $2, $3::jsonb)
-         ON CONFLICT (idempotency_key) DO NOTHING
+         ON CONFLICT (idempotency_key) DO UPDATE
+         SET status = 'SENDING', payload = EXCLUDED.payload, updated_at = NOW(), error_text = NULL
+         WHERE channel_publication_outbox.status = 'REJECTED'
          RETURNING *`,
         [String(idempotencyKey), String(channelId), JSON.stringify(payload || {})]
     );
