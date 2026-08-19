@@ -75,7 +75,6 @@ services:
           memory: 512M
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./database_backup.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-db_user} -d $${POSTGRES_DB:-db_name}"]
       interval: 5s
