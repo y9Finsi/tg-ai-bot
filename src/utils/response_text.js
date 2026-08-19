@@ -42,6 +42,8 @@ export function cleanResponseText(rawText) {
         text = text.replace(/[\u1F600-\u1F64F\u1F300-\u1F5FF\u1F680-\u1F6FF\u2600-\u26FF\u2700-\u27BF]/g, '');
     }
 
+    text = text.replace(/\*[^*]+\*/g, '').trim();
+    text = text.replace(/[*_~`]+/g, '').trim();
     text = text.replace(/[()]+/g, '');
     text = text.replace(DASH_CHARACTERS, ' ');
     text = text.replace(DECORATIVE_QUOTES, '');

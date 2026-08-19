@@ -101,8 +101,7 @@ export async function enqueuePersonalInitiatives(queue) {
         try {
             if (latest.is_blocked || await getActiveMute(latest.user_id)) continue;
             const latestMeta = eventMetadata(latest);
-            const newMoscowDay = isNewMoscowDay(latest);
-            if (!newMoscowDay && (latestMeta.kind === 'new_day' || latestMeta.kind === 'cold_start')) continue;
+            if (!newMoscowDay && latestMeta.kind === 'cold_start') continue;
             const clock = getMoscowClock();
             const hourMsk = Number(clock.hour);
             const isColdStart = !latest.id || !latest.occurred_at;
