@@ -341,8 +341,8 @@ export async function executeImageGenerationRequest({
     });
 
     const payloadsToTry = [
-        { model: selectedModel, prompt: genPrompt, size, n: 1, response_format: 'b64_json' },
         { model: selectedModel, prompt: genPrompt, size, n: 1 },
+        { model: selectedModel, prompt: genPrompt, size, n: 1, response_format: 'b64_json' },
         { model: selectedModel, prompt: genPrompt }
     ];
 
@@ -350,6 +350,7 @@ export async function executeImageGenerationRequest({
         const payload = payloadsToTry[i];
         try {
             console.log(`🎨 [IMAGE GEN] Запрос к ${baseUrl}/images/generations (${provider.name}, модель: ${selectedModel}, попытка #${i + 1})...`);
+            const fetchSignal = AbortSignal.any ? AbortSignal.any([signal, AbortSignal.timeout(35000)]) : signal;
             const res = await fetch(`${baseUrl}/images/generations`, {
                 method: 'POST',
                 headers: {
@@ -357,7 +358,7 @@ export async function executeImageGenerationRequest({
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(payload),
-                signal
+                signal: fetchSignal
             });
 
             const raw = await res.text();
