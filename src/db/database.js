@@ -1597,7 +1597,12 @@ export async function getRandomLeraPhoto({ access_level = null, time_of_day = nu
     if (excludeChannelUsed) {
         try {
             const unposted = await query(
-                `${sql} AND NOT EXISTS (SELECT 1 FROM channel_post_logs l WHERE l.photo_url = lera_photos.file_id) ORDER BY RANDOM() LIMIT 1`,
+                `${sql} AND NOT EXISTS (
+                    SELECT 1 FROM channel_post_logs l 
+                    WHERE l.status = 'PUBLISHED' 
+                      AND (l.photo_url = lera_photos.file_id 
+                           OR (l.provenance->>'media_content_id') = ('photo:' || lera_photos.id::text))
+                ) ORDER BY RANDOM() LIMIT 1`,
                 params
             );
             if (unposted.rows.length > 0) return unposted.rows[0];
