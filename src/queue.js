@@ -221,6 +221,28 @@ async function processInitiativeJob(bot, job) {
     try {
         await sendTextLadder(bot, chatId, response.text);
 
+        // Отправка фото в инициативе
+        if (response.photo) {
+            await bot.telegram.sendChatAction(chatId, 'upload_photo').catch(() => {});
+            const photoPayload = (response.photo && typeof response.photo === 'object' && response.photo.source)
+                ? { source: response.photo.source, filename: response.photo.filename || 'photo.jpg' }
+                : response.photo;
+            const sentMsg = await bot.telegram.sendPhoto(chatId, photoPayload);
+            const sentFileId = sentMsg?.photo?.at(-1)?.file_id || (typeof response.photo === 'string' ? response.photo : null);
+            if (response.photoRecordId) {
+                await recordPhotoSent(userId, response.photoRecordId).catch(() => {});
+            }
+            await appendConversationEvent({
+                userId,
+                eventType: 'PHOTO',
+                role: 'lera',
+                content: '',
+                occurredAt: new Date(),
+                metadata: { file_id: sentFileId || 'ai_generated_photo' },
+                status: 'COMPLETED'
+            }).catch(() => {});
+        }
+
         // Отправка голосового сообщения в инициативе с имитацией записи
         if (response.voice) {
             await sendVoiceWithSimulation(bot, chatId, response.voice, response.voiceText || response.text);
