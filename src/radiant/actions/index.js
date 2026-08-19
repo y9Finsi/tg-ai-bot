@@ -9,12 +9,18 @@ import { webSearchAction } from './plugins/web_search.js';
 import { weatherAction } from './plugins/weather.js';
 import { spbPlacesAction } from './plugins/spb_places.js';
 import { searchArchiveMemoryAction } from './plugins/search_archive_memory.js';
+import { sendPhotoAction } from './plugins/send_photo.js';
+import { sendContentAction } from './plugins/send_content.js';
+import { getChannelPostsAction } from './plugins/get_channel_posts.js';
 
 // Авторегистрация системных действий ядра
 actionRegistry.register(webSearchAction);
 actionRegistry.register(weatherAction);
 actionRegistry.register(spbPlacesAction);
 actionRegistry.register(searchArchiveMemoryAction);
+actionRegistry.register(sendPhotoAction);
+actionRegistry.register(sendContentAction);
+actionRegistry.register(getChannelPostsAction);
 
 export {
     actionRegistry,
@@ -23,5 +29,8 @@ export {
     webSearchAction,
     weatherAction,
     spbPlacesAction,
-    searchArchiveMemoryAction
+    searchArchiveMemoryAction,
+    sendPhotoAction,
+    sendContentAction,
+    getChannelPostsAction
 };

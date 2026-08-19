@@ -719,30 +719,13 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     };
 }
 
-async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingRecommendationPost = null, preselectedPhoto = null, contentCandidates = [], isVoiceRequest = false, recentReplies = []) {
+async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingRecommendationPost = null, preselectedPhoto = null, contentCandidates = [], isVoiceRequest = false, recentReplies = [], toolOverrides = {}) {
     let workingText = rawText || '';
-    let imagePrompt = null;
     let voiceText = null;
-    let contentId = null;
-
-    const contentMatch = workingText.match(/\[CONTENT:\s*(\d+)\s*\]/i);
-    if (contentMatch) {
-        const selectedId = Number(contentMatch[1]);
-        if (contentCandidates.some(item => Number(item.id) === selectedId)) contentId = selectedId;
-        workingText = workingText.replace(/\[CONTENT:\s*\d+\s*\]/gi, '').trim();
-    }
-
-    const fullMatch = workingText.match(/\[IMAGE:([\s\S]*?)\]/i);
-    if (fullMatch) {
-        imagePrompt = fullMatch[1].trim();
-        workingText = workingText.replace(/\[IMAGE:[\s\S]*?\]/gi, '').trim();
-    } else {
-        const unclosedMatch = workingText.match(/\[IMAGE:([\s\S]*)/i);
-        if (unclosedMatch) {
-            imagePrompt = unclosedMatch[1].trim();
-            workingText = workingText.replace(/\[IMAGE:[\s\S]*/gi, '').trim();
-        }
-    }
+    let contentId = toolOverrides?.contentId || null;
+    let photoSendPayload = toolOverrides?.photo || null;
+    let photoRecordId = toolOverrides?.photoRecordId || null;
+    let photoCaption = toolOverrides?.photoCaption || null;
 
     const fullVoiceMatch = workingText.match(/\[VOICE:([\s\S]*?)\]/i);
     if (fullVoiceMatch) {
@@ -756,9 +739,6 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         }
     }
 
-    let photoSendPayload = null;
-    let photoRecordId = null;
-    let photoCaption = null;
     let voicePayload = null;
     let showBuyButton = false;
     let finalAiText = cleanResponseText(workingText);
@@ -778,21 +758,17 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         }
     }
 
-    if (imagePrompt) {
-        const photoObj = await generatePhotoForPrompt(user, imagePrompt, preselectedPhoto);
-
-        if (photoObj) {
-            if (typeof photoObj === 'string') {
-                photoSendPayload = photoObj;
-            } else if (photoObj && photoObj.file_id) {
-                photoSendPayload = photoObj.file_id;
-                photoRecordId = photoObj.id || photoObj.file_id;
-                photoCaption = photoObj.caption;
-            } else if (photoObj && photoObj.source) {
-                photoSendPayload = { source: photoObj.source, filename: photoObj.filename || 'photo.jpg' };
-                photoRecordId = photoObj.id || null;
-                photoCaption = photoObj.caption || null;
-            }
+    if (!photoSendPayload && preselectedPhoto) {
+        if (typeof preselectedPhoto === 'string') {
+            photoSendPayload = preselectedPhoto;
+        } else if (preselectedPhoto.file_id) {
+            photoSendPayload = preselectedPhoto.file_id;
+            photoRecordId = preselectedPhoto.id || preselectedPhoto.file_id;
+            photoCaption = preselectedPhoto.caption;
+        } else if (preselectedPhoto.source) {
+            photoSendPayload = { source: preselectedPhoto.source, filename: preselectedPhoto.filename || 'photo.jpg' };
+            photoRecordId = preselectedPhoto.id || null;
+            photoCaption = preselectedPhoto.caption || null;
         }
     }
 
@@ -813,6 +789,7 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         showBuyButton,
         contentId
     };
+}
 }
 
 async function recordAiTransaction(userId, usage) {
@@ -973,10 +950,23 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             };
         });
 
+        let toolPhotoPayload = null;
+        let toolPhotoRecordId = null;
+        let toolPhotoCaption = null;
+        let toolContentId = null;
+
         const settledResults = await Promise.allSettled(toolExecutionPromises);
         for (const settled of settledResults) {
             if (settled.status === 'fulfilled') {
                 const { name, content, execRes } = settled.value;
+                if (name === 'send_photo' && execRes?.status === 'success' && execRes?.data?.photo) {
+                    toolPhotoPayload = execRes.data.photo;
+                    toolPhotoRecordId = execRes.data.photoRecordId || null;
+                    toolPhotoCaption = execRes.data.photoCaption || null;
+                }
+                if (name === 'send_content' && execRes?.status === 'success' && execRes?.data?.content_id) {
+                    toolContentId = Number(execRes.data.content_id);
+                }
                 if (shouldPersistToolObservation({ status: execRes?.status, name })) {
                     memoryRepository.recordToolObservation({
                         userId,
@@ -1037,7 +1027,12 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     }
 
     // 3. Чистка текста и генерация/выборка фото и голоса
-    let { text, photo, photoRecordId, photoCaption, voice, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates, isVoiceRequest, recentReplyTexts);
+    let { text, photo, photoRecordId, photoCaption, voice, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates, isVoiceRequest, recentReplyTexts, {
+        photo: toolPhotoPayload,
+        photoRecordId: toolPhotoRecordId,
+        photoCaption: toolPhotoCaption,
+        contentId: toolContentId
+    });
     const generationTrace = [{
         step: 'memory_retrieval',
         query: memoryRetrieval?.trace?.query_text || '',

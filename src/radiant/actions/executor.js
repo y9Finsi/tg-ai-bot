@@ -205,9 +205,9 @@ export async function executeAction({ name, args = {}, context = {}, callId = nu
         let finalStatus = 'success';
         let finalError = null;
 
-        if (rawResult && typeof rawResult === 'object' && rawResult.status && rawResult.data !== undefined) {
+        if (rawResult && typeof rawResult === 'object' && rawResult.status) {
             finalStatus = rawResult.status;
-            finalData = rawResult.data;
+            finalData = rawResult.data !== undefined ? rawResult.data : null;
             finalMeta = {
                 durationMs,
                 cached: Boolean(rawResult.meta?.cached),

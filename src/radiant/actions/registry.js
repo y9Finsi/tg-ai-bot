@@ -122,6 +122,7 @@ class ActionRegistry {
     getSchemas(context = {}) {
         return this.getEnabled(context).map(action => ({
             name: action.name,
+            title: action.title,
             description: action.description,
             inputSchema: action.inputSchema
         }));
