@@ -790,7 +790,6 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         contentId
     };
 }
-}
 
 async function recordAiTransaction(userId, usage) {
     let cost = 0;
