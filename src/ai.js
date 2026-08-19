@@ -6,7 +6,7 @@ import {
     getRecentConversationEvents, formatConversationEvent, getRecentSimulationReflections,
     savePromptLog, applyUserRelationshipEvent, getInitiativeDailyCounts,
     getActiveDialogueEvents, getContentCandidates,
-    getLeraProfile
+    getLeraProfile, formatConversationGap, toLocalDateString
 } from './database.js';
 import { getRoutedSystemPrompt } from './prompts.js';
 import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX, IMAGE_STYLES } from './constants/intents.js';
@@ -490,9 +490,9 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         console.error("⚠️ Ошибка формирования контекста Леры:", tamagotchiErr.message);
     }
 
-    // Формируем историю предыдущих сообщений для multi-turn контекста
+    // Формируем историю предыдущих сообщений для multi-turn контекста (включая контент)
     const chatHistoryEvents = priorEvents.filter(ev =>
-        ev.content && (ev.event_type === 'MESSAGE' || ev.event_type === 'INITIATIVE')
+        ev.content && (ev.event_type === 'MESSAGE' || ev.event_type === 'INITIATIVE' || ev.event_type === 'CONTENT')
     ).slice(-10);
 
     function normalizeTextForComparison(text) {
@@ -565,11 +565,41 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         return text.trim();
     }
 
-    // Нативный multi-turn контекст диалога
+    // Нативный multi-turn контекст диалога с отслеживанием пауз и разделением сессий
     if (productionIntentConfig?.promptModules?.history !== false) {
         if (chatHistoryEvents.length > 0) {
+            let lastEventTime = null;
+            let lastEventDate = null;
             for (const ev of chatHistoryEvents) {
+                const evTime = ev.occurred_at ? new Date(ev.occurred_at).getTime() : null;
+                const evDate = toLocalDateString(ev.local_date || ev.occurred_at);
+
+                if (lastEventTime && evTime) {
+                    const gapSec = Math.max(0, Math.floor((evTime - lastEventTime) / 1000));
+                    const isNewDay = lastEventDate && evDate && lastEventDate < evDate;
+                    if (gapSec >= 10800 || isNewDay || ev.calendar_day_changed) {
+                        const gapLabel = formatConversationGap(gapSec);
+                        const dayLabel = isNewDay ? `Наступил новый день (${evDate}). ` : '';
+                        messages.push({
+                            role: 'system',
+                            content: `[--- Пауза в диалоге: ${gapLabel}. ${dayLabel}Новый сеанс общения ---]`.trim()
+                        });
+                    }
+                }
+
+                if (evTime) lastEventTime = evTime;
+                if (evDate) lastEventDate = evDate;
+
                 const isLera = ev.role === 'lera' || ev.role === 'assistant';
+                if (ev.event_type === 'CONTENT') {
+                    const contentSummary = sanitizeHistoryContent(ev.content);
+                    messages.push({
+                        role: 'assistant',
+                        content: `[Лера отправила материал: ${contentSummary || 'медиа-файл/ссылка'}]`
+                    });
+                    continue;
+                }
+
                 const cleanContent = sanitizeHistoryContent(ev.content);
                 if (cleanContent) {
                     messages.push({
@@ -610,11 +640,12 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
             initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: НАСТУПИЛ НОВЫЙ ДЕНЬ!
 Задача Леры: сегодня вы ещё не общались. Прошлый ночной диалог закончен и закрыт.
 - Начни новый день легко и естественно: напиши, чем сейчас занята (проснулась, пью кофе, собираюсь по делам в Питере) или просто коротко спроси как спалось / как настрой («доброе/утречко/привет», «как спалось?», «ты как там?»).
-- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: мусолить ночную ссору, обижаться за вчерашнее или отвечать на старое ночное «споки».`;
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: мусолить ночную ссору, обижаться за вчерашнее, отвечать на старое ночное «споки» или привязываться к старым темам многодневной давности.`;
         } else if (initiativeKind === 'idle_4h' || initiativeKind === 'content_4h') {
             initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ДНЕВНАЯ ПАУЗА (ПРОШЛО БОЛЬШЕ 4 ЧАСОВ)!
 Задача Леры: с момента прошлого разговора прошло много времени.
 - Смени тему и поделись своим текущим моментом/вайбом из дня в Питере (кофейня на Петроградке, работа над постом, трек, погода) и ненавязчиво спроси как его день («ты как там?», «как день ваще?», «че делаешь?»).
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: выдумывать, что собеседник что-то скидывал, присылал ссылку или обещал, если этого нет прямо в тексте последних сообщений!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: продолжать старый конфликт или оправдываться за старые фразы.`;
         } else if (initiativeKind === 'cold_start') {
             initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ПЕРВОЕ ЗНАКОМСТВО / НЕТ ИСТОРИИ ПЕРЕПИСКИ!
@@ -624,10 +655,10 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         } else if (initiativeKind === 'open') {
             initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ВОЗВРАТ К НЕЗАВЕРШЕННОЙ ТЕМЕ!
 Задача Леры: диалог прервался недавно на полуслове. Естественно докинь мысль по теме последнего разговора или коротко подколи.
-- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: выдумывать новые прошлые разговоры, обещания или сериалы («ты рассказывал про сериал»), которых нет в памяти и истории переписки!
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: выдумывать новые прошлые разговоры, обещания, видео/ссылки или сериалы («ты рассказывал про сериал», «ты скинул ссылку»), которых нет в памяти и истории переписки!
 - Если в последних сообщениях нет явного незавершённого вопроса — просто напиши живую мысль о своём текущем занятии или коротко подколи.`;
         } else {
-            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ${initiativeReason || 'естественное продолжение разговора'}`;
+            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ${initiativeReason || 'естественное продолжение разговора'}\nКАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдумывать прошлые реплики или ссылки пользователя, которых нет в истории переписки.`;
         }
 
         messages.push({ role: 'system', content: initiativeDirective });
