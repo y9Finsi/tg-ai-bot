@@ -6,7 +6,8 @@ import {
     getCompletedEvent,
     getActiveMute,
     updateConversationEventMetadata,
-    getInitiativeStages
+    getInitiativeStages,
+    toLocalDateString
 } from './database.js';
 import { classifyInitiativeState, getRoutingSettings } from './ai/intent_router.js';
 
@@ -28,7 +29,8 @@ function getMoscowClock(now = new Date()) {
 function isNewMoscowDay(latestEvent, now = new Date()) {
     const clock = getMoscowClock(now);
     const today = `${clock.year}-${clock.month}-${clock.day}`;
-    return String(latestEvent?.local_date || '') < today;
+    const latestDate = toLocalDateString(latestEvent?.local_date);
+    return Boolean(latestDate && latestDate < today);
 }
 
 export function getEffectiveInitiativeLimit(user, settings = {}) {
@@ -99,7 +101,8 @@ export async function enqueuePersonalInitiatives(queue) {
         try {
             if (latest.is_blocked || await getActiveMute(latest.user_id)) continue;
             const latestMeta = eventMetadata(latest);
-            if (latestMeta.kind === 'new_day' || latestMeta.kind === 'cold_start') continue;
+            const newMoscowDay = isNewMoscowDay(latest);
+            if (!newMoscowDay && (latestMeta.kind === 'new_day' || latestMeta.kind === 'cold_start')) continue;
             const clock = getMoscowClock();
             const hourMsk = Number(clock.hour);
             const isColdStart = !latest.id || !latest.occurred_at;
@@ -141,7 +144,6 @@ export async function enqueuePersonalInitiatives(queue) {
                 continue;
             }
 
-            const newMoscowDay = isNewMoscowDay(latest);
             if (newMoscowDay && Number(clock.hour) < NEW_DAY_START_HOUR_MSK) continue;
             const ignoredAnchorId = ['ignore_1', 'ignore_2'].includes(latestMeta.kind)
                 ? Number(latestMeta.anchor_event_id)
@@ -178,6 +180,7 @@ export async function enqueuePersonalInitiatives(queue) {
                 || (kind === 'open' && !dialogue.some(event => event.event_type === 'CONTENT') && counts.content < CONTENT_LIMIT)
                 ? contentCandidates
                 : [];
+            const todayDate = `${clock.year}-${clock.month}-${clock.day}`;
             await queue.add('initiative', {
                 userId: Number(latest.user_id),
                 chatId: Number(latest.user_id),
@@ -185,7 +188,9 @@ export async function enqueuePersonalInitiatives(queue) {
                 initiativeKind: kind,
                 contentCandidateIds: candidates.map(item => Number(item.id))
             }, {
-                jobId: `initiative-${latest.user_id}-${anchor.id}-${kind}`,
+                jobId: newMoscowDay
+                    ? `initiative-${latest.user_id}-${todayDate}-new_day`
+                    : `initiative-${latest.user_id}-${anchor.id}-${kind}`,
                 attempts: 3
             });
         } catch (error) {

@@ -3,7 +3,8 @@ import { generateResponse, generateAiInitiativeResponse } from './ai.js';
 import {
     decrementFreeRequest, appendConversationEvent, updateConversationEventStatus, refundReservedRequest,
     getUser, getActiveMute, getCompletedEvent, getLatestMeaningfulEvent, getInitiativeDailyCounts,
-    hasInitiativeStage, getLeraContent, wasContentSent, recordPhotoSent, getChatHistoryClearedAt
+    hasInitiativeStage, getLeraContent, wasContentSent, recordPhotoSent, getChatHistoryClearedAt,
+    toLocalDateString
 } from './database.js';
 import { splitResponseMessages } from './utils/response_text.js';
 import { sendCatalogContent } from './content_service.js';
@@ -159,7 +160,7 @@ async function processInitiativeJob(bot, job) {
     if (!isColdStart && !anchor) return;
     if (!isColdStart && latest?.role === 'user' && new Date(latest.occurred_at) > new Date(anchor.occurred_at)) return;
     if (!isColdStart && initiativeKind !== 'ignore_2' && Number(latest?.id) !== Number(anchorEventId)) return;
-    const latestLocalDate = String(latest?.local_date || '');
+    const latestLocalDate = toLocalDateString(latest?.local_date);
     const todayMsk = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Europe/Moscow',
         year: 'numeric',
@@ -215,8 +216,7 @@ async function processInitiativeJob(bot, job) {
         return;
     }
     if (initiativeKind === 'content_4h' && !response.contentId) {
-        console.warn(`[INITIATIVE SKIPPED] user ${userId}: AI did not select content for content_4h initiative`);
-        return;
+        console.warn(`[INITIATIVE WARN] user ${userId}: AI did not select content for content_4h initiative, sending as plain text`);
     }
     await sendTextLadder(bot, chatId, response.text);
 

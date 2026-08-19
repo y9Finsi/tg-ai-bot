@@ -65,6 +65,13 @@ test('new Moscow day starts one plain initiative regardless of the old dialogue 
     }), null);
 });
 
+test('toLocalDateString formats Date objects and date strings correctly', async () => {
+    const { toLocalDateString } = await import('../src/database.js');
+    assert.equal(toLocalDateString(new Date('2026-08-18T00:00:00.000Z')), '2026-08-18');
+    assert.equal(toLocalDateString('2026-08-18'), '2026-08-18');
+    assert.equal(toLocalDateString(null), '');
+});
+
 test('ignore chain follows the original anchor and closes after three hours', () => {
     assert.equal(chooseInitiativeKind({
         ageSeconds: 300, state: 'IGNORED', latestEvent: latestText,

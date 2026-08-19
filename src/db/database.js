@@ -575,6 +575,19 @@ function moscowDateParts(value) {
     };
 }
 
+export function toLocalDateString(val) {
+    if (!val) return '';
+    if (val instanceof Date) {
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Moscow',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).format(val);
+    }
+    return String(val).slice(0, 10);
+}
+
 export function formatConversationGap(gapSeconds) {
     const seconds = Math.max(0, Number(gapSeconds) || 0);
     if (seconds < 60) return 'D:0';
@@ -614,7 +627,8 @@ export async function appendConversationEvent({
     const previous = previousResult.rows[0];
     const gapSeconds = previous ? Math.max(0, Math.floor((eventDate.getTime() - new Date(previous.occurred_at).getTime()) / 1000)) : 0;
     const { localDate } = moscowDateParts(eventDate);
-    const calendarDayChanged = Boolean(previous && String(previous.local_date) !== localDate);
+    const prevDateStr = toLocalDateString(previous?.local_date);
+    const calendarDayChanged = Boolean(previous && prevDateStr && prevDateStr !== localDate);
     const conversationDay = previous
         ? Number(previous.conversation_day || 1) + (calendarDayChanged ? 1 : 0)
         : 1;
@@ -691,7 +705,7 @@ export async function getInitiativeSchedulerUsers(limit = 500) {
             e.role,
             e.content,
             e.occurred_at,
-            e.local_date,
+            e.local_date::text AS local_date,
             e.metadata,
             e.status,
             EXTRACT(EPOCH FROM (NOW() - COALESCE(e.occurred_at, u.created_at)))::bigint AS age_seconds
