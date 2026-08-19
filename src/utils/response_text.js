@@ -21,6 +21,8 @@ export function cleanResponseText(rawText) {
 
     text = text.replace(/\[IMAGE:[\s\S]*?\]/gi, '').trim();
     text = text.replace(/\[IMAGE:[\s\S]*/gi, '').trim();
+    text = text.replace(/\[CONTENT:\s*[^\]]+\]/gi, '').trim();
+    text = text.replace(/\[CONTENT:\s*[\s\S]*/gi, '').trim();
     text = text.replace(/\[RECOMMEND\]/gi, '').trim();
     text = text.replace(/\[SYSTEM\]:?/gi, '').trim();
     text = text.replace(/SYSTEM:?/gi, '').trim();

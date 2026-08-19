@@ -458,13 +458,6 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         modeInstruction = `\n\n[ТИП ИНИЦИАТИВЫ]: ${initiativeKind || 'open'}\n[ПРИЧИНА]: ${initiativeReason || 'естественное продолжение разговора'}${freshDayRule}\nНе раскрывай приватные данные других пользователей.${initiativePrompt}`;
     }
 
-    if (contentCandidates.length > 0) {
-        const catalog = contentCandidates.map(item =>
-            `- [CONTENT: ${item.id}] ${item.telegram_type}: ${item.description || 'без описания'}`
-        ).join('\n');
-        modeInstruction += `\n\n[ДОСТУПНЫЙ КОНТЕНТ]\n${catalog}\n${productionRoutingSettings.contentPrompt}`;
-    }
-
     let tamagotchiInstruction = "";
     let radiantContextText = "";
     let radiantLayers = {};

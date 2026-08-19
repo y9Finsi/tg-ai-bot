@@ -3407,8 +3407,14 @@ function AiSandboxPromptStudio({ toast }) {
 }
 
 function ImageGenerationTestPanel({ providers, toast }) {
-    const bridgeImageModels = ['gemini-3-pro-image-preview-11-2025', 'gemini-3.1-flash-image', 'gemini-3-pro-image', 'gemini-2.5-flash-image', 'gemini-2.5-flash-image-preview', 'gemini-3.1-flash-image-preview'];
-    const imageProviders = providers.filter(provider => String(provider.model_name || '').toLowerCase().includes('image') || String(provider.base_url || '').includes('gemini-web-to-api'));
+    const imageProviders = providers.filter(provider => {
+        const m = String(provider.model_name || '').toLowerCase();
+        const n = String(provider.name || '').toLowerCase();
+        const u = String(provider.base_url || '').toLowerCase();
+        return m.includes('image') || m.includes('dall') || m.includes('flux') || m.includes('sd') || m.includes('midjourney') || m.includes('pic') ||
+               n.includes('image') || n.includes('pic') || n.includes('dall') || n.includes('flux') ||
+               u.includes('gemini-web-to-api') || u.includes('image');
+    });
     const [providerId, setProviderId] = useState('');
     const [model, setModel] = useState('');
     const [prompt, setPrompt] = useState('');

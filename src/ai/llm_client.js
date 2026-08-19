@@ -138,6 +138,23 @@ export async function requestLlmCompletion(user, messages, isPhotoRequest, getOp
 
     for (let i = 0; i < providers.length; i++) {
         const prov = providers[i];
+        const modelNameLower = String(prov.model_name || '').toLowerCase();
+        const isImageOnlyModel = modelNameLower.includes('gpt-image') ||
+            modelNameLower.startsWith('dall-e') ||
+            modelNameLower.startsWith('dall') ||
+            modelNameLower.startsWith('flux') ||
+            modelNameLower.startsWith('sd-') ||
+            modelNameLower.startsWith('sd3') ||
+            modelNameLower.startsWith('sdxl') ||
+            modelNameLower.includes('midjourney') ||
+            modelNameLower.includes('recraft') ||
+            modelNameLower.includes('ideogram');
+
+        if (isImageOnlyModel) {
+            console.warn(`⏭️ [LLM CLIENT] Пропуск провайдера "${prov.name}" (модель "${prov.model_name}" является генератором изображений, пропускаем в текстовом чате)`);
+            continue;
+        }
+
         const timeoutMs = parseInt(traceContext.timeoutMs, 10) || parseInt(prov.timeout_ms, 10) || 15000;
 
         const tempClient = getCachedOpenAIClient(prov.base_url, prov.api_key, timeoutMs);

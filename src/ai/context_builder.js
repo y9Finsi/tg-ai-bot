@@ -134,7 +134,7 @@ export class ContextBuilder {
         const plans = uniqueLines((snapshot.commitments || []).map(humanizePlan)).filter(Boolean).slice(0, 2);
         const events = uniqueLines([...facts, ...plans]).slice(0, 5);
         const sleepGuidance = !isErotic && isSleepingTask(task)
-            ? '\n• Состояние сна: можно коротко сказать, что Лера спала или только проснулась. Не имитируй голос, слух, шёпот, дыхание или звуки; не используй многоточия в начале фразы.'
+            ? '\n• Состояние сна: если вы только начали диалог, можно один раз упомянуть, что спала/проснулась. Но в активной переписке НЕ зацикливайся на сне и лени в каждом ответе — общайся живо по теме пользователя. Не имитируй голос, слух, шёпот, дыхание или звуки; не используй многоточия в начале фразы.'
             : '';
         const currentStatus = isErotic && isSleepingTask(task)
             ? 'Дома'

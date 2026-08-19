@@ -126,7 +126,13 @@ import {
     generateSandboxAbTest,
     migratePresetToCurrent
 } from './ai/sandbox_service.js';
-import { generateLeraPhoto, getMasterReferenceDataUrl, buildImagePrompt } from './services/image_generator.js';
+import {
+    generateLeraPhoto,
+    getMasterReferenceDataUrl,
+    buildImagePrompt,
+    executeImageGenerationRequest,
+    pickImageProvider
+} from './services/image_generator.js';
 
 const DEFAULT_CONTENT_CHANNEL_ID = '-1003729264804';
 
@@ -1644,138 +1650,35 @@ export function startAdminServer() {
             const providers = await getAiProviders();
             const provider = providerId
                 ? providers.find(item => Number(item.id) === Number(providerId))
-                : providers.find(item => String(item.model_name || '').toLowerCase().includes('image') || String(item.model_name || '').toLowerCase().includes('gemini'));
+                : pickImageProvider(providers);
             if (!provider) return res.status(404).json({ error: 'Провайдер для изображений не найден' });
 
-            const selectedModel = String(model || provider.model_name || '').trim();
-            if (!selectedModel) return res.status(400).json({ error: 'Не выбрана модель изображения' });
+            const selectedModel = String(model || provider.model_name || 'gemini-2.5-flash').trim();
             if (effectiveDataUrl && (!String(effectiveDataUrl).startsWith('data:image/') || String(effectiveDataUrl).length > 15_000_000)) {
                 return res.status(400).json({ error: 'Референс должен быть изображением до 10 МБ' });
             }
 
+            const settings = await getImageGenerationSettings();
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 10 * 60 * 1000);
-            try {
-                const endpoint = effectiveDataUrl
-                    ? `${String(provider.base_url).replace(/\/+$/, '')}/chat/completions`
-                    : `${String(provider.base_url).replace(/\/+$/, '')}/images/generations`;
-                const settings = await getImageGenerationSettings();
-                const fullPrompt = buildImagePrompt({
-                    prompt: normalizedPrompt,
-                    baseStyle: settings.style_prompt,
-                    hasReference: Boolean(effectiveDataUrl)
-                });
 
-                const payload = effectiveDataUrl
-                    ? {
-                        model: selectedModel,
-                        messages: [{
-                            role: 'user',
-                            content: [
-                                { type: 'image_url', image_url: { url: effectiveDataUrl } },
-                                { type: 'text', text: fullPrompt }
-                            ]
-                        }],
-                        max_tokens: 2000
-                    }
-                    : {
-                        model: selectedModel,
-                        prompt: fullPrompt,
-                        size,
-                        n: 1,
-                        response_format: 'b64_json'
-                    };
-                const upstream = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { Authorization: `Bearer ${provider.api_key}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
+            try {
+                const genResult = await executeImageGenerationRequest({
+                    provider,
+                    model: selectedModel,
+                    prompt: normalizedPrompt,
+                    referenceDataUrl: effectiveDataUrl,
+                    size,
+                    stylePrompt: settings.style_prompt,
                     signal: controller.signal
                 });
-                const raw = await upstream.text();
-                let data = {};
-                try { data = JSON.parse(raw); } catch { /* upstream returned non-JSON */ }
-                if (!upstream.ok) {
-                    const detail = data?.error?.message || data?.message || raw.slice(0, 500) || `HTTP ${upstream.status}`;
-                    return res.status(502).json({ error: `Bridge: ${detail}` });
-                }
-
-                let resultImageDataUrl = null;
-                let b64Json = null;
-
-                if (effectiveDataUrl) {
-                    const content = data?.choices?.[0]?.message?.content;
-                    const text = typeof content === 'string' ? content : '';
-                    resultImageDataUrl = text.match(/!\[image\]\((data:image\/[^;]+;base64,[^)]+)\)/i)?.[1]
-                        || text.match(/(data:image\/[^;]+;base64,[A-Za-z0-9+/=]+)/i)?.[1]
-                        || null;
-                    if (resultImageDataUrl) {
-                        b64Json = resultImageDataUrl.split(',')[1];
-                    } else {
-                        const urlMatch = text.match(/!\[(?:image|.*?)\]\((https?:\/\/[^\s\)]+)\)/i)
-                            || text.match(/(https:\/\/lh3\.googleusercontent\.com\/[^\s\)]+)/i);
-                        if (urlMatch) {
-                            try {
-                                const imgRes = await fetch(urlMatch[1]);
-                                if (imgRes.ok) {
-                                    const buf = Buffer.from(await imgRes.arrayBuffer());
-                                    const mime = imgRes.headers.get('content-type') || 'image/png';
-                                    b64Json = buf.toString('base64');
-                                    resultImageDataUrl = `data:${mime};base64,${b64Json}`;
-                                }
-                            } catch (e) {
-                                console.warn('[ADMIN TEST] Ошибка скачивания картинки по ссылке:', e.message);
-                            }
-                        }
-                    }
-
-                    if (!b64Json) {
-                        try {
-                            const imgEndpoint = `${String(provider.base_url).replace(/\/+$/, '')}/images/generations`;
-                            const imgRes = await fetch(imgEndpoint, {
-                                method: 'POST',
-                                headers: { Authorization: `Bearer ${provider.api_key}`, 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ model: selectedModel, prompt: fullPrompt, size, n: 1, response_format: 'b64_json' }),
-                                signal: controller.signal
-                            });
-                            if (imgRes.ok) {
-                                const imgData = await imgRes.json();
-                                const imgItem = imgData?.data?.[0];
-                                if (imgItem?.b64_json) {
-                                    b64Json = imgItem.b64_json;
-                                    resultImageDataUrl = `data:image/png;base64,${b64Json}`;
-                                }
-                            }
-                        } catch (fbErr) {
-                            console.warn('[ADMIN TEST] Ошибка fallback images/generations:', fbErr.message);
-                        }
-                    }
-                } else {
-                    const image = data?.data?.[0];
-                    if (image?.b64_json) {
-                        b64Json = image.b64_json;
-                        resultImageDataUrl = `data:image/png;base64,${image.b64_json}`;
-                    } else if (image?.url) {
-                        try {
-                            const imgRes = await fetch(image.url);
-                            if (imgRes.ok) {
-                                const buf = Buffer.from(await imgRes.arrayBuffer());
-                                const mime = imgRes.headers.get('content-type') || 'image/png';
-                                b64Json = buf.toString('base64');
-                                resultImageDataUrl = `data:${mime};base64,${b64Json}`;
-                            }
-                        } catch (e) {
-                            console.warn('[ADMIN TEST] Ошибка скачивания картинки по data.url:', e.message);
-                        }
-                    }
-                }
 
                 let savedPhoto = null;
-                if (saveToCatalog && botInstance && b64Json) {
+                if (saveToCatalog && botInstance && genResult.buffer) {
                     try {
                         const targetChatId = Number(process.env.ADMIN_ID);
                         if (targetChatId) {
-                            const buffer = Buffer.from(b64Json, 'base64');
-                            const sent = await botInstance.telegram.sendPhoto(targetChatId, { source: buffer, filename: 'lera_gen.jpg' }, { caption: `🤖 [Admin Test] ${normalizedPrompt.slice(0, 200)}` });
+                            const sent = await botInstance.telegram.sendPhoto(targetChatId, { source: genResult.buffer, filename: 'lera_gen.jpg' }, { caption: `🤖 [Admin Test] ${normalizedPrompt.slice(0, 200)}` });
                             const telegramPhoto = sent.photo?.at(-1);
                             if (telegramPhoto?.file_id) {
                                 savedPhoto = await addLeraPhoto({
@@ -1796,15 +1699,17 @@ export function startAdminServer() {
                     }
                 }
 
-                res.json({
+                return res.json({
                     success: true,
-                    mode: effectiveDataUrl ? 'reference' : 'generation',
-                    model: selectedModel,
-                    imageDataUrl: resultImageDataUrl,
-                    b64Json,
+                    mode: genResult.mode,
+                    model: genResult.model,
+                    imageDataUrl: genResult.dataUrl,
+                    b64Json: genResult.b64Json,
                     savedPhoto,
-                    raw: data?.choices?.[0]?.message?.content || null
+                    raw: genResult.rawText || null
                 });
+            } catch (genErr) {
+                return res.status(502).json({ error: `Bridge: ${genErr.message}` });
             } finally {
                 clearTimeout(timeout);
             }
