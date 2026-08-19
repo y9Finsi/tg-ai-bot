@@ -1863,6 +1863,13 @@ export async function saveChannelPostLog({ channel_id, topic, text, photo_url = 
     return result.rows[0];
 }
 
+export async function getLatestPublishedChannelPost() {
+    const result = await query(
+        `SELECT id, text, created_at, provenance FROM channel_post_logs WHERE status = 'PUBLISHED' ORDER BY created_at DESC LIMIT 1`
+    );
+    return result.rows[0] || null;
+}
+
 export async function getChannelPostHistory(limit = 5) {
     const result = await query(
         `SELECT * FROM channel_post_logs WHERE status = 'PUBLISHED' ORDER BY created_at DESC LIMIT $1`,

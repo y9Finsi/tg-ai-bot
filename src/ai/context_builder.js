@@ -4,16 +4,15 @@ import { LOCATIONS, coordinateAtProgress } from '../radiant/world_map.js';
 import { getEquippedClothes } from '../radiant/inventory.js';
 import { calculateMood } from '../radiant/needs.js';
 import { WeatherService } from '../radiant/weather_service.js';
-import { getUser } from '../db/database.js';
+import { getUser, getUserRelationship, getChannelSubscriberCount, getLatestPublishedChannelPost } from '../db/database.js';
 import { getContextPromptTemplate } from '../prompts.js';
-import { getUserRelationship, getChannelSubscriberCount } from '../db/database.js';
 import { relationshipToPrompt } from './relationship.js';
 
 export class ContextBuilder {
     static async buildSnapshot(overrides = {}) {
         const stateRow = await StateRepository.getState();
         WeatherService.syncOverride(stateRow?.weather_override);
-        const [inventory, queue, executable, loadedFacts, observerDigests, loadedWeather, user, relationship, channelSubscribers] = await Promise.all([
+        const [inventory, queue, executable, loadedFacts, observerDigests, loadedWeather, user, relationship, channelSubscribers, latestChannelPost] = await Promise.all([
             StateRepository.getInventory(),
             StateRepository.getQueue(),
             StateRepository.getExecutableTask(),
@@ -22,7 +21,8 @@ export class ContextBuilder {
             WeatherService.getSnapshot(),
             overrides.userId ? getUser(overrides.userId).catch(() => null) : Promise.resolve(null),
             overrides.userId ? getUserRelationship(overrides.userId).catch(() => null) : Promise.resolve(null),
-            getChannelSubscriberCount().catch(() => null)
+            getChannelSubscriberCount().catch(() => null),
+            getLatestPublishedChannelPost().catch(() => null)
         ]);
         const commitments = await StateRepository.getCommitments(null, null).catch(() => []);
         const facts = Array.isArray(overrides.dailyFacts)
@@ -44,7 +44,7 @@ export class ContextBuilder {
         const missedCommitments = commitments.filter(item => item.status === 'MISSED');
         return {
             state, inventory, queue, facts, observerDigests, weather, activeTask, location, transit, commitments: activeCommitments, missedCommitments,
-            relationship, channelSubscribers,
+            relationship, channelSubscribers, latestChannelPost,
             mood: Number.isFinite(Number(overrides.mood))
                 ? Math.max(0, Math.min(100, Math.round(Number(overrides.mood))))
                 : calculateMood(state),
@@ -151,7 +151,7 @@ export class ContextBuilder {
 • Самочувствие: ${wellbeing}
 • Одежда дома: ${humanizeOutfit(snapshot.outfitText || this.describeOutfit(snapshot.inventory, task).text)}
 • Погода за окном: ${humanizeWeather(snapshot.weather)}${sleepGuidance}
-• Telegram-канал (ТГК Леры): ${snapshot.channelSubscribers !== null && snapshot.channelSubscribers !== undefined ? `${snapshot.channelSubscribers} подписчиков (актуальное число)` : 'ведёт личный ТГК'}
+• Telegram-канал (ТГК Леры): ${snapshot.channelSubscribers !== null && snapshot.channelSubscribers !== undefined ? `${snapshot.channelSubscribers} подписчиков (актуальное число)` : 'ведёт личный ТГК'}${snapshot.latestChannelPost?.text ? ` | Реальный последний пост в канале: «${String(snapshot.latestChannelPost.text).slice(0, 100).replace(/\n+/g, ' ').trim()}»` : ''}
 
 [ГЛАВНЫЕ СОБЫТИЯ ЗА ДЕНЬ (ПРОШЕДШЕЕ ВРЕМЯ)]
 ${events.length ? events.join('\n') : '- Значимых подтверждённых событий пока нет.'}`;
