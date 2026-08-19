@@ -29,13 +29,13 @@ const BASE_FORMAT_WEIGHTS = {
 const REFERENCE_FORMATS = new Set(DEFAULT_REFERENCE_FORMAT_SEQUENCE);
 
 const FORMAT_LIMITS = {
-    short_thought: { maxChars: 180, maxLines: 2, maxParagraphs: 1 },
-    photo_caption: { maxChars: 420, maxLines: 4, maxParagraphs: 2 },
-    life_observation: { maxChars: 560, maxLines: 8, maxParagraphs: 2 },
-    long_monologue: { maxChars: 1400, maxLines: 30, maxParagraphs: 6 },
-    question: { maxChars: 180, maxLines: 2, maxParagraphs: 1 },
-    meme_caption: { maxChars: 260, maxLines: 4, maxParagraphs: 2 },
-    repost_reaction: { maxChars: 360, maxLines: 6, maxParagraphs: 2 }
+    short_thought: { maxChars: 160, maxLines: 3, maxParagraphs: 1 },
+    photo_caption: { maxChars: 120, maxLines: 2, maxParagraphs: 1 },
+    life_observation: { maxChars: 240, maxLines: 4, maxParagraphs: 2 },
+    long_monologue: { maxChars: 500, maxLines: 8, maxParagraphs: 3 },
+    question: { maxChars: 160, maxLines: 2, maxParagraphs: 1 },
+    meme_caption: { maxChars: 140, maxLines: 2, maxParagraphs: 1 },
+    repost_reaction: { maxChars: 160, maxLines: 3, maxParagraphs: 1 }
 };
 
 const TOPIC_FORMATS = {
@@ -51,13 +51,13 @@ function recentFormat(post) {
 
 export function describeChannelContentFormat(contentFormat = 'life_observation') {
     const descriptions = {
-        short_thought: 'Одна фраза или 1–2 короткие строки: вопрос, внезапное желание или честное признание без обязательного объяснения.',
-        photo_caption: 'Короткая подпись к фото, связанная с конкретной визуальной деталью и текущим состоянием. Не превращай её в красивую историю.',
-        life_observation: 'Одно бытовое наблюдение или маленькая сцена в 1–2 коротких абзацах, без обязательного вывода.',
-        long_monologue: 'Свободный поток из 3–6 естественных абзацев: несколько интересов или мыслей, переходы на ходу и лёгкая самоирония.',
-        question: 'Короткий жизненный вопрос подписчикам. Вопрос не должен быть формальным CTA или повторяться в каждом посте.',
-        meme_caption: 'Живая дерзкая подпись к мему или картинке, которая опирается на изображение и не объясняет шутку.',
-        repost_reaction: 'Короткая личная реакция на пересланный материал: что зацепило, удивило или показалось смешным.'
+        short_thought: 'Одна мысль, открытие или текущее состояние в 1–2 строки. Без искусственных шуток и без панчлайнов.',
+        photo_caption: 'Короткая подпись к фото в 1 строку (например: «привет», «сегодня такой день», «настроение такое», «красиво»).',
+        life_observation: 'Короткий факт или бытовая зарисовка на 1–3 строки о Питере, погоде, учёбе или усталости. Без вымученного юмора и без морали.',
+        long_monologue: 'Короткая зарисовка на 2–3 абзаца о жизненном моменте.',
+        question: 'Короткий вопрос подписчикам в 1 строку.',
+        meme_caption: 'Короткая мысль к картинке в 1 строку.',
+        repost_reaction: 'Короткая реакция в 1 строку.'
     };
     return descriptions[contentFormat] || descriptions.life_observation;
 }

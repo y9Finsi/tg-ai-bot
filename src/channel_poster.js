@@ -120,26 +120,33 @@ export async function generateChannelPostDraft(overrideSettings = null) {
     const timeOfDay = getTimeOfDayMSK();
     const topic = overrideSettings?.topic || selectWeightedTopic(settings);
     let topicDescription = TOPIC_DESCRIPTIONS[topic] || 'Мысли вслух и жизненные заметки';
-    let mediaContent = null;
-    let selectedPhoto = null;
-
-    if (topic === 'meme' || settings.media_mode === 'meme') {
-        mediaContent = await getRandomChannelContent({ type: 'photo' }) || await getRandomChannelContent();
-        if (mediaContent) {
-            topicDescription = `Дерзкая подпись к мему/картинке: ${mediaContent.description || 'жизненный мем'}`;
-        }
-    } else if (settings.media_mode === 'db_photo') {
-        selectedPhoto = await getRandomLeraPhoto({ access_level: 'free', time_of_day: timeOfDay, excludeChannelUsed: true });
-    }
+    const hasMediaCapability = settings.media_mode === 'db_photo' || settings.media_mode === 'meme' || settings.media_mode === 'ai_photo' || settings.media_mode === 'none';
 
     const contentFormat = selectChannelContentFormat({
         recentPosts,
-        hasMedia: Boolean(mediaContent || selectedPhoto || settings.media_mode === 'ai_photo'),
+        hasMedia: hasMediaCapability,
         topic,
         preferredFormat: overrideSettings?.content_format || settings.content_format,
         editorialMode,
         formatSequence
     });
+
+    let mediaContent = null;
+    let selectedPhoto = null;
+
+    if (contentFormat === 'photo_caption') {
+        if (settings.media_mode === 'meme') {
+            mediaContent = await getRandomChannelContent({ type: 'photo' }) || await getRandomChannelContent();
+        } else {
+            selectedPhoto = await getRandomLeraPhoto({ access_level: 'free', time_of_day: timeOfDay, excludeChannelUsed: true });
+        }
+        topicDescription = 'Короткая подпись к фото в 1 строку (например: «привет», «сегодня такой день», «настроение такое», «красиво») или пара слов';
+    } else if (topic === 'meme' && settings.media_mode === 'meme') {
+        mediaContent = await getRandomChannelContent({ type: 'photo' }) || await getRandomChannelContent();
+        if (mediaContent) {
+            topicDescription = `Короткая мысль к картинке в 1 строку: ${mediaContent.description || 'жизненный мем'}`;
+        }
+    }
     const messagesCount = '1';
     let publicFacts = settings.public_facts_enabled ? (settings.public_facts || []) : [];
     const subscribers = await getChannelSubscriberCount().catch(() => null);
