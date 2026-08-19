@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const root = new URL('..', import.meta.url);
-const read = relative => fs.readFileSync(new URL(relative, root), 'utf8');
+const read = relative => fs.readFileSync(
+    new URL(relative.replace(/^admin-v2\//, 'legacy-v2/'), root),
+    'utf8'
+);
 
 test('admin v2 uses diary navigation and real shadcn-style primitives', () => {
     const source = read('admin-v2/src/main.jsx');
