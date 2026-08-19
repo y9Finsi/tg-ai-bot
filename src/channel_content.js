@@ -115,14 +115,10 @@ export function selectChannelContentFormat({
     const mode = normalizeChannelEditorialMode(editorialMode);
     const sequence = normalizeChannelFormatSequence(formatSequence);
     const previousFormat = recentFormat(recentPosts.at(-1));
-    const requested = preferredFormat || (mode === 'legacy_mix' ? TOPIC_FORMATS[topic] : '');
     const isAllowed = format => mode === 'legacy_mix' || REFERENCE_FORMATS.has(format);
-    if (CHANNEL_CONTENT_FORMATS.includes(requested)
-        && isAllowed(requested)
-        && requested !== avoidFormat
-        && requested !== previousFormat
-        && (requested !== 'photo_caption' || hasMedia)) {
-        return requested;
+
+    if (preferredFormat && CHANNEL_CONTENT_FORMATS.includes(preferredFormat) && isAllowed(preferredFormat)) {
+        return preferredFormat;
     }
 
     if (mode === 'reference_short') {
