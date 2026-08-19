@@ -349,8 +349,8 @@ export async function executeImageGenerationRequest({
     for (let i = 0; i < payloadsToTry.length; i++) {
         const payload = payloadsToTry[i];
         try {
-            const validSignals = [signal, AbortSignal.timeout(45000)].filter(Boolean);
-            const fetchSignal = (AbortSignal.any && validSignals.length > 1) ? AbortSignal.any(validSignals) : (signal || AbortSignal.timeout(45000));
+            const validSignals = [signal, AbortSignal.timeout(120000)].filter(Boolean);
+            const fetchSignal = (AbortSignal.any && validSignals.length > 1) ? AbortSignal.any(validSignals) : (signal || AbortSignal.timeout(120000));
             const res = await fetch(`${baseUrl}/images/generations`, {
                 method: 'POST',
                 headers: {
@@ -413,7 +413,7 @@ export async function generateLeraPhoto({
     bot = null,
     saveToDb = true,
     source = 'chat',
-    timeoutMs = 90000,
+    timeoutMs = 120000,
     providerId = null,
     model = null,
     size = '1024x1024',

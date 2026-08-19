@@ -95,7 +95,7 @@ export const sendPhotoAction = {
             }
         }
     },
-    timeoutMs: 45000,
+    timeoutMs: 120000,
     config: {},
 
     async execute(args = {}, context = {}) {
