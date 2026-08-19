@@ -365,22 +365,6 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         isPhotoRequest = PHOTO_INTENT_REGEX.test(userText);
     }
 
-    const hour = getMoscowHour();
-    const currentTimeOfDay = hour >= 5 && hour < 12
-        ? 'morning'
-        : (hour >= 12 && hour < 18 ? 'day' : (hour >= 18 && hour < 23 ? 'evening' : 'night'));
-
-    const timeRuMap = {
-        morning: 'утреннее (утро)',
-        day: 'дневное (день)',
-        evening: 'вечернее (вечер)',
-        night: 'ночное (ночь)'
-    };
-
-    if (isPhotoRequest) {
-        preselectedPhoto = await getFreeLocalPhotoStream(user, userText || '');
-    }
-
     const now = new Date();
     // Передаём в ContextBuilder однозначный момент времени, а не локализованную
     // строку без timezone: иначе сервер в UTC может повторно прибавить смещение.
@@ -411,34 +395,10 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     const gapSeconds = Number.isFinite(Number(preMessageGapSeconds))
         ? Math.max(0, Number(preMessageGapSeconds))
         : (lastEvent ? Math.max(0, Math.floor((new Date(firstMessageAt || now).getTime() - new Date(lastEvent.occurred_at).getTime()) / 1000)) : 0);
-    let modeInstruction = `\n\n[ИНСТРУКЦИЯ ПО ФОТОГРАФИЯМ И КИНУТЫМ МЕДИА]:
-Добавляй в конец ответа тег [IMAGE: краткое описание фото на английском] только если пользователь просит фото или ты уже естественно предложила/пообещала прислать его в тексте.
-- Не присылай несвязанное фото сама по себе и никогда не отвечай одним тегом [IMAGE: ...] без обычной текстовой реплики.
-- Если пользователь просит фото, или если ты сама в тексте говоришь «ща скину», «держи фотку», «покажусь», «глянь фотку» и т.п., ты ОБЯЗАНА ДОБАВИТЬ ТЕГ [IMAGE: ...] в самый конец сообщения! Без этого тега фото не отправится!
-
-[ИНСТРУКЦИЯ ПО ГОЛОСОВЫМ СООБЩЕНИЯМ]:
+    let modeInstruction = `\n\n[ИНСТРУКЦИЯ ПО ГОЛОСОВЫМ СООБЩЕНИЯМ]:
 Если пользователь просит голосовое («скажи голосом», «наговори гс», «хочу услышать твой голос»), или если ты сама в особо живой, милый, ленивый или эмоциональный момент хочешь сказать фразу голосом, добавь тег [VOICE: текст реплики на русском].
 - Текст внутри [VOICE: ...] будет озвучен твоим живым голосом.
 - Ты можешь прислать текстовую реплику и следом войс (например: «слушай, ща наговорю [VOICE: Привет, ну как твои дела?]»), либо ответить только голосовым без лишнего текста (например: «[VOICE: Ой, мне так лень сейчас печатать, слушай...]»).`;
-
-    if (preselectedPhoto) {
-        const photoDesc = preselectedPhoto.caption || (preselectedPhoto.tags && preselectedPhoto.tags.length > 0 ? preselectedPhoto.tags.join(', ') : 'Твое личное фото');
-        const photoTime = preselectedPhoto.time_of_day;
-        const photoTimeRu = timeRuMap[photoTime] || photoTime;
-        const currentRealTimeRu = timeRuMap[currentTimeOfDay] || currentTimeOfDay;
-
-        modeInstruction += `\n\n[ГОТОВОЕ ФОТО ДЛЯ ОТПРАВКИ]:
-Если ты прикрепляешь фото, будет отправлен кадр со следующим сюжетом:
-- Описание кадра: "${photoDesc}"
-- Время суток на фото: ${photoTimeRu} (сейчас реальное время: ${currentRealTimeRu})`;
-
-        if (preselectedPhoto.isDifferentTime) {
-            modeInstruction += `\n⚠️ ВАЖНОЕ ПРАВИЛО (Фото из другого времени суток / архив): Этот кадр сделан в другое время суток (${photoTimeRu}), а у вас сейчас ${currentRealTimeRu}.
-Прочитай описание кадра выше и ОБЯЗАТЕЛЬНО объясни в тексте, почему ты скидываешь именно его (например: «Ой, нашла вот вчерашнее фото...», «Это я вчера вечером/с утра фоткалась», «Смотри, это вчера сделала фотку, когда...»). Опиши сюжет снимка своими словами!`;
-        } else {
-            modeInstruction += `\nОписанное выше фото подходит под ваше текущее время суток (${currentRealTimeRu}). Подпиши его естественно от первого лица, слегка опираясь на сюжет кадра.`;
-        }
-    }
 
     if (routingMode === 'EROTIC') {
         const climaxPrompt = getClimaxPromptInstruction(climaxState);
