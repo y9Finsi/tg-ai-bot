@@ -349,8 +349,8 @@ export async function executeImageGenerationRequest({
     for (let i = 0; i < payloadsToTry.length; i++) {
         const payload = payloadsToTry[i];
         try {
-            console.log(`🎨 [IMAGE GEN] Запрос к ${baseUrl}/images/generations (${provider.name}, модель: ${selectedModel}, попытка #${i + 1})...`);
-            const fetchSignal = AbortSignal.any ? AbortSignal.any([signal, AbortSignal.timeout(35000)]) : signal;
+            const validSignals = [signal, AbortSignal.timeout(45000)].filter(Boolean);
+            const fetchSignal = (AbortSignal.any && validSignals.length > 1) ? AbortSignal.any(validSignals) : (signal || AbortSignal.timeout(45000));
             const res = await fetch(`${baseUrl}/images/generations`, {
                 method: 'POST',
                 headers: {
