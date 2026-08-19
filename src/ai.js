@@ -6,7 +6,8 @@ import {
     getRecentConversationEvents, formatConversationEvent, getRecentSimulationReflections,
     savePromptLog, applyUserRelationshipEvent, getInitiativeDailyCounts,
     getActiveDialogueEvents, getContentCandidates,
-    getLeraProfile, formatConversationGap, toLocalDateString
+    getLeraProfile, formatConversationGap, toLocalDateString,
+    getLeraContent
 } from './database.js';
 import { getRoutedSystemPrompt } from './prompts.js';
 import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX, IMAGE_STYLES } from './constants/intents.js';
@@ -771,6 +772,11 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         voicePayload = await generateVoiceForText(user, targetVoiceText);
     }
 
+    let finalRecommendationPost = existingRecommendationPost;
+    if (contentId && !finalRecommendationPost) {
+        finalRecommendationPost = await getLeraContent(contentId).catch(() => null);
+    }
+
     return {
         text: finalAiText,
         photo: photoSendPayload,
@@ -778,7 +784,7 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         photoCaption,
         voice: voicePayload,
         voiceText: targetVoiceText || null,
-        recommendationPost: existingRecommendationPost,
+        recommendationPost: finalRecommendationPost,
         showBuyButton,
         contentId
     };
@@ -942,18 +948,23 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
 
             return {
                 name: funcName,
+                args: funcArgs,
                 content: toolResultContent,
                 execRes,
                 callId: tc.id || null
             };
         });
 
-
-
         const settledResults = await Promise.allSettled(toolExecutionPromises);
         for (const settled of settledResults) {
             if (settled.status === 'fulfilled') {
-                const { name, content, execRes } = settled.value;
+                const { name, args, content, execRes } = settled.value;
+                toolsExecuted.push({
+                    name,
+                    args: args || {},
+                    status: execRes?.status || 'error',
+                    summary: execRes?.data?.text || execRes?.data?.summary || content || 'ok'
+                });
                 if (name === 'send_photo' && execRes?.status === 'success' && execRes?.data?.photo) {
                     toolPhotoPayload = execRes.data.photo;
                     toolPhotoRecordId = execRes.data.photoRecordId || null;
