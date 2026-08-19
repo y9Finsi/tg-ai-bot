@@ -78,15 +78,20 @@ export const sendPhotoAction = {
         properties: {
             prompt: {
                 type: 'string',
-                description: 'Описание сцены, позы или действия на фото (например: "лежит в кровати", "пьёт кофе", "на прогулке по Питеру")'
+                description: 'Описание сцены, позы или действия на фото с учётом твоей текущей обстановки, локации и времени суток (например: "лежит в кровати на Петроградке, лениво улыбается", "пьёт кофе у окна", "стоит в душе, вода стекает по телу", "гуляет по улице").'
             },
             outfit: {
                 type: 'string',
-                description: 'Конкретная одежда или вещь, если пользователь явно её попросил (например: "пальто", "купальник", "толстовка")'
+                description: 'Одежда на фото: укажи свою текущую одежду из контекста [СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ] (например: "oversized футболка", "пижама", "тренч", "полотенце / без одежды") либо вещь, которую прямо попросил собеседник (например: "пальто", "купальник").'
+            },
+            time_of_day: {
+                type: 'string',
+                enum: ['morning', 'day', 'evening', 'night'],
+                description: 'Время суток на фото (morning, day, evening, night) в соответствии с текущим временем и контекстом.'
             },
             allow_db_fallback: {
                 type: 'boolean',
-                description: 'Разрешить ли взять готовое селфи из галереи, если нет жесткого запроса на нестандартную одежду. По умолчанию true.'
+                description: 'Разрешить ли взять подходящее селфи из галереи, если нет жесткого запроса на нестандартную одежду. По умолчанию true.'
             }
         }
     },
@@ -96,18 +101,33 @@ export const sendPhotoAction = {
     async execute(args = {}, context = {}) {
         const userId = context.userId;
         const user = userId ? await getUser(userId).catch(() => null) : null;
-        const prompt = String(args.prompt || '').trim();
-        const outfit = String(args.outfit || '').trim();
+        let prompt = String(args.prompt || '').trim();
+        let outfit = String(args.outfit || '').trim();
         const allowFallback = args.allow_db_fallback !== false;
 
-        const isSpecificOutfit = Boolean(outfit && !['футболка', 'пижама', 'домашняя одежда', 'селфи'].includes(outfit.toLowerCase()));
+        // 1. Автоматическое определение времени суток
+        const hour = getMoscowHour();
+        let timeOfDay = args.time_of_day;
+        if (!timeOfDay) {
+            timeOfDay = hour >= 5 && hour < 12 ? 'morning' : (hour >= 12 && hour < 18 ? 'day' : (hour >= 18 && hour < 23 ? 'evening' : 'night'));
+        }
 
-        // 1. Если запрошена конкретная нестандартная одежда или явный кастомный промпт — пробуем сгенерировать
+        // 2. Автоматическое обогащение одеждой из текущего контекста тамагочи, если LLM не передала outfit
+        if (!outfit && context.currentContext) {
+            const ctxOutfit = context.currentContext.outfit?.text || context.currentContext.outfitText;
+            if (ctxOutfit && typeof ctxOutfit === 'string') {
+                outfit = ctxOutfit;
+            }
+        }
+
+        const isSpecificOutfit = Boolean(outfit && !['футболка', 'пижама', 'домашняя одежда', 'селфи', 'oversized_tshirt', 'oversized футболка'].includes(outfit.toLowerCase()));
+
+        // 3. Если запрошена конкретная нестандартная одежда или явный кастомный промпт — пробуем сгенерировать
         if (isSpecificOutfit || (prompt && !allowFallback)) {
             try {
-                const fullGenPrompt = `${prompt} ${outfit ? 'одежда: ' + outfit : ''}`.trim() || 'селфи Леры';
-                const hour = getMoscowHour();
-                const timeOfDay = hour >= 5 && hour < 12 ? 'morning' : (hour >= 12 && hour < 18 ? 'day' : (hour >= 18 && hour < 23 ? 'evening' : 'night'));
+                const locationText = context.currentContext?.location?.name || context.currentContext?.location || '';
+                const locationPrompt = locationText ? `локация: ${locationText}` : '';
+                const fullGenPrompt = `${prompt} ${outfit ? 'одежда: ' + outfit : ''} ${locationPrompt}`.trim() || 'селфи Леры';
 
                 const generated = await generateLeraPhoto({
                     prompt: fullGenPrompt,
@@ -126,7 +146,7 @@ export const sendPhotoAction = {
                             photoRecordId: generated.savedPhoto?.id || null,
                             photoCaption: generated.caption || null,
                             isGenerated: true,
-                            text: 'Фото успешно сгенерировано и прикреплено к сообщению.'
+                            text: `Фото успешно создано (лук: ${outfit || 'по контексту'}, время: ${timeOfDay}). Прикреплено к сообщению.`
                         }
                     };
                 }
@@ -149,7 +169,7 @@ export const sendPhotoAction = {
             }
         }
 
-        // 2. Берём готовое селфи из базы
+        // 4. Берём подходящее готовое селфи из базы под текущее время суток
         const local = await findLocalPhoto(user, prompt);
         if (local && isUsableTelegramPhotoId(local.file_id)) {
             return {
@@ -159,7 +179,7 @@ export const sendPhotoAction = {
                     photoRecordId: local.id,
                     photoCaption: local.caption,
                     isGenerated: false,
-                    text: 'Фото Леры из галереи прикреплено к сообщению.'
+                    text: `Фото Леры из галереи (${timeOfDay}) прикреплено к сообщению.`
                 }
             };
         }

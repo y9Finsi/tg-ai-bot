@@ -883,7 +883,13 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             const execRes = await executeAction({
                 name: funcName,
                 args: funcArgs,
-                context: { userId, userText }
+                context: {
+                    userId,
+                    userText,
+                    currentContext: leraState,
+                    radiantContext,
+                    routingMode
+                }
             });
             let toolResultContent = '';
             if (execRes.status === 'success') {
