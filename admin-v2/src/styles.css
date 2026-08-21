@@ -757,6 +757,11 @@
   background: #192438;
 }
 
+.diary-home .kanban-item-active .progress {
+  height: 4px;
+  background: #1e3a8a;
+}
+
 .diary-home .kanban-done .kanban-item {
   border-color: rgba(74, 222, 128, 0.22);
 }
@@ -6013,8 +6018,8 @@ summary:focus-visible,
   --muted: oklch(0.45 0 0);
   --subtle: oklch(0.56 0 0);
   --legacy-muted: var(--muted-foreground);
-  --legacy-subtle: oklch(0.69 0 0);
-  --blue: oklch(0.985 0 0);
+  --legacy-subtle: oklch(0.69 0.025 258);
+  --blue: oklch(0.55 0.18 262);
   --yellow: oklch(0.72 0.15 83);
   --green: oklch(0.56 0.16 152);
   --red: oklch(0.58 0.2 27);
@@ -6029,8 +6034,8 @@ summary:focus-visible,
   --color-text-primary: var(--foreground);
   --color-text-secondary: var(--muted-foreground);
   --color-text-tertiary: oklch(0.56 0 0);
-  --color-accent: oklch(0.985 0 0);
-  --color-accent-hover: oklch(0.85 0 0);
+  --color-accent: oklch(0.55 0.18 262);
+  --color-accent-hover: oklch(0.48 0.18 262);
   --color-accent-subtle: color-mix(in oklch, var(--primary) 18%, var(--card));
   --color-success: oklch(0.54 0.16 152);
   --color-success-bg: color-mix(in oklch, var(--color-success) 18%, var(--card));
@@ -9327,7 +9332,8 @@ html.dark .diary-shell .diary-home {
 
 /* CARDS & PANELS */
 .ui-card-frameless,
-.needs-card {
+.needs-card,
+.kanban-card {
   display: flex !important;
   flex-direction: column !important;
   gap: 14px !important;
@@ -9337,19 +9343,6 @@ html.dark .diary-shell .diary-home {
   background: transparent !important;
   box-shadow: none !important;
   margin-bottom: 0 !important;
-}
-
-.kanban-card {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 18px !important;
-  width: 100% !important;
-  padding: 20px !important;
-  border: 1px solid var(--line) !important;
-  border-radius: 12px !important;
-  background: var(--panel) !important;
-  box-shadow: none !important;
-  margin-bottom: 32px !important;
 }
 
 .card-header {
@@ -9463,6 +9456,192 @@ html.dark .diary-shell .diary-home {
 }
 
 /* 6-COLUMN NEEDS GRID (Full width) */
+.diary-shell .needs-compact-grid,
+.diary-shell .diary-home .needs-compact-grid,
+html.dark .diary-shell .needs-compact-grid,
+html.dark .diary-shell .diary-home .needs-compact-grid {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  width: 100% !important;
+  overflow: visible !important;
+  margin-bottom: 0 !important;
+}
+
+@media (max-width: 1100px) {
+  .diary-shell .needs-compact-grid,
+  .diary-shell .diary-home .needs-compact-grid,
+  html.dark .diary-shell .needs-compact-grid,
+  html.dark .diary-shell .diary-home .needs-compact-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .diary-shell .needs-compact-grid,
+  .diary-shell .diary-home .needs-compact-grid,
+  html.dark .diary-shell .needs-compact-grid,
+  html.dark .diary-shell .diary-home .needs-compact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+.diary-shell .need-compact-item,
+.diary-shell .diary-home .need-compact-item,
+html.dark .diary-shell .need-compact-item,
+html.dark .diary-shell .diary-home .need-compact-item {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  min-height: 84px !important;
+  height: auto !important;
+  padding: 10px 12px !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 8px !important;
+  background: var(--bg-surface) !important;
+  gap: 6px !important;
+  transition: border-color 0.15s ease !important;
+}
+
+.diary-shell .need-compact-item:hover,
+html.dark .diary-shell .need-compact-item:hover {
+  border-color: var(--border-strong) !important;
+}
+
+.need-compact-head {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+}
+
+.need-title-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+}
+
+.need-title-group strong {
+  font-size: 12.5px !important;
+  font-weight: 550 !important;
+  color: var(--text-main) !important;
+}
+
+.need-icon-badge {
+  display: grid !important;
+  place-items: center !important;
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 6px !important;
+  background: #18181c !important;
+  color: var(--text-muted) !important;
+}
+
+.need-icon-critical {
+  color: var(--color-accent-red) !important;
+  background: rgba(239, 68, 68, 0.12) !important;
+}
+
+.need-icon-warning {
+  color: var(--color-accent-yellow) !important;
+  background: rgba(234, 179, 8, 0.12) !important;
+}
+
+.need-icon-good {
+  color: var(--color-accent-green) !important;
+  background: rgba(34, 197, 94, 0.12) !important;
+}
+
+.need-compact-foot {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  width: 100% !important;
+}
+
+.need-compact-foot .need-status {
+  display: flex !important;
+  justify-content: space-between !important;
+  font-size: 11px !important;
+  color: var(--text-subtle) !important;
+}
+
+.need-compact-foot .progress {
+  height: 4px !important;
+  border-radius: 999px !important;
+  background: #1e1e24 !important;
+  overflow: hidden !important;
+}
+
+/* 4-COLUMN BENTO ROW (Location, Mood, Money, Cycle) */
+.diary-shell .bento-needs-layout,
+.diary-shell .diary-home .bento-needs-layout,
+.diary-shell .diary-home > .needs-card > .bento-needs-layout,
+html.dark .diary-shell .bento-needs-layout,
+html.dark .diary-shell .diary-home .bento-needs-layout,
+html.dark .diary-shell .diary-home > .needs-card > .bento-needs-layout {
+  display: block !important;
+  width: 100% !important;
+}
+
+.diary-shell .bento-left,
+.diary-shell .diary-home .bento-left,
+html.dark .diary-shell .bento-left,
+html.dark .diary-shell .diary-home .bento-left {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  grid-template-rows: auto !important;
+  grid-template-areas: none !important;
+  gap: 10px !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+.diary-shell .diary-home > .needs-card > .card-header,
+.diary-shell .diary-home > .needs-card > .profile-compact-card,
+html.dark .diary-shell .diary-home > .needs-card > .card-header,
+html.dark .diary-shell .diary-home > .needs-card > .profile-compact-card {
+  display: flex !important;
+  width: 100% !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.diary-shell .needs-compact-grid,
+.diary-shell .diary-home .needs-compact-grid,
+.diary-shell .diary-home > .needs-card > .needs-compact-grid,
+html.dark .diary-shell .needs-compact-grid,
+html.dark .diary-shell .diary-home .needs-compact-grid,
+html.dark .diary-shell .diary-home > .needs-card > .needs-compact-grid {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 84px !important;
+  overflow: visible !important;
+  margin-bottom: 0 !important;
+}
+
+@media (max-width: 1024px) {
+  .diary-shell .bento-left,
+  .diary-shell .diary-home .bento-left,
+  html.dark .diary-shell .bento-left,
+  html.dark .diary-shell .diary-home .bento-left {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .diary-shell .bento-left,
+  .diary-shell .diary-home .bento-left,
+  html.dark .diary-shell .bento-left,
+  html.dark .diary-shell .diary-home .bento-left {
+    grid-template-columns: 1fr !important;
+  }
+}
 
 .diary-shell .bento-stat-card,
 .diary-shell .diary-home .bento-stat-card,
@@ -9628,10 +9807,11 @@ html.dark .diary-shell .diary-home .kanban-column {
   display: flex !important;
   flex-direction: column !important;
   gap: 8px !important;
-  padding: 0 !important;
-  border: none !important;
-  background: transparent !important;
-  min-height: auto !important;
+  padding: 12px !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 8px !important;
+  background: var(--bg-surface) !important;
+  min-height: 280px !important;
 }
 
 .kanban-column-head {
@@ -9686,18 +9866,18 @@ html.dark .diary-shell .diary-home .kanban-item {
   display: flex !important;
   flex-direction: column !important;
   gap: 6px !important;
-  padding: 12px 14px !important;
-  border: 1px solid var(--border-subtle) !important;
-  border-radius: 8px !important;
-  background: var(--bg-surface) !important;
+  padding: 10px 12px !important;
+  border: 1px solid #27272a !important;
+  border-radius: 6px !important;
+  background: var(--bg-surface-elevated) !important;
   cursor: pointer !important;
   transition: border-color 0.15s ease, background 0.15s ease !important;
 }
 
 .diary-shell .kanban-item:hover,
 html.dark .diary-shell .kanban-item:hover {
-  border-color: var(--border-strong) !important;
-  background: var(--bg-surface-elevated) !important;
+  border-color: #3f3f46 !important;
+  background: #222226 !important;
 }
 
 .kanban-item strong {
@@ -9723,6 +9903,112 @@ html.dark .diary-shell .kanban-item:hover {
 .decision-compact-head span {
   color: var(--text-subtle) !important;
   background: transparent !important;
+}
+
+/* DIALOGS / LLM LOGS PANEL */
+.diary-shell .llm-row,
+html.dark .diary-shell .llm-row {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 12px !important;
+  width: 100% !important;
+  padding: 12px 14px !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 8px !important;
+  background: var(--bg-surface) !important;
+  color: var(--text-main) !important;
+  cursor: pointer !important;
+  text-align: left !important;
+  transition: border-color 0.15s ease, background 0.15s ease !important;
+  margin-bottom: 6px !important;
+  box-shadow: none !important;
+}
+
+.diary-shell .llm-row:hover,
+html.dark .diary-shell .llm-row:hover {
+  background: var(--bg-surface-elevated) !important;
+  border-color: var(--border-strong) !important;
+}
+
+.diary-shell .llm-row.selected,
+html.dark .diary-shell .llm-row.selected {
+  background: var(--bg-surface-elevated) !important;
+  border-color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.diary-shell .llm-row-icon,
+html.dark .diary-shell .llm-row-icon {
+  display: grid !important;
+  place-items: center !important;
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 6px !important;
+  background: #18181c !important;
+  border: 1px solid #27272a !important;
+  color: #f4f4f5 !important;
+  flex-shrink: 0 !important;
+  margin-top: 1px !important;
+}
+
+.diary-shell .llm-row-body,
+html.dark .diary-shell .llm-row-body {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.diary-shell .llm-user-label,
+html.dark .diary-shell .llm-user-label {
+  font: 600 11px ui-monospace, monospace !important;
+  color: #a1a1aa !important;
+}
+
+.diary-shell .llm-user-msg,
+html.dark .diary-shell .llm-user-msg {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #ffffff !important;
+  line-height: 1.4 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  margin: 0 !important;
+}
+
+.diary-shell .llm-row-preview,
+html.dark .diary-shell .llm-row-preview {
+  font-size: 11.5px !important;
+  color: #71717a !important;
+  line-height: 1.35 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-style: normal !important;
+  margin: 0 !important;
+}
+
+.diary-shell .llm-row-badges,
+html.dark .diary-shell .llm-row-badges {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 5px !important;
+  margin-top: 3px !important;
+}
+
+.diary-shell .chip-model,
+.diary-shell .chip-metric,
+html.dark .diary-shell .chip-model,
+html.dark .diary-shell .chip-metric {
+  background: #18181c !important;
+  border: 1px solid #27272a !important;
+  color: #a1a1aa !important;
+  font: 600 10px ui-monospace, monospace !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
 }
 
 /* DAY SUMMARY & INVENTORY */

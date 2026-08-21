@@ -9,22 +9,22 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
+        default: "border border-zinc-700 bg-zinc-800 text-zinc-200",
         secondary:
-          "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
+          "border border-zinc-800 bg-zinc-900 text-zinc-300",
         destructive:
-          "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
+          "border border-red-900/60 bg-red-950/40 text-red-300",
         outline:
-          "border-border bg-input/20 text-foreground dark:bg-input/30 [a]:hover:bg-muted [a]:hover:text-muted-foreground",
+          "border border-zinc-700 bg-transparent text-zinc-300",
         ghost:
-          "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
-        link: "text-primary underline-offset-4 hover:underline",
-        blue: "border-zinc-700 bg-zinc-800 text-zinc-200 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300",
-        green: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
-        yellow: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200",
-        red: "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200",
-        purple: "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-200",
-        muted: "bg-muted text-muted-foreground",
+          "text-zinc-300 hover:bg-zinc-800",
+        link: "text-zinc-200 underline-offset-4 hover:underline",
+        blue: "border border-zinc-700 bg-zinc-800 text-zinc-200",
+        green: "border border-emerald-900/60 bg-emerald-950/40 text-emerald-300",
+        yellow: "border border-amber-900/60 bg-amber-950/40 text-amber-300",
+        red: "border border-red-900/60 bg-red-950/40 text-red-300",
+        purple: "border border-violet-900/60 bg-violet-950/40 text-violet-300",
+        muted: "border border-zinc-800 bg-zinc-900/80 text-zinc-400",
       },
     },
     defaultVariants: {
