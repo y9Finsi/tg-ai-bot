@@ -9773,7 +9773,7 @@ html.dark .diary-shell .kanban-board,
 html.dark .diary-shell .diary-home .kanban-board {
   display: grid !important;
   grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  gap: 10px !important;
+  gap: 16px !important;
   width: 100% !important;
 }
 
@@ -9802,19 +9802,19 @@ html.dark .diary-shell .diary-home .kanban-column {
   display: flex !important;
   flex-direction: column !important;
   gap: 8px !important;
-  padding: 10px !important;
-  border: 1px solid var(--border-subtle) !important;
-  border-radius: 8px !important;
-  background: var(--bg-surface-subtle) !important;
-  min-height: 420px !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  min-height: auto !important;
 }
 
 .kanban-column-head {
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
-  padding-bottom: 6px !important;
+  padding-bottom: 8px !important;
   border-bottom: 1px solid var(--border-subtle) !important;
+  margin-bottom: 4px !important;
 }
 
 .kanban-column-head strong {
@@ -9824,7 +9824,7 @@ html.dark .diary-shell .diary-home .kanban-column {
 }
 
 .kanban-column-head span {
-  font-size: 10px !important;
+  font-size: 10.5px !important;
   color: var(--text-subtle) !important;
 }
 
@@ -9848,9 +9848,9 @@ html.dark .diary-shell .kanban-list,
 html.dark .diary-shell .diary-home .kanban-list {
   display: flex !important;
   flex-direction: column !important;
-  gap: 6px !important;
+  gap: 8px !important;
   flex: 1 1 auto !important;
-  overflow-y: auto !important;
+  overflow-y: visible !important;
 }
 
 .diary-shell .kanban-item,
@@ -9859,10 +9859,10 @@ html.dark .diary-shell .kanban-item,
 html.dark .diary-shell .diary-home .kanban-item {
   display: flex !important;
   flex-direction: column !important;
-  gap: 5px !important;
-  padding: 9px 11px !important;
+  gap: 6px !important;
+  padding: 12px 14px !important;
   border: 1px solid var(--border-subtle) !important;
-  border-radius: 6px !important;
+  border-radius: 8px !important;
   background: var(--bg-surface) !important;
   cursor: pointer !important;
   transition: border-color 0.15s ease, background 0.15s ease !important;
@@ -9875,15 +9875,28 @@ html.dark .diary-shell .kanban-item:hover {
 }
 
 .kanban-item strong {
-  font-size: 12px !important;
+  font-size: 12.5px !important;
   color: var(--text-main) !important;
   font-weight: 550 !important;
 }
 
 .kanban-item span,
 .kanban-item small {
-  font-size: 10.5px !important;
+  font-size: 11px !important;
   color: var(--text-muted) !important;
+}
+
+.profile-compact-status strong {
+  color: var(--text-main) !important;
+}
+
+.bento-location-sub {
+  color: var(--text-subtle) !important;
+}
+
+.decision-compact-head span {
+  color: var(--text-subtle) !important;
+  background: transparent !important;
 }
 
 /* DAY SUMMARY & INVENTORY */
