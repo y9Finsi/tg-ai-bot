@@ -5769,16 +5769,10 @@ function App() {
                 <div className={cn('v2-content', view === 'diary' && 'diary-home')}>
                     {view === 'diary' && (
                         <>
-                            <div className="diary-layout-split">
-                                <div className="diary-status-column">
-                                    <NeedsPanel state={state} profile={profile} />
-                                    <InventoryWidget state={state} weather={data?.weather} toast={toast} onOpenInventory={() => setView('inventory')} />
-                                </div>
-                                <div className="diary-kanban-column">
-                                    {/* CurrentDecision stays in the kanban home composition. */}
-                                    <KanbanBoard schedule={data?.schedule} activeTask={data?.activeTask} clockAt={data?.at} health={data?.health} state={state} rationale={data?.rationale} />
-                                </div>
-                            </div>
+                            <NeedsPanel state={state} profile={profile} />
+                            <CurrentDecision activeTask={data?.activeTask} health={data?.health} state={state} rationale={data?.rationale} />
+                            <KanbanBoard schedule={data?.schedule} activeTask={data?.activeTask} clockAt={data?.at} health={data?.health} state={state} rationale={data?.rationale} />
+                            <InventoryWidget state={state} weather={data?.weather} toast={toast} onOpenInventory={() => setView('inventory')} />
                             <DaySummary summary={data?.summary} />
                         </>
                     )}
