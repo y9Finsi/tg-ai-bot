@@ -1608,7 +1608,8 @@ export async function getRandomLeraPhoto({ access_level = null, time_of_day = nu
 
     if (excludeChannelUsed) {
         try {
-            const unposted = await query(
+            // 1. Ищем неопубликованное фото под текущее время суток
+            const unpostedTime = await query(
                 `${sql} AND NOT EXISTS (
                     SELECT 1 FROM channel_post_logs l 
                     WHERE l.status = 'PUBLISHED' 
@@ -1617,9 +1618,39 @@ export async function getRandomLeraPhoto({ access_level = null, time_of_day = nu
                 ) ORDER BY RANDOM() LIMIT 1`,
                 params
             );
-            if (unposted.rows.length > 0) return unposted.rows[0];
-        } catch {
-            // fallback
+            if (unpostedTime.rows.length > 0) return unpostedTime.rows[0];
+
+            // 2. Если все фото под это время суток уже постились — ищем любое другое неопубликованное фото
+            const unpostedAny = await query(
+                `SELECT * FROM lera_photos 
+                 WHERE ($1::text IS NULL OR access_level = $1)
+                   AND NOT EXISTS (
+                    SELECT 1 FROM channel_post_logs l 
+                    WHERE l.status = 'PUBLISHED' 
+                      AND (l.photo_url = lera_photos.file_id 
+                           OR (l.provenance->>'media_content_id') = ('photo:' || lera_photos.id::text))
+                ) ORDER BY RANDOM() LIMIT 1`,
+                [access_level || null]
+            );
+            if (unpostedAny.rows.length > 0) return unpostedAny.rows[0];
+
+            // 3. Если абсолютно все фото уже побывали в канале — берем то, которое публиковалось ДАВНЕЕ всего (LRU)
+            const lruPhoto = await query(
+                `SELECT lera_photos.*, 
+                   COALESCE((
+                     SELECT MAX(l.created_at) FROM channel_post_logs l 
+                     WHERE l.status = 'PUBLISHED' 
+                       AND (l.photo_url = lera_photos.file_id 
+                            OR (l.provenance->>'media_content_id') = ('photo:' || lera_photos.id::text))
+                   ), '1970-01-01'::timestamptz) as last_posted_at
+                 FROM lera_photos
+                 WHERE ($1::text IS NULL OR access_level = $1)
+                 ORDER BY last_posted_at ASC, RANDOM() LIMIT 1`,
+                [access_level || null]
+            );
+            if (lruPhoto.rows.length > 0) return lruPhoto.rows[0];
+        } catch (e) {
+            console.warn('[DB] Ошибка выборки уникального фото для канала:', e.message);
         }
     }
 

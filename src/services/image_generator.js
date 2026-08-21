@@ -124,6 +124,31 @@ export async function getMasterReferenceDataUrl(bot = null) {
     return null;
 }
 
+export function isImageCapableProvider(p) {
+    if (!p || p.is_enabled === false) return false;
+    const name = String(p.name || '').toLowerCase();
+    const model = String(p.model_name || '').toLowerCase();
+    const url = String(p.base_url || '').toLowerCase();
+
+    // Исключаем голосовые сервисы
+    if (name.includes('voice') || model.includes('cosyvoice') || model.includes('tts')) return false;
+
+    return model.includes('image') ||
+        model.includes('gpt-image') ||
+        model.includes('dall') ||
+        model.includes('flux') ||
+        model.includes('sd') ||
+        model.includes('pic') ||
+        model.includes('ideogram') ||
+        model.includes('midjourney') ||
+        model.includes('imagen') ||
+        name.includes('image') ||
+        name.includes('pic') ||
+        name.includes('flux') ||
+        name.includes('dall') ||
+        url.includes('gemini-web-to-api');
+}
+
 /**
  * Подбирает наиболее подходящий AI-провайдер для генерации картинок
  */
@@ -135,21 +160,11 @@ export function pickImageProvider(providers = [], preferredProviderId = null) {
         if (found) return found;
     }
 
-    // Ищем провайдеры с моделью/именем image, gpt-image, pic, dall, flux, sd, gemini
-    const imageProvider = providers.find(p =>
-        p.is_enabled !== false &&
-        (String(p.model_name || '').toLowerCase().includes('image') ||
-         String(p.model_name || '').toLowerCase().includes('gemini') ||
-         String(p.model_name || '').toLowerCase().includes('dall') ||
-         String(p.model_name || '').toLowerCase().includes('flux') ||
-         String(p.model_name || '').toLowerCase().includes('pic') ||
-         String(p.name || '').toLowerCase().includes('image') ||
-         String(p.name || '').toLowerCase().includes('gemini') ||
-         String(p.name || '').toLowerCase().includes('pic') ||
-         String(p.name || '').toLowerCase().includes('dall') ||
-         String(p.name || '').toLowerCase().includes('flux'))
-    );
-    if (imageProvider) return imageProvider;
+    const capable = providers.filter(isImageCapableProvider);
+    if (capable.length > 0) {
+        capable.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+        return capable[0];
+    }
 
     // Fallback: активный провайдер или первый включенный
     return providers.find(p => p.is_active && p.is_enabled !== false) || providers.find(p => p.is_enabled !== false) || providers[0];
@@ -438,7 +453,7 @@ export async function generateLeraPhoto({
     // Составляем цепочку провайдеров: primary -> остальные enabled провайдеры
     const candidateProviders = [primaryProvider];
     for (const p of providers) {
-        if (p.is_enabled !== false && Number(p.id) !== Number(primaryProvider.id)) {
+        if (p.is_enabled !== false && Number(p.id) !== Number(primaryProvider.id) && isImageCapableProvider(p)) {
             candidateProviders.push(p);
         }
     }
