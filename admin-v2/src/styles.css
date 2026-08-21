@@ -1177,7 +1177,7 @@
 
 .diary-home .kanban-item-active .progress {
   height: 4px;
-  background: #1e3a8a;
+  background: #27272a;
 }
 
 .diary-home .kanban-item-active .progress i {
@@ -6013,8 +6013,8 @@ summary:focus-visible,
   --muted: oklch(0.45 0 0);
   --subtle: oklch(0.56 0 0);
   --legacy-muted: var(--muted-foreground);
-  --legacy-subtle: oklch(0.69 0.025 258);
-  --blue: oklch(0.55 0.18 262);
+  --legacy-subtle: oklch(0.69 0 0);
+  --blue: oklch(0.985 0 0);
   --yellow: oklch(0.72 0.15 83);
   --green: oklch(0.56 0.16 152);
   --red: oklch(0.58 0.2 27);
@@ -6029,8 +6029,8 @@ summary:focus-visible,
   --color-text-primary: var(--foreground);
   --color-text-secondary: var(--muted-foreground);
   --color-text-tertiary: oklch(0.56 0 0);
-  --color-accent: oklch(0.55 0.18 262);
-  --color-accent-hover: oklch(0.48 0.18 262);
+  --color-accent: oklch(0.985 0 0);
+  --color-accent-hover: oklch(0.85 0 0);
   --color-accent-subtle: color-mix(in oklch, var(--primary) 18%, var(--card));
   --color-success: oklch(0.54 0.16 152);
   --color-success-bg: color-mix(in oklch, var(--color-success) 18%, var(--card));
@@ -9327,8 +9327,7 @@ html.dark .diary-shell .diary-home {
 
 /* CARDS & PANELS */
 .ui-card-frameless,
-.needs-card,
-.kanban-card {
+.needs-card {
   display: flex !important;
   flex-direction: column !important;
   gap: 14px !important;
@@ -9338,6 +9337,19 @@ html.dark .diary-shell .diary-home {
   background: transparent !important;
   box-shadow: none !important;
   margin-bottom: 0 !important;
+}
+
+.kanban-card {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 18px !important;
+  width: 100% !important;
+  padding: 20px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 12px !important;
+  background: var(--panel) !important;
+  box-shadow: none !important;
+  margin-bottom: 32px !important;
 }
 
 .card-header {
@@ -9451,192 +9463,6 @@ html.dark .diary-shell .diary-home {
 }
 
 /* 6-COLUMN NEEDS GRID (Full width) */
-.diary-shell .needs-compact-grid,
-.diary-shell .diary-home .needs-compact-grid,
-html.dark .diary-shell .needs-compact-grid,
-html.dark .diary-shell .diary-home .needs-compact-grid {
-  display: grid !important;
-  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-  gap: 10px !important;
-  width: 100% !important;
-  overflow: visible !important;
-  margin-bottom: 0 !important;
-}
-
-@media (max-width: 1100px) {
-  .diary-shell .needs-compact-grid,
-  .diary-shell .diary-home .needs-compact-grid,
-  html.dark .diary-shell .needs-compact-grid,
-  html.dark .diary-shell .diary-home .needs-compact-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  }
-}
-
-@media (max-width: 600px) {
-  .diary-shell .needs-compact-grid,
-  .diary-shell .diary-home .needs-compact-grid,
-  html.dark .diary-shell .needs-compact-grid,
-  html.dark .diary-shell .diary-home .needs-compact-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-}
-
-.diary-shell .need-compact-item,
-.diary-shell .diary-home .need-compact-item,
-html.dark .diary-shell .need-compact-item,
-html.dark .diary-shell .diary-home .need-compact-item {
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: space-between !important;
-  min-height: 84px !important;
-  height: auto !important;
-  padding: 10px 12px !important;
-  border: 1px solid var(--border-subtle) !important;
-  border-radius: 8px !important;
-  background: var(--bg-surface) !important;
-  gap: 6px !important;
-  transition: border-color 0.15s ease !important;
-}
-
-.diary-shell .need-compact-item:hover,
-html.dark .diary-shell .need-compact-item:hover {
-  border-color: var(--border-strong) !important;
-}
-
-.need-compact-head {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  width: 100% !important;
-}
-
-.need-title-group {
-  display: flex !important;
-  align-items: center !important;
-  gap: 7px !important;
-}
-
-.need-title-group strong {
-  font-size: 12.5px !important;
-  font-weight: 550 !important;
-  color: var(--text-main) !important;
-}
-
-.need-icon-badge {
-  display: grid !important;
-  place-items: center !important;
-  width: 24px !important;
-  height: 24px !important;
-  border-radius: 6px !important;
-  background: #18181c !important;
-  color: var(--text-muted) !important;
-}
-
-.need-icon-critical {
-  color: var(--color-accent-red) !important;
-  background: rgba(239, 68, 68, 0.12) !important;
-}
-
-.need-icon-warning {
-  color: var(--color-accent-yellow) !important;
-  background: rgba(234, 179, 8, 0.12) !important;
-}
-
-.need-icon-good {
-  color: var(--color-accent-green) !important;
-  background: rgba(34, 197, 94, 0.12) !important;
-}
-
-.need-compact-foot {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 4px !important;
-  width: 100% !important;
-}
-
-.need-compact-foot .need-status {
-  display: flex !important;
-  justify-content: space-between !important;
-  font-size: 11px !important;
-  color: var(--text-subtle) !important;
-}
-
-.need-compact-foot .progress {
-  height: 4px !important;
-  border-radius: 999px !important;
-  background: #1e1e24 !important;
-  overflow: hidden !important;
-}
-
-/* 4-COLUMN BENTO ROW (Location, Mood, Money, Cycle) */
-.diary-shell .bento-needs-layout,
-.diary-shell .diary-home .bento-needs-layout,
-.diary-shell .diary-home > .needs-card > .bento-needs-layout,
-html.dark .diary-shell .bento-needs-layout,
-html.dark .diary-shell .diary-home .bento-needs-layout,
-html.dark .diary-shell .diary-home > .needs-card > .bento-needs-layout {
-  display: block !important;
-  width: 100% !important;
-}
-
-.diary-shell .bento-left,
-.diary-shell .diary-home .bento-left,
-html.dark .diary-shell .bento-left,
-html.dark .diary-shell .diary-home .bento-left {
-  display: grid !important;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  grid-template-rows: auto !important;
-  grid-template-areas: none !important;
-  gap: 10px !important;
-  width: 100% !important;
-  height: auto !important;
-  min-height: 0 !important;
-  max-height: none !important;
-}
-
-.diary-shell .diary-home > .needs-card > .card-header,
-.diary-shell .diary-home > .needs-card > .profile-compact-card,
-html.dark .diary-shell .diary-home > .needs-card > .card-header,
-html.dark .diary-shell .diary-home > .needs-card > .profile-compact-card {
-  display: flex !important;
-  width: 100% !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-}
-
-.diary-shell .needs-compact-grid,
-.diary-shell .diary-home .needs-compact-grid,
-.diary-shell .diary-home > .needs-card > .needs-compact-grid,
-html.dark .diary-shell .needs-compact-grid,
-html.dark .diary-shell .diary-home .needs-compact-grid,
-html.dark .diary-shell .diary-home > .needs-card > .needs-compact-grid {
-  display: grid !important;
-  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-  gap: 10px !important;
-  width: 100% !important;
-  height: auto !important;
-  min-height: 84px !important;
-  overflow: visible !important;
-  margin-bottom: 0 !important;
-}
-
-@media (max-width: 1024px) {
-  .diary-shell .bento-left,
-  .diary-shell .diary-home .bento-left,
-  html.dark .diary-shell .bento-left,
-  html.dark .diary-shell .diary-home .bento-left {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-}
-
-@media (max-width: 560px) {
-  .diary-shell .bento-left,
-  .diary-shell .diary-home .bento-left,
-  html.dark .diary-shell .bento-left,
-  html.dark .diary-shell .diary-home .bento-left {
-    grid-template-columns: 1fr !important;
-  }
-}
 
 .diary-shell .bento-stat-card,
 .diary-shell .diary-home .bento-stat-card,
@@ -9692,64 +9518,37 @@ html.dark .diary-shell .bento-location-name {
 }
 
 /* CURRENT DECISION */
-.diary-shell .decision-compact-card,
-.diary-shell .diary-home .decision-compact-card,
-html.dark .diary-shell .decision-compact-card,
-html.dark .diary-shell .diary-home .decision-compact-card {
+.decision-compact-card {
   display: flex !important;
-  flex-direction: row !important;
   align-items: center !important;
   justify-content: space-between !important;
-  gap: 16px !important;
-  padding: 12px 16px !important;
+  gap: 12px !important;
+  padding: 10px 14px !important;
   border: 1px solid var(--border-subtle) !important;
   border-radius: 8px !important;
   background: var(--bg-surface) !important;
   width: 100% !important;
-  height: auto !important;
-  min-height: 48px !important;
-  max-height: none !important;
   box-sizing: border-box !important;
-  margin: 0 !important;
+  margin-bottom: 0 !important;
 }
 
-.diary-shell .decision-compact-head,
-.diary-shell .diary-home .decision-compact-head,
-html.dark .diary-shell .decision-compact-head,
-html.dark .diary-shell .diary-home .decision-compact-head {
-  display: flex !important;
-  align-items: center !important;
-  gap: 10px !important;
-  flex-shrink: 0 !important;
-}
-
-.decision-title-group {
+.decision-compact-head {
   display: flex !important;
   align-items: center !important;
   gap: 8px !important;
 }
 
 .decision-task-name {
-  font-size: 13.5px !important;
+  font-size: 13px !important;
   font-weight: 600 !important;
   color: var(--text-main) !important;
 }
 
-.diary-shell .decision-compact-body,
-.diary-shell .diary-home .decision-compact-body,
-html.dark .diary-shell .decision-compact-body,
-html.dark .diary-shell .diary-home .decision-compact-body {
-  display: flex !important;
-  align-items: center !important;
-  gap: 10px !important;
-  flex-wrap: wrap !important;
-}
-
-.decision-row-main,
-.decision-row-sub {
+.decision-compact-body {
   display: flex !important;
   align-items: center !important;
   gap: 8px !important;
+  flex-wrap: wrap !important;
 }
 
 .decision-pill {
@@ -9757,7 +9556,6 @@ html.dark .diary-shell .diary-home .decision-compact-body {
   align-items: center !important;
   gap: 6px !important;
   padding: 4px 8px !important;
-  border: 1px solid var(--border-strong) !important;
   border-radius: 6px !important;
   background: var(--bg-surface-elevated) !important;
   font-size: 11px !important;
@@ -9787,8 +9585,7 @@ html.dark .diary-shell .diary-home .decision-compact-body {
 }
 
 .decision-pill-reason {
-  background: var(--bg-surface-elevated) !important;
-  border: 1px solid var(--border-strong) !important;
+  background: #1e1e24 !important;
 }
 
 .decision-pill-reason strong {
@@ -9802,7 +9599,7 @@ html.dark .diary-shell .kanban-board,
 html.dark .diary-shell .diary-home .kanban-board {
   display: grid !important;
   grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-  gap: 12px !important;
+  gap: 16px !important;
   width: 100% !important;
 }
 
@@ -9830,13 +9627,11 @@ html.dark .diary-shell .kanban-column,
 html.dark .diary-shell .diary-home .kanban-column {
   display: flex !important;
   flex-direction: column !important;
-  gap: 10px !important;
-  padding: 12px !important;
-  border: 1px solid var(--border-subtle) !important;
-  border-radius: 8px !important;
-  background: var(--bg-surface) !important;
-  min-height: 400px !important;
-  box-sizing: border-box !important;
+  gap: 8px !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  min-height: auto !important;
 }
 
 .kanban-column-head {
@@ -9845,17 +9640,17 @@ html.dark .diary-shell .diary-home .kanban-column {
   justify-content: space-between !important;
   padding-bottom: 8px !important;
   border-bottom: 1px solid var(--border-subtle) !important;
-  margin-bottom: 2px !important;
+  margin-bottom: 4px !important;
 }
 
 .kanban-column-head strong {
-  font-size: 12.5px !important;
+  font-size: 12px !important;
   font-weight: 600 !important;
   color: var(--text-main) !important;
 }
 
 .kanban-column-head span {
-  font-size: 11px !important;
+  font-size: 10.5px !important;
   color: var(--text-subtle) !important;
 }
 
@@ -9865,10 +9660,10 @@ html.dark .diary-shell .diary-home .kanban-column {
   justify-content: center !important;
   min-width: 18px !important;
   height: 18px !important;
-  padding: 0 5px !important;
+  padding: 0 4px !important;
   border-radius: 999px !important;
-  background: #27272a !important;
-  font-size: 10.5px !important;
+  background: #1e1e24 !important;
+  font-size: 10px !important;
   font-weight: 600 !important;
   color: var(--text-muted) !important;
 }
@@ -9881,7 +9676,7 @@ html.dark .diary-shell .diary-home .kanban-list {
   flex-direction: column !important;
   gap: 8px !important;
   flex: 1 1 auto !important;
-  overflow-y: auto !important;
+  overflow-y: visible !important;
 }
 
 .diary-shell .kanban-item,
@@ -9891,18 +9686,18 @@ html.dark .diary-shell .diary-home .kanban-item {
   display: flex !important;
   flex-direction: column !important;
   gap: 6px !important;
-  padding: 10px 12px !important;
-  border: 1px solid var(--border-strong) !important;
-  border-radius: 6px !important;
-  background: var(--bg-surface-elevated) !important;
+  padding: 12px 14px !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 8px !important;
+  background: var(--bg-surface) !important;
   cursor: pointer !important;
   transition: border-color 0.15s ease, background 0.15s ease !important;
 }
 
 .diary-shell .kanban-item:hover,
 html.dark .diary-shell .kanban-item:hover {
-  border-color: #3f3f46 !important;
-  background: #222226 !important;
+  border-color: var(--border-strong) !important;
+  background: var(--bg-surface-elevated) !important;
 }
 
 .kanban-item strong {

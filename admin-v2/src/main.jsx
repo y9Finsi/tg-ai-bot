@@ -428,50 +428,48 @@ function NeedsPanel({ state, profile, activeTask, health, rationale }) {
                 })}
             </div>
 
-            <div className="bento-needs-layout needs-overview">
-                <div className="bento-left">
-                    <div className="bento-stat-card bento-location-card">
-                        <div className="bento-stat-header">
-                            <span className="bento-icon bento-icon-neutral"><MapPin size={15} /></span>
+            <div className="stat-grid" style={{ marginTop: '16px', marginBottom: 0 }}>
+                    <div className="stat-card bento-location-card">
+                        <div className="stat-icon bento-icon-neutral"><MapPin size={15} /></div>
+                        <div>
                             <span>Текущее местоположение</span>
+                            <strong>{formatLocation(state?.location_name) || state?.location_name || 'дом на Петроградке'}</strong>
+                            <small>Лера находится здесь</small>
                         </div>
-                        <strong className="bento-location-name">{formatLocation(state?.location_name) || state?.location_name || 'дом на Петроградке'}</strong>
-                        <span className="bento-location-sub">Лера находится здесь</span>
                     </div>
 
-                    <div className="bento-stat-card bento-mood">
-                        <div className="bento-stat-header">
-                            <span className="bento-icon bento-icon-neutral"><HeartPulse size={15} /></span>
+                    <div className="stat-card bento-mood">
+                        <div className="stat-icon bento-icon-neutral"><HeartPulse size={15} /></div>
+                        <div>
                             <span>Настроение</span>
+                            <strong>{mood}/100</strong>
+                            <small>{moodLabel}</small>
                         </div>
-                        <strong>{mood}/100</strong>
-                        <small>{moodLabel}</small>
                     </div>
 
-                    <div className="bento-stat-card bento-money">
-                        <div className="bento-stat-header">
-                            <span className="bento-icon bento-icon-neutral"><Wallet size={15} /></span>
+                    <div className="stat-card bento-money">
+                        <div className="stat-icon bento-icon-neutral"><Wallet size={15} /></div>
+                        <div>
                             <span>Деньги</span>
+                            <strong>{Number(state?.wallet_rubles || 0).toLocaleString('ru-RU')} ₽</strong>
+                            <small>Баланс Леры</small>
                         </div>
-                        <strong>{Number(state?.wallet_rubles || 0).toLocaleString('ru-RU')} ₽</strong>
-                        <small>Баланс Леры</small>
                     </div>
 
-                    <div className="bento-stat-card bento-cycle-card">
-                        <div className="bento-stat-header">
-                            <span className="bento-icon bento-icon-neutral"><Calendar size={15} /></span>
-                            <span>Трекер цикла</span>
+                    <div className="stat-card bento-cycle-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div className="stat-icon bento-icon-neutral" style={{ width: 24, height: 24 }}><Calendar size={13} /></div>
+                            <span style={{ fontSize: '12px', color: 'var(--legacy-subtle)' }}>Трекер цикла</span>
                             <Badge variant={cycleMeta.tone} style={{ marginLeft: 'auto' }}>{cycleMeta.phase}</Badge>
                         </div>
-                        <div className="bento-cycle-head">
-                            <strong>День {cycleMeta.day} из 28</strong>
-                            <small>{cycleMeta.hint}</small>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                            <strong style={{ fontSize: '14px', color: '#fff' }}>День {cycleMeta.day} из 28</strong>
+                            <small style={{ fontSize: '12px', color: 'var(--legacy-muted)' }}>{cycleMeta.hint}</small>
                         </div>
-                        <div className="bento-cycle-bar">
+                        <div className="bento-cycle-bar" style={{ marginTop: '0', marginBottom: '4px' }}>
                             <div className="bento-cycle-progress" style={{ width: `${(cycleMeta.day / 28) * 100}%` }} />
                         </div>
                     </div>
-                </div>
             </div>
         </Card>
     );
@@ -5227,7 +5225,7 @@ function ContentPanel({ toast }) {
                                             </div>
                                             <audio controls autoPlay src={testVoiceResult.audioDataUrl} style={{ width: '100%', maxWidth: 400 }} />
                                             {testVoiceResult.telegramSent && (
-                                                <div style={{ fontSize: 12, color: '#60a5fa' }}>
+                                                <div style={{ fontSize: 12, color: '#e4e4e7' }}>
                                                     🚀 Также отправлено в Telegram админа!
                                                 </div>
                                             )}
