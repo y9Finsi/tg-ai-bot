@@ -432,30 +432,29 @@ function NeedsPanel({ state, profile, activeTask, health, rationale }) {
                 <div className="bento-left">
                     <div className="bento-stat-card bento-location-card">
                         <div className="bento-stat-header">
-                            <span className="bento-icon bento-icon-blue"><MapPin size={18} /></span>
+                            <span className="bento-icon bento-icon-blue"><MapPin size={16} /></span>
                             <span>Текущее местоположение</span>
                         </div>
                         <strong className="bento-location-name">{formatLocation(state?.location_name) || state?.location_name || 'дом на Петроградке'}</strong>
                         <span className="bento-location-sub">Лера находится здесь</span>
                     </div>
 
-                    <div className="bento-stat-row">
-                        <div className="bento-stat-card bento-mood">
-                            <div className="bento-stat-header">
-                                <span className="bento-icon bento-icon-purple"><HeartPulse size={15} /></span>
-                                <span>Настроение</span>
-                            </div>
-                            <strong>{mood}/100</strong>
-                            <small>{moodLabel}</small>
+                    <div className="bento-stat-card bento-mood">
+                        <div className="bento-stat-header">
+                            <span className="bento-icon bento-icon-purple"><HeartPulse size={15} /></span>
+                            <span>Настроение</span>
                         </div>
+                        <strong>{mood}/100</strong>
+                        <small>{moodLabel}</small>
+                    </div>
 
-                        <div className="bento-stat-card">
-                            <div className="bento-stat-header">
-                                <span className="bento-icon bento-icon-yellow"><Wallet size={15} /></span>
-                                <span>Деньги</span>
-                            </div>
-                            <strong>{Number(state?.wallet_rubles || 0).toLocaleString('ru-RU')} ₽</strong>
+                    <div className="bento-stat-card bento-money">
+                        <div className="bento-stat-header">
+                            <span className="bento-icon bento-icon-yellow"><Wallet size={15} /></span>
+                            <span>Деньги</span>
                         </div>
+                        <strong>{Number(state?.wallet_rubles || 0).toLocaleString('ru-RU')} ₽</strong>
+                        <small>Баланс Леры</small>
                     </div>
 
                     <div className="bento-stat-card bento-cycle-card">
@@ -769,7 +768,6 @@ function KanbanBoard({ schedule = [], activeTask = null, clockAt = null, health,
     return (
         <Card className="kanban-card ui-card-frameless">
             <CardHeader eyebrow="Жизнь задач" title="Что происходит с планами" description="Каждая карточка проходит путь от приглашения или плана к выполнению, факту или понятной причине отмены." />
-            <CurrentDecision activeTask={activeTask} health={health} state={state} rationale={rationale} />
             <div className="kanban-board">
                 {columns.map(([key, title, rows, hint]) => (
                     <section className={`kanban-column kanban-${key}`} key={key}>
