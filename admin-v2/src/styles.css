@@ -9095,3 +9095,373 @@ html.dark .diary-shell :where(
 ) {
   overflow-wrap: anywhere;
 }
+
+/* ==========================================================================
+   MODERN FULL-WIDTH SAAS ADMIN OVERRIDES
+   ========================================================================== */
+
+.v2-shell,
+.diary-shell,
+html.dark .diary-shell {
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 100vh !important;
+  width: 100% !important;
+  background: #09090b !important;
+  color: #f4f4f5 !important;
+}
+
+.v2-topbar,
+html.dark .v2-topbar {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 50 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  width: 100% !important;
+  height: 56px !important;
+  min-height: 56px !important;
+  padding: 0 24px !important;
+  background: rgba(9, 9, 11, 0.95) !important;
+  backdrop-filter: blur(16px) !important;
+  border-bottom: 1px solid #27272a !important;
+  box-sizing: border-box !important;
+}
+
+.topbar-brand {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  flex-shrink: 0 !important;
+}
+
+.topbar-brand .brand-mark {
+  display: grid !important;
+  place-items: center !important;
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 8px !important;
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #8b5cf6, #6366f1) !important;
+  font-weight: 800 !important;
+  font-size: 14px !important;
+  box-shadow: 0 2px 10px rgba(139, 92, 246, 0.3) !important;
+}
+
+.topbar-brand .brand-title {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.topbar-brand strong {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+  line-height: 1.2 !important;
+}
+
+.topbar-brand span {
+  font-size: 10px !important;
+  color: #71717a !important;
+  line-height: 1.2 !important;
+}
+
+.diary-shell .diary-tabs-root,
+html.dark .diary-shell .diary-tabs-root {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.diary-shell .diary-tabbar,
+html.dark .diary-shell .diary-tabbar {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 3px 4px !important;
+  border: 1px solid #27272a !important;
+  border-radius: 8px !important;
+  background: #141416 !important;
+  overflow-x: auto !important;
+  max-width: 100% !important;
+  scrollbar-width: none !important;
+}
+
+.diary-shell .diary-tabbar::-webkit-scrollbar,
+html.dark .diary-shell .diary-tabbar::-webkit-scrollbar {
+  display: none !important;
+}
+
+.diary-shell .diary-tabbar button,
+.diary-shell .diary-tabbar [role="tab"],
+html.dark .diary-shell .diary-tabbar button,
+html.dark .diary-shell .diary-tabbar [role="tab"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 6px 12px !important;
+  min-height: 32px !important;
+  height: 32px !important;
+  border: 1px solid transparent !important;
+  border-radius: 6px !important;
+  color: #a1a1aa !important;
+  background: transparent !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  transition: all 0.15s ease !important;
+}
+
+.diary-shell .diary-tabbar button:hover,
+.diary-shell .diary-tabbar [role="tab"]:hover,
+html.dark .diary-shell .diary-tabbar button:hover,
+html.dark .diary-shell .diary-tabbar [role="tab"]:hover {
+  color: #ffffff !important;
+  background: #222226 !important;
+}
+
+.diary-shell .diary-tabbar button[data-state="active"],
+.diary-shell .diary-tabbar [role="tab"][data-state="active"],
+html.dark .diary-shell .diary-tabbar button[data-state="active"],
+html.dark .diary-shell .diary-tabbar [role="tab"][data-state="active"] {
+  color: #ffffff !important;
+  background: #27272a !important;
+  border-color: #3f3f46 !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4) !important;
+}
+
+.diary-shell .diary-tabbar button[data-state="active"] svg,
+.diary-shell .diary-tabbar [role="tab"][data-state="active"] svg,
+html.dark .diary-shell .diary-tabbar button[data-state="active"] svg,
+html.dark .diary-shell .diary-tabbar [role="tab"][data-state="active"] svg {
+  color: #60a5fa !important;
+}
+
+.topbar-status-bar {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.v2-main,
+.diary-shell .v2-main {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.v2-content,
+.diary-shell .v2-content,
+.diary-shell .diary-home,
+html.dark .diary-shell .v2-content,
+html.dark .diary-shell .diary-home {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 24px !important;
+  width: 100% !important;
+  max-width: 1440px !important;
+  margin: 0 auto !important;
+  padding: 24px clamp(16px, 3vw, 40px) 64px !important;
+  overflow: visible !important;
+  background: transparent !important;
+}
+
+.diary-shell .diary-home > .needs-card,
+.diary-shell .diary-home > .kanban-card,
+html.dark .diary-shell .diary-home > .needs-card,
+html.dark .diary-shell .diary-home > .kanban-card {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+  width: 100% !important;
+  margin-bottom: 0 !important;
+}
+
+.diary-shell .needs-compact-grid,
+.diary-shell .diary-home .needs-compact-grid,
+.diary-shell .diary-home > .needs-card > .needs-compact-grid,
+html.dark .diary-shell .needs-compact-grid,
+html.dark .diary-shell .diary-home .needs-compact-grid,
+html.dark .diary-shell .diary-home > .needs-card > .needs-compact-grid {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  width: 100% !important;
+  overflow: visible !important;
+}
+
+@media (max-width: 1100px) {
+  .diary-shell .needs-compact-grid,
+  .diary-shell .diary-home .needs-compact-grid,
+  .diary-shell .diary-home > .needs-card > .needs-compact-grid,
+  html.dark .diary-shell .needs-compact-grid,
+  html.dark .diary-shell .diary-home .needs-compact-grid,
+  html.dark .diary-shell .diary-home > .needs-card > .needs-compact-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .diary-shell .needs-compact-grid,
+  .diary-shell .diary-home .needs-compact-grid,
+  .diary-shell .diary-home > .needs-card > .needs-compact-grid,
+  html.dark .diary-shell .needs-compact-grid,
+  html.dark .diary-shell .diary-home .needs-compact-grid,
+  html.dark .diary-shell .diary-home > .needs-card > .needs-compact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+.diary-shell .need-compact-item,
+.diary-shell .diary-home .need-compact-item,
+html.dark .diary-shell .need-compact-item,
+html.dark .diary-shell .diary-home .need-compact-item {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  min-height: 110px !important;
+  height: auto !important;
+  padding: 12px 14px !important;
+  border: 1px solid #27272a !important;
+  border-radius: 10px !important;
+  background: #141416 !important;
+  flex: none !important;
+}
+
+.diary-shell .bento-needs-layout,
+.diary-shell .diary-home .bento-needs-layout,
+.diary-shell .diary-home > .needs-card > .bento-needs-layout,
+html.dark .diary-shell .bento-needs-layout,
+html.dark .diary-shell .diary-home .bento-needs-layout,
+html.dark .diary-shell .diary-home > .needs-card > .bento-needs-layout {
+  display: block !important;
+  width: 100% !important;
+}
+
+.diary-shell .bento-left,
+.diary-shell .diary-home .bento-left,
+html.dark .diary-shell .bento-left,
+html.dark .diary-shell .diary-home .bento-left {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  width: 100% !important;
+}
+
+@media (max-width: 900px) {
+  .diary-shell .bento-left,
+  .diary-shell .diary-home .bento-left,
+  html.dark .diary-shell .bento-left,
+  html.dark .diary-shell .diary-home .bento-left {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .diary-shell .bento-left,
+  .diary-shell .diary-home .bento-left,
+  html.dark .diary-shell .bento-left,
+  html.dark .diary-shell .diary-home .bento-left {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.diary-shell .bento-stat-row,
+.diary-shell .diary-home .bento-stat-row,
+html.dark .diary-shell .bento-stat-row,
+html.dark .diary-shell .diary-home .bento-stat-row {
+  display: contents !important;
+}
+
+.diary-shell .bento-stat-card,
+.diary-shell .diary-home .bento-stat-card,
+html.dark .diary-shell .bento-stat-card,
+html.dark .diary-shell .diary-home .bento-stat-card {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  padding: 14px 16px !important;
+  border: 1px solid #27272a !important;
+  border-radius: 10px !important;
+  background: #141416 !important;
+}
+
+.diary-shell .kanban-board,
+.diary-shell .diary-home .kanban-board,
+html.dark .diary-shell .kanban-board,
+html.dark .diary-shell .diary-home .kanban-board {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  width: 100% !important;
+}
+
+@media (max-width: 1024px) {
+  .diary-shell .kanban-board,
+  .diary-shell .diary-home .kanban-board,
+  html.dark .diary-shell .kanban-board,
+  html.dark .diary-shell .diary-home .kanban-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .diary-shell .kanban-board,
+  .diary-shell .diary-home .kanban-board,
+  html.dark .diary-shell .kanban-board,
+  html.dark .diary-shell .diary-home .kanban-board {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.diary-shell .kanban-column,
+.diary-shell .diary-home .kanban-column,
+html.dark .diary-shell .kanban-column,
+html.dark .diary-shell .diary-home .kanban-column {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  padding: 14px !important;
+  border: 1px solid #27272a !important;
+  border-radius: 10px !important;
+  background: #121215 !important;
+}
+
+.diary-shell .kanban-list,
+.diary-shell .diary-home .kanban-list,
+html.dark .diary-shell .kanban-list,
+html.dark .diary-shell .diary-home .kanban-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  max-height: 480px !important;
+  overflow-y: auto !important;
+}
+
+.diary-shell .kanban-item,
+.diary-shell .diary-home .kanban-item,
+html.dark .diary-shell .kanban-item,
+html.dark .diary-shell .diary-home .kanban-item {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  padding: 10px 12px !important;
+  border: 1px solid #27272a !important;
+  border-radius: 8px !important;
+  background: #18181b !important;
+}
+
