@@ -769,6 +769,7 @@ function KanbanBoard({ schedule = [], activeTask = null, clockAt = null, health,
     return (
         <Card className="kanban-card ui-card-frameless">
             <CardHeader eyebrow="Жизнь задач" title="Что происходит с планами" description="Каждая карточка проходит путь от приглашения или плана к выполнению, факту или понятной причине отмены." />
+            <CurrentDecision activeTask={activeTask} health={health} state={state} rationale={rationale} />
             <div className="kanban-board">
                 {columns.map(([key, title, rows, hint]) => (
                     <section className={`kanban-column kanban-${key}`} key={key}>
@@ -5668,7 +5669,7 @@ function SystemPanel({ readOnly, setReadOnly, toast }) {
     );
 }
 
-function DiaryTabbar({ view, setView, health, locationName }) {
+function DiaryTabbar({ view, setView }) {
     return (
         <header className="v2-topbar">
             <div className="topbar-brand">
@@ -5680,20 +5681,20 @@ function DiaryTabbar({ view, setView, health, locationName }) {
             </div>
             <Tabs.Root className="diary-tabs-root" value={view} onValueChange={setView}>
                 <Tabs.List className="diary-tabbar" aria-label="Разделы админки">
-                    <Tabs.Trigger value="diary"><FileText size={14} /> Дневник дня</Tabs.Trigger>
-                    <Tabs.Trigger value="dialogs"><MessageSquare size={14} /> Диалоги</Tabs.Trigger>
-                    <Tabs.Trigger value="llm-settings"><Settings2 size={14} /> AI Sandbox & Prompts</Tabs.Trigger>
-                    <Tabs.Trigger value="crm"><Users size={14} /> CRM Пользователей</Tabs.Trigger>
-                    <Tabs.Trigger value="content"><Image size={14} /> Контент и Канал</Tabs.Trigger>
-                    <Tabs.Trigger value="inventory"><Backpack size={14} /> Рюкзак Леры</Tabs.Trigger>
-                    <Tabs.Trigger value="system"><Zap size={14} /> Движок и Операции</Tabs.Trigger>
+                    <Tabs.Trigger value="diary"><FileText size={14} /> <span>Дневник дня</span></Tabs.Trigger>
+                    <Tabs.Trigger value="dialogs"><MessageSquare size={14} /> <span>Диалоги</span></Tabs.Trigger>
+                    <Tabs.Trigger value="llm-settings"><Settings2 size={14} /> <span>AI Sandbox & Prompts</span></Tabs.Trigger>
+                    <Tabs.Trigger value="crm"><Users size={14} /> <span>CRM Пользователей</span></Tabs.Trigger>
+                    <Tabs.Trigger value="content"><Image size={14} /> <span>Контент и Канал</span></Tabs.Trigger>
+                    <Tabs.Trigger value="inventory"><Backpack size={14} /> <span>Рюкзак Леры</span></Tabs.Trigger>
+                    <Tabs.Trigger value="system"><Zap size={14} /> <span>Движок и Операции</span></Tabs.Trigger>
                 </Tabs.List>
             </Tabs.Root>
             <div className="topbar-status-bar">
-                <Badge variant={health?.status === 'ONLINE' ? 'green' : 'yellow'}>
-                    <span className="status-dot" /> {health?.status || 'ONLINE'}
+                <Badge variant="green">
+                    <span className="status-dot" /> ONLINE
                 </Badge>
-                <Badge>{locationName || 'Санкт-Петербург'}</Badge>
+                <Badge>Санкт-Петербург</Badge>
             </div>
         </header>
     );
@@ -5768,10 +5769,16 @@ function App() {
                 <div className={cn('v2-content', view === 'diary' && 'diary-home')}>
                     {view === 'diary' && (
                         <>
-                            <NeedsPanel state={state} profile={profile} />
-                            <InventoryWidget state={state} weather={data?.weather} toast={toast} onOpenInventory={() => setView('inventory')} />
-                            {/* CurrentDecision stays in the kanban home composition. */}
-                            <KanbanBoard schedule={data?.schedule} activeTask={data?.activeTask} clockAt={data?.at} health={data?.health} state={state} rationale={data?.rationale} />
+                            <div className="diary-layout-split">
+                                <div className="diary-status-column">
+                                    <NeedsPanel state={state} profile={profile} />
+                                    <InventoryWidget state={state} weather={data?.weather} toast={toast} onOpenInventory={() => setView('inventory')} />
+                                </div>
+                                <div className="diary-kanban-column">
+                                    {/* CurrentDecision stays in the kanban home composition. */}
+                                    <KanbanBoard schedule={data?.schedule} activeTask={data?.activeTask} clockAt={data?.at} health={data?.health} state={state} rationale={data?.rationale} />
+                                </div>
+                            </div>
                             <DaySummary summary={data?.summary} />
                         </>
                     )}
