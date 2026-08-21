@@ -363,11 +363,11 @@
 
 .diary-home > .needs-card,
 .diary-home > .kanban-card {
-  display: contents;
+  display: flex;
 }
 
 .diary-home > .day-summary {
-  display: none;
+  display: block;
 }
 
 .diary-home > .kanban-card > .card-header {
@@ -398,7 +398,7 @@
 
 .diary-home > .needs-card > .card-header,
 .diary-home > .needs-card > .profile-compact-card {
-  display: none;
+  display: block;
 }
 
 .diary-home > .needs-card > .needs-compact-grid {
@@ -9571,8 +9571,10 @@ html.dark .diary-shell .need-compact-item:hover {
 /* 4-COLUMN BENTO ROW (Location, Mood, Money, Cycle) */
 .diary-shell .bento-needs-layout,
 .diary-shell .diary-home .bento-needs-layout,
+.diary-shell .diary-home > .needs-card > .bento-needs-layout,
 html.dark .diary-shell .bento-needs-layout,
-html.dark .diary-shell .diary-home .bento-needs-layout {
+html.dark .diary-shell .diary-home .bento-needs-layout,
+html.dark .diary-shell .diary-home > .needs-card > .bento-needs-layout {
   display: block !important;
   width: 100% !important;
 }
@@ -9583,10 +9585,39 @@ html.dark .diary-shell .bento-left,
 html.dark .diary-shell .diary-home .bento-left {
   display: grid !important;
   grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  grid-template-rows: auto !important;
+  grid-template-areas: none !important;
   gap: 10px !important;
   width: 100% !important;
   height: auto !important;
   min-height: 0 !important;
+  max-height: none !important;
+}
+
+.diary-shell .diary-home > .needs-card > .card-header,
+.diary-shell .diary-home > .needs-card > .profile-compact-card,
+html.dark .diary-shell .diary-home > .needs-card > .card-header,
+html.dark .diary-shell .diary-home > .needs-card > .profile-compact-card {
+  display: flex !important;
+  width: 100% !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.diary-shell .needs-compact-grid,
+.diary-shell .diary-home .needs-compact-grid,
+.diary-shell .diary-home > .needs-card > .needs-compact-grid,
+html.dark .diary-shell .needs-compact-grid,
+html.dark .diary-shell .diary-home .needs-compact-grid,
+html.dark .diary-shell .diary-home > .needs-card > .needs-compact-grid {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 84px !important;
+  overflow: visible !important;
+  margin-bottom: 0 !important;
 }
 
 @media (max-width: 1024px) {
