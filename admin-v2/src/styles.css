@@ -9743,6 +9743,29 @@ html.dark .diary-shell .bento-location-name {
   color: var(--text-subtle) !important;
 }
 
+.bento-icon,
+.bento-icon-neutral,
+.bento-icon-blue,
+.bento-icon-purple,
+.bento-icon-yellow,
+.bento-icon-pink {
+  display: grid !important;
+  place-items: center !important;
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 5px !important;
+  color: #f4f4f5 !important;
+  background: #27272a !important;
+}
+
+.decision-pill-reason {
+  background: #1e1e24 !important;
+}
+
+.decision-pill-reason strong {
+  color: #f4f4f5 !important;
+}
+
 /* 4-COLUMN KANBAN BOARD */
 .diary-shell .kanban-board,
 .diary-shell .diary-home .kanban-board,

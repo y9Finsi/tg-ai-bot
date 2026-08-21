@@ -312,7 +312,7 @@ function ProfileCard({ profile }) {
                 <div className="profile-compact-title">
                     <span className="eyebrow">Режим дня</span>
                     <strong>{WEEKDAY_NAMES[(profile.weekday || 1) % 7]}, {profile.date}</strong>
-                    <Badge variant="blue">{profile.isWorkday ? 'Рабочий день' : 'Выходной'}</Badge>
+                    <Badge>{profile.isWorkday ? 'Рабочий день' : 'Выходной'}</Badge>
                 </div>
                 <div className="profile-compact-status">
                     <span>Сейчас ({selectedTime}): <strong>{profile.timeWindow === 'WORK' ? 'Рабочее время' : profile.timeWindow === 'NIGHT_SLEEP' ? 'Ночной сон' : profile.timeWindow === 'EVENING' ? 'Вечер' : 'Утро и бытовые дела'}</strong></span>
@@ -331,7 +331,7 @@ function ProfileCard({ profile }) {
     );
 }
 
-function StatCard({ label, value, detail, icon: Icon, tone = 'blue' }) { return <Card className="stat-card"><div className={`stat-icon stat-${tone}`}><Icon size={17} /></div><div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div></Card>; }
+function StatCard({ label, value, detail, icon: Icon, tone = 'neutral' }) { return <Card className="stat-card"><div className={`stat-icon stat-${tone}`}><Icon size={17} /></div><div><span>{label}</span><strong>{value}</strong><small>{detail}</small></div></Card>; }
 
 const NEED_LABELS = {
     hunger: ['Голод', '0 — сыта, 100 — необходим приём пищи', 'голод', Utensils],
@@ -347,7 +347,7 @@ function getCycleMeta(cycleDay) {
     if (day <= 5) return { day, phase: 'Менструация', hint: 'Спад энергии · Требуется покой', tone: 'red' };
     if (day <= 11) return { day, phase: 'Фолликулярная фаза', hint: 'Подъём сил и активности', tone: 'green' };
     if (day <= 14) return { day, phase: 'Овуляция', hint: 'Пик гормонов и влечения (+2%/тик)', tone: 'purple' };
-    if (day <= 22) return { day, phase: 'Лютеиновая фаза', hint: 'Устойчивое состояние', tone: 'blue' };
+    if (day <= 22) return { day, phase: 'Лютеиновая фаза', hint: 'Устойчивое состояние', tone: 'neutral' };
     return { day, phase: 'ПМС', hint: 'Эмоциональная чувствительность', tone: 'yellow' };
 }
 
@@ -383,7 +383,7 @@ function needStatus(key, value) {
         if (num >= 50) return { label: 'Заметный импульс', valueText: `${num}/100`, tone: 'yellow' };
         return { label: 'Спокойно', valueText: `${num}/100`, tone: 'green' };
     }
-    return { label: `${num}/100`, valueText: `${num}/100`, tone: 'blue' };
+    return { label: `${num}/100`, valueText: `${num}/100`, tone: 'neutral' };
 }
 
 function NeedsPanel({ state, profile, activeTask, health, rationale }) {
@@ -432,7 +432,7 @@ function NeedsPanel({ state, profile, activeTask, health, rationale }) {
                 <div className="bento-left">
                     <div className="bento-stat-card bento-location-card">
                         <div className="bento-stat-header">
-                            <span className="bento-icon bento-icon-blue"><MapPin size={16} /></span>
+                            <span className="bento-icon bento-icon-neutral"><MapPin size={15} /></span>
                             <span>Текущее местоположение</span>
                         </div>
                         <strong className="bento-location-name">{formatLocation(state?.location_name) || state?.location_name || 'дом на Петроградке'}</strong>
@@ -441,7 +441,7 @@ function NeedsPanel({ state, profile, activeTask, health, rationale }) {
 
                     <div className="bento-stat-card bento-mood">
                         <div className="bento-stat-header">
-                            <span className="bento-icon bento-icon-purple"><HeartPulse size={15} /></span>
+                            <span className="bento-icon bento-icon-neutral"><HeartPulse size={15} /></span>
                             <span>Настроение</span>
                         </div>
                         <strong>{mood}/100</strong>
@@ -450,7 +450,7 @@ function NeedsPanel({ state, profile, activeTask, health, rationale }) {
 
                     <div className="bento-stat-card bento-money">
                         <div className="bento-stat-header">
-                            <span className="bento-icon bento-icon-yellow"><Wallet size={15} /></span>
+                            <span className="bento-icon bento-icon-neutral"><Wallet size={15} /></span>
                             <span>Деньги</span>
                         </div>
                         <strong>{Number(state?.wallet_rubles || 0).toLocaleString('ru-RU')} ₽</strong>
@@ -459,7 +459,7 @@ function NeedsPanel({ state, profile, activeTask, health, rationale }) {
 
                     <div className="bento-stat-card bento-cycle-card">
                         <div className="bento-stat-header">
-                            <span className="bento-icon bento-icon-pink"><Calendar size={15} /></span>
+                            <span className="bento-icon bento-icon-neutral"><Calendar size={15} /></span>
                             <span>Трекер цикла</span>
                             <Badge variant={cycleMeta.tone} style={{ marginLeft: 'auto' }}>{cycleMeta.phase}</Badge>
                         </div>
@@ -813,7 +813,7 @@ function CurrentDecision({ activeTask, health, state, rationale = [] }) {
         <div className="bento-stat-card decision-compact-card">
             <div className="decision-compact-head">
                 <div className="decision-title-group">
-                    <span className="bento-icon bento-icon-blue"><Sparkles size={14} /></span>
+                    <span className="bento-icon bento-icon-neutral"><Sparkles size={14} /></span>
                     <strong className="decision-task-name">{taskName(current)}</strong>
                 </div>
                 <span>сейчас выбрана</span>
