@@ -272,9 +272,8 @@ export function startAdminServer() {
 
     if (!ADMIN_KEY) throw new Error('ADMIN_WEB_KEY обязателен для запуска веб-админки');
 
-    app.use(express.json({ limit: '50mb' }));
     app.use('/legacy-admin', express.static(path.join(__dirname, '../public/admin')));
-    const modernAdminRoot = path.join(__dirname, '../public/legacy-v2');
+    const modernAdminRoot = path.join(__dirname, '../public/admin-v2');
     const modernAdminStaticOptions = {
         setHeaders: (res, filePath) => {
             if (filePath.endsWith('.html')) {
@@ -282,9 +281,8 @@ export function startAdminServer() {
             }
         }
     };
-    app.use('/legacy-v2', express.static(modernAdminRoot, modernAdminStaticOptions));
     app.use('/admin-v2', express.static(modernAdminRoot, modernAdminStaticOptions));
-    app.use(express.static(modernAdminRoot, modernAdminStaticOptions));
+    app.use(express.static(path.join(__dirname, '../public/admin-v2'), modernAdminStaticOptions));
     app.use('/assets/free_pics', express.static(path.join(__dirname, 'assets/free_pics')));
 
     // Public Web Map
@@ -294,12 +292,12 @@ export function startAdminServer() {
 
     app.get(/^\/(?:legacy-v2|admin-v2)(\/.*)?$/, (req, res) => {
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.sendFile(path.join(modernAdminRoot, 'index.html'));
+        res.sendFile(path.join(__dirname, '../public/admin-v2/index.html'));
     });
 
     app.get('/', (req, res) => {
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.sendFile(path.join(modernAdminRoot, 'index.html'));
+        res.sendFile(path.join(__dirname, '../public/admin-v2/index.html'));
     });
 
     // Public Map API Endpoint

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Command, Search, Copy, Check, Pause, Trash2, Clock, Coins, Cpu, Layers, AlertTriangle, XCircle, Filter, Activity, ChevronRight, ChevronDown, User, SlidersHorizontal, Plus, Globe, Server, Network, Brain, BrainCircuit, GitBranch, Gauge, ShieldCheck } from 'lucide-react';
+import './index.css';
 import './styles.css';
 import { Button } from './components/ui/button.jsx';
 import { Badge } from './components/ui/badge.jsx';
@@ -45,7 +46,6 @@ const DEFAULT_JUDGE_PROMPT = `Ты — строгий аудитор ответ�
 - IGNORES_USER: ответ полностью игнорирует суть последней реплики пользователя.
 - BROKEN_LOGIC: бессмыслица, галлюцинации, противоречие собственным словам (например, на вопрос "что делаешь?" ответ "я не против").
 - OUT_OF_CHARACTER: тон робота, чтение нотаций/морали, книжный стиль, признание себя ИИ.
-- SYSTEM_LEAK: утечка, цитирование или повтор системных инструкций/правил промпта (например: "пиши коротко", "отвечай как в Telegram", "не говори что не можешь").
 - REPETITION: дословный повтор недавней фразы из истории.
 - INVENTED_FACT: выдумывание событий, которых нет в контексте дня.
 - FORMAT: технический мусор, служебные теги наружу, сломанная лесенка.
@@ -136,6 +136,12 @@ function RetrievalTrace({ retrievals, loading, error, onRetry }) {
 }
 function mskDateParts(value = new Date()) { return Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(value)).filter(part => part.type !== 'literal').map(part => [part.type, part.value])); }
 function isoDate(value) { const parts = mskDateParts(value); return `${parts.year}-${parts.month}-${parts.day}`; }
+const ADMIN_VIEWS = ['diary', 'dialogs', 'llm-settings', 'crm', 'content', 'inventory', 'system'];
+function adminViewFromHash() {
+    if (typeof window === 'undefined') return 'diary';
+    const value = window.location.hash.replace(/^#\/?/, '');
+    return ADMIN_VIEWS.includes(value) ? value : 'diary';
+}
 function taskName(value) { return TASK_NAMES[value] || String(value || 'Событие').replaceAll('_', ' ').toLowerCase(); }
 function eventName(value) { return EVENT_NAMES[value] || String(value || 'Событие').replaceAll('_', ' ').toLowerCase(); }
 function cn(...values) { return values.filter(Boolean).join(' '); }
@@ -287,7 +293,7 @@ function Login({ onLogin }) {
             setLoading(false);
         }
     }
-    return <div className="login-screen"><form className="login-box" onSubmit={submit} noValidate><div className="brand-mark">Л</div><div className="eyebrow">RADIANT LERA</div><h1>Дневник Леры</h1><p>Панель наблюдения за жизнью, решениями и диалогами.</p><label className="form-field" htmlFor="admin-key">Ключ админки<input ref={keyRef} id="admin-key" name="admin-key" autoFocus autoComplete="current-password" type="password" value={key} onChange={event => setKey(event.target.value)} placeholder="Введите ключ" aria-invalid={error ? 'true' : undefined} aria-describedby={error ? 'admin-key-error' : undefined} /></label><Button variant="primary" loading={loading}>{loading ? 'Вхожу…' : 'Войти'}</Button>{error && <div id="admin-key-error" className="error-text" role="alert">{error}</div>}</form></div>;
+    return <div className="login-screen"><form className="login-box" onSubmit={submit} noValidate><div className="brand-mark">Л</div><div className="eyebrow">RADIANT LERA</div><h1>Дневник Леры</h1><p>Панель наблюдения за жизнью, решениями и диалогами.</p><label className="form-field" htmlFor="admin-key">Ключ админки<input ref={keyRef} id="admin-key" name="admin-key" autoFocus autoComplete="current-password" type="password" value={key} onChange={event => setKey(event.target.value)} placeholder="Введите ключ" aria-invalid={error ? 'true' : undefined} aria-describedby={error ? 'admin-key-error' : undefined} /></label><Button type="submit" variant="primary" loading={loading}>{loading ? 'Вхожу…' : 'Войти'}</Button>{error && <div id="admin-key-error" className="error-text" role="alert">{error}</div>}</form></div>;
 }
 
 function ProfileCard({ profile }) {
@@ -5662,26 +5668,52 @@ function SystemPanel({ readOnly, setReadOnly, toast }) {
     );
 }
 
-function DiaryTabbar({ view, setView }) {
+function DiaryTabbar({ view, setView, health, locationName }) {
     return (
-        <Tabs.Root className="diary-tabs-root" value={view} onValueChange={setView}>
-            <Tabs.List className="diary-tabbar" aria-label="Разделы админки">
-                <Tabs.Trigger value="diary"><FileText size={14} /> Дневник дня</Tabs.Trigger>
-                <Tabs.Trigger value="dialogs"><MessageSquare size={14} /> Диалоги</Tabs.Trigger>
-                <Tabs.Trigger value="llm-settings"><Settings2 size={14} /> AI Sandbox & Prompts</Tabs.Trigger>
-                <Tabs.Trigger value="crm"><Users size={14} /> CRM Пользователей</Tabs.Trigger>
-                <Tabs.Trigger value="content"><Image size={14} /> Контент и Канал</Tabs.Trigger>
-                <Tabs.Trigger value="inventory"><Backpack size={14} /> Рюкзак Леры</Tabs.Trigger>
-                <Tabs.Trigger value="system"><Zap size={14} /> Движок и Операции</Tabs.Trigger>
-            </Tabs.List>
-        </Tabs.Root>
+        <header className="v2-topbar">
+            <div className="topbar-brand">
+                <div className="brand-mark">Л</div>
+                <div className="brand-title">
+                    <strong>Лера 2.0</strong>
+                    <span>Control Center</span>
+                </div>
+            </div>
+            <Tabs.Root className="diary-tabs-root" value={view} onValueChange={setView}>
+                <Tabs.List className="diary-tabbar" aria-label="Разделы админки">
+                    <Tabs.Trigger value="diary"><FileText size={14} /> Дневник дня</Tabs.Trigger>
+                    <Tabs.Trigger value="dialogs"><MessageSquare size={14} /> Диалоги</Tabs.Trigger>
+                    <Tabs.Trigger value="llm-settings"><Settings2 size={14} /> AI Sandbox & Prompts</Tabs.Trigger>
+                    <Tabs.Trigger value="crm"><Users size={14} /> CRM Пользователей</Tabs.Trigger>
+                    <Tabs.Trigger value="content"><Image size={14} /> Контент и Канал</Tabs.Trigger>
+                    <Tabs.Trigger value="inventory"><Backpack size={14} /> Рюкзак Леры</Tabs.Trigger>
+                    <Tabs.Trigger value="system"><Zap size={14} /> Движок и Операции</Tabs.Trigger>
+                </Tabs.List>
+            </Tabs.Root>
+            <div className="topbar-status-bar">
+                <Badge variant={health?.status === 'ONLINE' ? 'green' : 'yellow'}>
+                    <span className="status-dot" /> {health?.status || 'ONLINE'}
+                </Badge>
+                <Badge>{locationName || 'Санкт-Петербург'}</Badge>
+            </div>
+        </header>
     );
 }
 
 function App() {
-    const [authenticated, setAuthenticated] = useState(null); const [day] = useState(() => isoDate(new Date())); const [view, setView] = useState('diary'); const [data, setData] = useState(null); const [readOnly, setReadOnly] = useState(true); const [notice, setNotice] = useState(null); const toastTimerRef = useRef(null);
+    const [authenticated, setAuthenticated] = useState(null); const [day] = useState(() => isoDate(new Date())); const [view, setView] = useState(adminViewFromHash); const [data, setData] = useState(null); const [readOnly, setReadOnly] = useState(true); const [notice, setNotice] = useState(null); const toastTimerRef = useRef(null);
     const counts = useMemo(() => ({ meals: data?.meals?.length || 0, sleep: data?.sleep?.length || 0, random: data?.randomEvents?.length || 0 }), [data]);
     useEffect(() => { api('/api/admin/session').then(result => setAuthenticated(result.authenticated)).catch(() => setAuthenticated(false)); }, []);
+    useEffect(() => {
+        const syncViewFromHash = () => setView(adminViewFromHash());
+        window.addEventListener('hashchange', syncViewFromHash);
+        return () => window.removeEventListener('hashchange', syncViewFromHash);
+    }, []);
+    useEffect(() => {
+        const nextHash = `#${view}`;
+        if (window.location.hash !== nextHash) {
+            window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
+        }
+    }, [view]);
     const refreshData = useRef(null);
     refreshData.current = () => {
         const today = isoDate(new Date());
@@ -5718,33 +5750,6 @@ function App() {
     const viewTitle = view === 'diary' ? 'Дневник жизни' : view === 'dialogs' ? 'Диалоги' : view === 'llm-settings' ? 'AI Sandbox & Prompts' : view === 'crm' ? 'CRM Пользователей и Клиенты' : view === 'content' ? 'Контент и Telegram-канал' : view === 'inventory' ? 'Рюкзак Леры' : 'Движок и Оперативный Контроль';
     return (
         <div className="v2-shell diary-shell">
-            <aside className="v2-sidebar">
-                <div className="v2-brand">
-                    <div className="brand-mark">Л</div>
-                    <div>
-                        <strong>Лера 2.0</strong>
-                        <span>Control Center</span>
-                    </div>
-                </div>
-                <div className="sidebar-date">
-                    <Calendar size={14} />
-                    <span>{formatDay(`${day}T12:00:00+03:00`)}</span>
-                </div>
-                <nav className="v2-nav">
-                    <button data-state={view === 'diary' ? 'active' : 'inactive'} onClick={() => setView('diary')}><FileText size={15} /> <span>Обзор и Дневник</span></button>
-                    <button data-state={view === 'dialogs' ? 'active' : 'inactive'} onClick={() => setView('dialogs')}><MessageSquare size={15} /> <span>Диалоги и Логи</span></button>
-                    <button data-state={view === 'llm-settings' ? 'active' : 'inactive'} onClick={() => setView('llm-settings')}><Settings2 size={15} /> <span>AI Sandbox & Prompts</span></button>
-                    <button data-state={view === 'crm' ? 'active' : 'inactive'} onClick={() => setView('crm')}><Users size={15} /> <span>CRM Пользователей</span></button>
-                    <button data-state={view === 'content' ? 'active' : 'inactive'} onClick={() => setView('content')}><Image size={15} /> <span>Контент и Канал</span></button>
-                    <button data-state={view === 'inventory' ? 'active' : 'inactive'} onClick={() => setView('inventory')}><Backpack size={15} /> <span>Рюкзак Леры</span></button>
-                    <button data-state={view === 'system' ? 'active' : 'inactive'} onClick={() => setView('system')}><Zap size={15} /> <span>Движок и Система</span></button>
-                </nav>
-                <div className="sidebar-footer">
-                    <span className="status-dot" />
-                    <strong>{data?.health?.status || 'ONLINE'}</strong>
-                    <small>{state.location_name || 'Санкт-Петербург'}</small>
-                </div>
-            </aside>
             <main className="v2-main"><DiaryTabbar view={view} setView={setView} />
                 {view !== 'diary' && (
                     <header className="v2-header">

@@ -31,7 +31,7 @@
     "dev": "node --env-file=.env src/bot.js",
     "test": "node --test --test-force-exit test/*.test.js",
     "prompts:pull": "node --env-file=.env scripts/pull_prompts.js",
-    "admin:build": "vite build --config legacy-v2/vite.config.js"
+    "admin:build": "vite build --config admin-v2/vite.config.js"
   },
   "repository": {
     "type": "git",
