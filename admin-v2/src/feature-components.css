@@ -9573,7 +9573,7 @@ html.dark .diary-shell .need-compact-item:hover {
   overflow: hidden !important;
 }
 
-/* 4-COLUMN BENTO ROW (Location, Mood, Money, Cycle) */
+/* Canonical six-track bento row (Location, Mood, Money, Cycle) */
 .diary-shell .bento-needs-layout,
 .diary-shell .diary-home .bento-needs-layout,
 .diary-shell .diary-home > .needs-card > .bento-needs-layout,
@@ -9589,7 +9589,7 @@ html.dark .diary-shell .diary-home > .needs-card > .bento-needs-layout {
 html.dark .diary-shell .bento-left,
 html.dark .diary-shell .diary-home .bento-left {
   display: grid !important;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
   grid-template-rows: auto !important;
   grid-template-areas: none !important;
   gap: 10px !important;
@@ -9771,13 +9771,13 @@ html.dark .diary-shell .bento-location-name {
   color: #f4f4f5 !important;
 }
 
-/* 4-COLUMN KANBAN BOARD */
+/* Canonical six-track kanban board */
 .diary-shell .kanban-board,
 .diary-shell .diary-home .kanban-board,
 html.dark .diary-shell .kanban-board,
 html.dark .diary-shell .diary-home .kanban-board {
   display: grid !important;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
   gap: 16px !important;
   width: 100% !important;
 }

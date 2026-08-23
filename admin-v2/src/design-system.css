@@ -100,6 +100,10 @@ body {
   --color-warning-bg: var(--admin-warning-bg);
   --color-danger: var(--admin-danger);
   --color-danger-bg: var(--admin-danger-bg);
+  --primary: var(--admin-accent);
+  --primary-foreground: var(--admin-canvas);
+  --accent: var(--admin-accent-soft);
+  --background: var(--admin-canvas);
 }
 
 .diary-shell :where(button, input, select, textarea, [role="button"], [role="tab"], summary) {
@@ -1035,4 +1039,65 @@ body {
   ) {
     grid-template-columns: minmax(0, 1fr) !important;
   }
+}
+
+/*
+ * Runtime cleanup for feature-specific legacy overrides.
+ * This is the final rendered contract for the admin surface.
+ */
+html.dark .diary-shell :where(
+  .kanban-board,
+  .bento-left,
+  .inventory-summary,
+  .photo-upload-form
+) {
+  display: grid !important;
+  grid-template-columns: var(--admin-grid-columns) !important;
+  gap: var(--admin-grid-gap) !important;
+}
+
+html.dark .diary-shell :where(
+  .kanban-active .kanban-item,
+  .task-detail-dialog,
+  .prompt-module-card[open],
+  .sandbox-history-assistant .sandbox-history-bubble,
+  .sandbox-result-bubble,
+  .sandbox-typing-bubble
+) {
+  color: var(--admin-text) !important;
+  border-color: var(--admin-border) !important;
+  background: var(--admin-surface-2) !important;
+}
+
+html.dark .diary-shell :where(
+  .task-card-reason,
+  .prompt-module-card summary::after,
+  .studio-preset-button em,
+  .studio-saved-preset em,
+  .retrieval-fact code,
+  .prompt-expert-details summary,
+  .dossier-tab-btn.active,
+  .memory-graph-node-label
+) {
+  color: var(--admin-text-muted) !important;
+}
+
+html.dark .diary-shell :where(
+  .crm-filter-btn.active,
+  .photo-file-button,
+  .ui-button-primary
+) {
+  color: var(--admin-canvas) !important;
+  border-color: var(--admin-accent) !important;
+  background: var(--admin-accent) !important;
+}
+
+html.dark .diary-shell :where(
+  .memory-graph-edges line,
+  .memory-graph-node.is-superseded circle,
+  .memory-graph-legend i.is-superseded
+) {
+  stroke: var(--admin-border-strong) !important;
+  border-color: var(--admin-border-strong) !important;
+  background: var(--admin-surface-3) !important;
 }

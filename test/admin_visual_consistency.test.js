@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const css = fs.readFileSync('admin-v2/src/design-system.css', 'utf8');
+const featureCss = fs.readFileSync('admin-v2/src/feature-components.css', 'utf8');
 
 test('admin visual system exposes one typography scale and semantic palette', () => {
     for (const token of [
@@ -76,4 +77,13 @@ test('all repeated admin card grids share the six-track contract', () => {
     }
 
     assert.match(css, /grid-template-columns: var\(--admin-grid-columns\) !important/);
+});
+
+test('legacy runtime overrides cannot reintroduce blue accents or four-track primary boards', () => {
+    assert.ok(css.includes('--primary: var(--admin-accent);'));
+    assert.match(css, /\.crm-filter-btn\.active/);
+    assert.match(css, /\.photo-file-button/);
+    assert.match(css, /\.kanban-active \.kanban-item/);
+    assert.doesNotMatch(featureCss, /\/\* 4-COLUMN KANBAN BOARD \*\//);
+    assert.doesNotMatch(featureCss, /\/\* 4-COLUMN BENTO ROW/);
 });
