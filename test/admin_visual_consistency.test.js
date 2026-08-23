@@ -122,9 +122,9 @@ test('legacy feature accents resolve to the canonical neutral palette', () => {
 });
 
 test('primary controls cannot reintroduce blue or purple gradients', () => {
-    assert.match(css, /html\.dark \.diary-shell :is\(\.ui-button-primary, \.photo-file-button\)/);
+    assert.match(css, /html\.dark \.diary-shell :is\(\.ui-button-primary, \.admin-button\.bg-primary, \.photo-file-button\)/);
     assert.match(css, /background-image:\s*none\s*!important/);
     assert.match(css, /background:\s*var\(--admin-text\)\s*!important/);
-    assert.match(css, /html\.dark \.login-screen :is\(\.ui-button-primary, \.photo-file-button\)/);
+    assert.match(css, /html\.dark \.login-screen :is\(\.ui-button-primary, \.admin-button\.bg-primary, \.photo-file-button\)/);
     assert.match(css, /html\.dark \.login-screen \.brand-mark/);
 });

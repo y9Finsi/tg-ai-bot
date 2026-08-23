@@ -1678,7 +1678,7 @@ html.dark .diary-shell :is(
  * feature-specific selector. Keep them strictly monochrome, including
  * background-image, because older rules used blue/purple gradients.
  */
-html.dark .diary-shell :is(.ui-button-primary, .photo-file-button) {
+html.dark .diary-shell :is(.ui-button-primary, .admin-button.bg-primary, .photo-file-button) {
   color: var(--admin-canvas) !important;
   border-color: var(--admin-text) !important;
   background: var(--admin-text) !important;
@@ -1686,7 +1686,7 @@ html.dark .diary-shell :is(.ui-button-primary, .photo-file-button) {
   box-shadow: none !important;
 }
 
-html.dark .diary-shell :is(.ui-button-primary, .photo-file-button):hover {
+html.dark .diary-shell :is(.ui-button-primary, .admin-button.bg-primary, .photo-file-button):hover {
   color: var(--admin-canvas) !important;
   border-color: var(--admin-accent-strong) !important;
   background: var(--admin-accent-strong) !important;
@@ -1709,7 +1709,7 @@ html.dark .login-screen .brand-mark {
   background-image: none !important;
 }
 
-html.dark .login-screen :is(.ui-button-primary, .photo-file-button) {
+html.dark .login-screen :is(.ui-button-primary, .admin-button.bg-primary, .photo-file-button) {
   color: var(--admin-canvas) !important;
   border-color: var(--admin-text) !important;
   background: var(--admin-text) !important;
@@ -1717,7 +1717,7 @@ html.dark .login-screen :is(.ui-button-primary, .photo-file-button) {
   box-shadow: none !important;
 }
 
-html.dark .login-screen :is(.ui-button-primary, .photo-file-button):hover {
+html.dark .login-screen :is(.ui-button-primary, .admin-button.bg-primary, .photo-file-button):hover {
   color: var(--admin-canvas) !important;
   border-color: var(--admin-accent-strong) !important;
   background: var(--admin-accent-strong) !important;
