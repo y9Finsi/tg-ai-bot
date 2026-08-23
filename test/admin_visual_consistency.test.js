@@ -99,3 +99,11 @@ test('runtime feature states stay in the monochrome canonical palette', () => {
     assert.match(featureCss, /html\.dark \.diary-shell \.diary-home \.kanban-item-active \.progress \{\s*background: var\(--admin-surface-3\) !important/s);
     assert.match(featureCss, /html\.dark \.diary-shell \.studio-workspace-tabs > \[role="tablist"\] \[role="tab"\]\[data-state="active"\]/s);
 });
+
+test('wide-screen tabs share one workspace frame and card padding', () => {
+    assert.match(css, /html\.dark \.diary-shell :where\(\s*\.admin-domain-page,/s);
+    assert.match(css, /padding-inline: 0 !important/);
+    assert.match(css, /html\.dark \.diary-shell :where\(\.studio-workspace\)/s);
+    assert.match(css, /html\.dark \.diary-shell :where\(\.ui-card, \[data-slot="card"\]\)/s);
+    assert.match(css, /padding-inline: var\(--admin-card-padding\) !important/);
+});

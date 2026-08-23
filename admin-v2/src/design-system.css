@@ -1175,3 +1175,52 @@ html.dark .diary-shell :where(
   border-color: var(--admin-border-strong) !important;
   background: var(--admin-surface-3) !important;
 }
+
+/*
+ * Canonical wide-screen workspace.
+ *
+ * Feature shells had accumulated their own inner gutters and max-widths,
+ * which made identical six-track cards start at different x-coordinates.
+ * Keep one content frame; feature layouts may still use two or three columns
+ * inside that frame where their component needs it.
+ */
+html.dark .diary-shell :where(
+  .admin-domain-page,
+  .content-super-container,
+  .crm-super-container,
+  .system-super-layout,
+  .inventory-page,
+  .content-photos-layout,
+  .content-channel-layout,
+  .management-layout
+) {
+  width: 100% !important;
+  max-width: none !important;
+  margin-inline: 0 !important;
+  padding-inline: 0 !important;
+}
+
+html.dark .diary-shell :where(.studio-workspace) {
+  width: 100% !important;
+  max-width: none !important;
+  margin-inline: 0 !important;
+}
+
+html.dark .diary-shell :where(.ui-card, [data-slot="card"]) {
+  padding-inline: var(--admin-card-padding) !important;
+}
+
+html.dark .diary-shell :where(
+  .kanban-board,
+  .inventory-summary,
+  .diagnostic-grid,
+  .photos-card-grid,
+  .needs-compact-grid,
+  .summary-grid,
+  .profile-window,
+  .decision-summary
+) {
+  width: 100% !important;
+  max-width: none !important;
+  margin-inline: 0 !important;
+}
