@@ -5,6 +5,7 @@ import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Command, Search, Copy, Check, Pause, Trash2, Clock, Coins, Cpu, Layers, AlertTriangle, XCircle, Filter, Activity, ChevronRight, ChevronLeft, ChevronDown, User, SlidersHorizontal, Plus, Globe, Server, Network, Brain, BrainCircuit, GitBranch, Gauge, ShieldCheck } from 'lucide-react';
 import './index.css';
 import './styles.css';
+import './design-system.css';
 import { Button } from './components/ui/button.jsx';
 import { Badge } from './components/ui/badge.jsx';
 import { Card, CardHeader } from './components/ui/card.jsx';
@@ -826,26 +827,36 @@ function CurrentDecision({ activeTask, health, state, rationale = [] }) {
     const willingnessNote = willingness <= 15 ? 'истощение' : willingness <= 50 ? 'умеренный ресурс' : 'высокий ресурс';
 
     return (
-        <div className="bento-stat-card decision-compact-card">
+        <section className="decision-compact-card" aria-labelledby="current-decision-title">
             <div className="decision-compact-head">
                 <div className="decision-title-group">
                     <span className="bento-icon bento-icon-neutral"><Sparkles size={14} /></span>
-                    <strong className="decision-task-name">{taskName(current)}</strong>
+                    <div className="decision-title-copy">
+                        <span className="decision-label">ТЕКУЩЕЕ РЕШЕНИЕ</span>
+                        <strong id="current-decision-title" className="decision-task-name">{taskName(current)}</strong>
+                    </div>
                 </div>
-                <span>сейчас выбрана</span>
+                <span className="decision-selected-label">сейчас выбрана</span>
             </div>
-            <i className="decision-symbol" aria-hidden="true">=</i>
             <div className="decision-compact-body">
                 <div className="decision-row-main">
-                    <div className="decision-pill"><strong>{sharpNeeds.length ? sharpNeeds.join(', ') : 'в норме'}</strong><span>потребности</span></div>
-                    <i className="decision-symbol" aria-hidden="true">+</i>
-                    <div className="decision-pill"><strong>{willingness}% ({willingnessNote})</strong><span>ресурс</span></div>
+                    <div className="decision-pill">
+                        <span>Потребности</span>
+                        <strong>{sharpNeeds.length ? sharpNeeds.join(', ') : 'В норме'}</strong>
+                    </div>
+                    <div className="decision-pill">
+                        <span>Ресурс</span>
+                        <strong>{willingness}% <em>({willingnessNote})</em></strong>
+                    </div>
                 </div>
                 <div className="decision-row-sub">
-                    <div className="decision-pill decision-pill-reason"><strong>{reasonText}</strong><span>система</span></div>
+                    <div className="decision-pill decision-pill-reason">
+                        <span>Система</span>
+                        <strong>{reasonText}</strong>
+                    </div>
                 </div>
             </div>
-        </div>
+        </section>
     );
 }
 
@@ -887,24 +898,62 @@ function NpcPanel({ timeline }) {
 }
 
 function RandomEventLab({ day }) {
-    const [data, setData] = useState(null); const [loading, setLoading] = useState(false);
-    async function load() { setLoading(true); try { setData(await api(`/api/admin/radiant/random-events?at=${encodeURIComponent(`${day}T18:00:00+03:00`)}`)); } finally { setLoading(false); } }
+    const [data, setData] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState('');
+    async function load() {
+        setLoading(true);
+        setError('');
+        try {
+            setData(await api(`/api/admin/radiant/random-events?at=${encodeURIComponent(`${day}T18:00:00+03:00`)}`));
+        } catch (requestError) {
+            setData(null);
+            setError(requestError.message || 'Не удалось загрузить каталог событий.');
+        } finally {
+            setLoading(false);
+        }
+    }
     useEffect(() => { load(); }, [day]);
-    return <Card><CardHeader eyebrow="Random Event Lab" title="Почему событие сработает или не сработает" description="Условия, окно, cooldown и последствия. Здесь ничего не запускается." action={<Button size="icon" aria-label="Обновить random events" onClick={load}><RefreshCw size={15} /></Button>} />{loading ? <div className="empty-state">Проверяю условия…</div> : <div className="random-list">{data?.events?.map(event => <div className="random-card" key={event.id}><div><div className="random-title"><strong>{event.title}</strong><Badge variant={event.eligible ? 'green' : 'muted'}>{event.eligible ? 'доступно' : 'заблокировано'}</Badge></div><span>{event.id} · вероятность {Math.round(event.probability * 100)}% · cooldown {event.cooldownMinutes} мин</span><small>{event.reason}</small></div><div className="checks">{[['Окно', event.checks.inWindow], ['Условие', event.checks.condition], ['Cooldown', !event.checks.cooldownActive]].map(([label, ok]) => <Badge key={label} variant={ok ? 'green' : 'red'}>{label}: {ok ? 'да' : 'нет'}</Badge>)}</div></div>) || <div className="empty-state">Каталог не загрузился.</div>}</div>}</Card>;
+    return <Card><CardHeader eyebrow="Random Event Lab" title="Почему событие сработает или не сработает" description="Условия, окно, cooldown и последствия. Здесь ничего не запускается." action={<Button size="icon" aria-label="Обновить random events" onClick={load}><RefreshCw size={15} /></Button>} />{loading ? <div className="empty-state">Проверяю условия…</div> : error ? <div className="memory-insight-state is-error" role="alert"><CircleAlert size={16} /> <span>{error}</span><Button size="sm" variant="outline" onClick={load}>Повторить</Button></div> : <div className="random-list">{data?.events?.map(event => <div className="random-card" key={event.id}><div><div className="random-title"><strong>{event.title}</strong><Badge variant={event.eligible ? 'green' : 'muted'}>{event.eligible ? 'доступно' : 'заблокировано'}</Badge></div><span>{event.id} · вероятность {Math.round(event.probability * 100)}% · cooldown {event.cooldownMinutes} мин</span><small>{event.reason}</small></div><div className="checks">{[['Окно', event.checks.inWindow], ['Условие', event.checks.condition], ['Cooldown', !event.checks.cooldownActive]].map(([label, ok]) => <Badge key={label} variant={ok ? 'green' : 'red'}>{label}: {ok ? 'да' : 'нет'}</Badge>)}</div></div>) || <div className="empty-state">Каталог не загрузился.</div>}</div>}</Card>;
 }
 
 function PersonalityLab({ data, toast }) {
-    const [selected, setSelected] = useState(null); const [traits, setTraits] = useState(data?.personality || {}); const [saving, setSaving] = useState(false);
+    const [selected, setSelected] = useState(null); const [traits, setTraits] = useState(data?.personality || {}); const [saving, setSaving] = useState(false); const [error, setError] = useState('');
     useEffect(() => setTraits(data?.personality || {}), [data?.personality]);
-    async function save() { setSaving(true); try { await api('/api/admin/personality', { method: 'POST', body: JSON.stringify({ personality: traits }) }); toast('Характер сохранён'); } finally { setSaving(false); } }
-    return <Card><CardHeader eyebrow="Personality Lab" title="Характер и влияние на выбор" description="Измени черту, посмотри preview utility и сохрани. Изменение попадёт в audit." action={<Button variant="primary" onClick={save}>{saving ? 'Сохраняю…' : 'Сохранить'}</Button>} /><div className="traits traits-lab">{Object.entries(traits).map(([key, value]) => <button key={key} className={cn('trait-row', selected === key && 'selected')} onClick={() => setSelected(key)}><div><span>{key}</span><strong>{value}</strong></div><input aria-label={key} type="range" min="0" max="100" value={value} onChange={event => setTraits({ ...traits, [key]: Number(event.target.value) })} /><Progress value={value} tone="purple" /></button>)}</div><div className="personality-preview"><h3>Влияние на utility</h3>{(data?.personalityPreview || []).map(item => <div key={item.taskType}><span>{taskName(item.taskType)}</span><strong className={item.modifier >= 0 ? 'positive' : 'negative'}>{item.modifier > 0 ? '+' : ''}{Number(item.modifier).toFixed(1)}</strong></div>)}</div></Card>;
+    async function save() {
+        setSaving(true);
+        setError('');
+        try {
+            await api('/api/admin/personality', { method: 'POST', body: JSON.stringify({ personality: traits }) });
+            toast('Характер сохранён');
+        } catch (requestError) {
+            setError(requestError.message || 'Не удалось сохранить характер.');
+            toast(requestError.message || 'Не удалось сохранить характер.', 'error');
+        } finally {
+            setSaving(false);
+        }
+    }
+    return <Card><CardHeader eyebrow="Personality Lab" title="Характер и влияние на выбор" description="Измени черту, посмотри preview utility и сохрани. Изменение попадёт в audit." action={<Button variant="primary" onClick={save}>{saving ? 'Сохраняю…' : 'Сохранить'}</Button>} />{error && <div className="memory-insight-state is-error" role="alert"><CircleAlert size={16} /> <span>{error}</span><Button size="sm" variant="outline" onClick={() => setError('')}>Скрыть</Button></div>}<div className="traits traits-lab">{Object.entries(traits).map(([key, value]) => <button key={key} className={cn('trait-row', selected === key && 'selected')} onClick={() => setSelected(key)}><div><span>{key}</span><strong>{value}</strong></div><input aria-label={key} type="range" min="0" max="100" value={value} onChange={event => setTraits({ ...traits, [key]: Number(event.target.value) })} /><Progress value={value} tone="purple" /></button>)}</div><div className="personality-preview"><h3>Влияние на utility</h3>{(data?.personalityPreview || []).map(item => <div key={item.taskType}><span>{taskName(item.taskType)}</span><strong className={item.modifier >= 0 ? 'positive' : 'negative'}>{item.modifier > 0 ? '+' : ''}{Number(item.modifier).toFixed(1)}</strong></div>)}</div></Card>;
 }
 
 function SimulationLab() {
-    const [seed, setSeed] = useState('admin-lab'); const [result, setResult] = useState(null); const [compare, setCompare] = useState(null); const [loading, setLoading] = useState(false); const [start, setStart] = useState('2026-08-07T00:00:00+03:00'); const [discipline, setDiscipline] = useState(55);
-    async function run() { setLoading(true); try { const body = { start, hours: 24, seed, personality: { discipline: Number(discipline) } }; const [first, second] = await Promise.all([api('/api/admin/radiant/simulation-lab', { method: 'POST', body: JSON.stringify(body) }), api('/api/admin/radiant/simulation-lab', { method: 'POST', body: JSON.stringify({ ...body, seed: `${seed}-compare` }) })]); setResult(first); setCompare({ first: first.summary, second: second.summary }); } finally { setLoading(false); } }
+    const [seed, setSeed] = useState('admin-lab'); const [result, setResult] = useState(null); const [compare, setCompare] = useState(null); const [loading, setLoading] = useState(false); const [error, setError] = useState(''); const [start, setStart] = useState('2026-08-07T00:00:00+03:00'); const [discipline, setDiscipline] = useState(55);
+    async function run() {
+        setLoading(true);
+        setError('');
+        try {
+            const body = { start, hours: 24, seed, personality: { discipline: Number(discipline) } };
+            const [first, second] = await Promise.all([api('/api/admin/radiant/simulation-lab', { method: 'POST', body: JSON.stringify(body) }), api('/api/admin/radiant/simulation-lab', { method: 'POST', body: JSON.stringify({ ...body, seed: `${seed}-compare` }) })]);
+            setResult(first);
+            setCompare({ first: first.summary, second: second.summary });
+        } catch (requestError) {
+            setResult(null);
+            setCompare(null);
+            setError(requestError.message || 'Не удалось выполнить сравнение симуляций.');
+        } finally {
+            setLoading(false);
+        }
+    }
     const diff = (key) => Number(compare?.first?.[key] || 0) - Number(compare?.second?.[key] || 0);
-    return <Card className="simulation-lab"><CardHeader eyebrow="Simulation Lab" title="Сравнить два дня за 24 часа" description="Оба прогона offline. Меняй дату, seed и характер, чтобы понять, что именно изменило жизнь." action={<Button variant="primary" onClick={run}><Play size={14} /> {loading ? 'Считаю…' : 'Запустить сравнение'}</Button>} /><div className="lab-controls"><label>Дата и время старта<input value={start} onChange={event => setStart(event.target.value)} /></label><label>Seed<input value={seed} onChange={event => setSeed(event.target.value)} /></label><label>Дисциплина<input type="number" min="0" max="100" value={discipline} onChange={event => setDiscipline(event.target.value)} /></label><Badge variant="green">writes: 0</Badge><Badge variant="green">Telegram: 0</Badge></div>{result && <><div className="summary-grid lab-summary">{[['Сон', result.summary.sleepMinutes + ' мин'], ['Работа', result.summary.workMinutes + ' мин'], ['Еда', result.summary.plannedMeals], ['Emergency', result.summary.emergencyMeals], ['Travel', result.summary.travelMinutes + ' мин'], ['Факты', result.summary.facts]].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div><div className="compare-table"><div><strong>Метрика</strong><strong>Основной</strong><strong>Сравнение</strong><strong>Разница</strong></div>{['workMinutes','sleepMinutes','plannedMeals','emergencyMeals','travelMinutes','randomEvents','missedCommitments'].map(key => <div key={key}><span>{key}</span><span>{compare.first[key] ?? 0}</span><span>{compare.second[key] ?? 0}</span><strong className={diff(key) === 0 ? '' : diff(key) > 0 ? 'positive' : 'negative'}>{diff(key) > 0 ? '+' : ''}{diff(key)}</strong></div>)}</div><details className="lab-details"><summary>Полный результат основного прогона</summary><pre>{JSON.stringify(result, null, 2)}</pre></details></>}</Card>;
+    return <Card className="simulation-lab"><CardHeader eyebrow="Simulation Lab" title="Сравнить два дня за 24 часа" description="Оба прогона offline. Меняй дату, seed и характер, чтобы понять, что именно изменило жизнь." action={<Button variant="primary" onClick={run}><Play size={14} /> {loading ? 'Считаю…' : 'Запустить сравнение'}</Button>} />{error && <div className="memory-insight-state is-error" role="alert"><CircleAlert size={16} /> <span>{error}</span><Button size="sm" variant="outline" onClick={run}>Повторить</Button></div>}<div className="lab-controls"><label>Дата и время старта<input value={start} onChange={event => setStart(event.target.value)} /></label><label>Seed<input value={seed} onChange={event => setSeed(event.target.value)} /></label><label>Дисциплина<input type="number" min="0" max="100" value={discipline} onChange={event => setDiscipline(event.target.value)} /></label><Badge variant="green">writes: 0</Badge><Badge variant="green">Telegram: 0</Badge></div>{result && <><div className="summary-grid lab-summary">{[['Сон', result.summary.sleepMinutes + ' мин'], ['Работа', result.summary.workMinutes + ' мин'], ['Еда', result.summary.plannedMeals], ['Emergency', result.summary.emergencyMeals], ['Travel', result.summary.travelMinutes + ' мин'], ['Факты', result.summary.facts]].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div><div className="compare-table"><div><strong>Метрика</strong><strong>Основной</strong><strong>Сравнение</strong><strong>Разница</strong></div>{['workMinutes','sleepMinutes','plannedMeals','emergencyMeals','travelMinutes','randomEvents','missedCommitments'].map(key => <div key={key}><span>{key}</span><span>{compare.first[key] ?? 0}</span><span>{compare.second[key] ?? 0}</span><strong className={diff(key) === 0 ? '' : diff(key) > 0 ? 'positive' : 'negative'}>{diff(key) > 0 ? '+' : ''}{diff(key)}</strong></div>)}</div><details className="lab-details"><summary>Полный результат основного прогона</summary><pre>{JSON.stringify(result, null, 2)}</pre></details></>}</Card>;
 }
 
 function Commitments({ items }) { return <div className="commitment-list">{items?.length ? items.map(item => <div className="commitment" key={item.id}><div className="commitment-main"><Badge variant={item.status === 'MISSED' ? 'red' : item.status === 'COMPLETED' ? 'green' : 'blue'}>{item.status}</Badge><strong>{item.title}</strong><span>{item.origin} · {item.target_location || 'дом'}</span></div><div className="commitment-due"><span>Дедлайн</span><strong>{item.due_at ? formatTime(item.due_at) : '—'}</strong></div></div>) : <div className="empty-state">Активных планов на этот день нет.</div>}</div>; }
@@ -3844,6 +3893,7 @@ function CrmPanel({ toast }) {
 
     const [adminStats, setAdminStats] = useState(null);
     const [freeMode, setFreeMode] = useState(false);
+    const [loadError, setLoadError] = useState('');
 
     const run = async (action, success) => {
         try {
@@ -3857,8 +3907,9 @@ function CrmPanel({ toast }) {
     };
 
     async function loadUsers() {
-        const result = await api(`/api/admin/users${userQuery ? `/search?q=${encodeURIComponent(userQuery)}` : '?limit=50'}`);
-        setUsers(result.users || []);
+        const result = await run(() => api(`/api/admin/users${userQuery ? `/search?q=${encodeURIComponent(userQuery)}` : '?limit=50'}`));
+        if (result) setUsers(result.users || []);
+        return result;
     }
 
     async function openUser(id) {
@@ -3969,9 +4020,13 @@ function CrmPanel({ toast }) {
     }
 
     async function loadCommerce() {
-        const [packagesResult, promos] = await Promise.all([api('/api/admin/packages'), api('/api/admin/promocodes')]);
-        setPackages(packagesResult.packages || {});
-        setPromocodes(promos.promocodes || []);
+        const result = await run(() => Promise.all([api('/api/admin/packages'), api('/api/admin/promocodes')]));
+        if (result) {
+            const [packagesResult, promos] = result;
+            setPackages(packagesResult.packages || {});
+            setPromocodes(promos.promocodes || []);
+        }
+        return result;
     }
 
     async function addPromocode() {
@@ -3992,8 +4047,9 @@ function CrmPanel({ toast }) {
     }
 
     async function loadMetrics() {
-        const stats = await api('/api/admin/stats');
-        setAdminStats(stats);
+        const stats = await run(() => api('/api/admin/stats'));
+        if (stats) setAdminStats(stats);
+        return stats;
     }
 
     async function toggleFreeModeGlobal() {
@@ -4006,10 +4062,14 @@ function CrmPanel({ toast }) {
         loadUsers();
     }
 
+    async function loadWorkspace() {
+        setLoadError('');
+        const results = await Promise.all([loadUsers(), loadCommerce(), loadMetrics()]);
+        if (results.every(result => !result)) setLoadError('Не удалось загрузить данные CRM. Проверь подключение к API и повтори попытку.');
+    }
+
     useEffect(() => {
-        loadUsers();
-        loadCommerce();
-        loadMetrics();
+        loadWorkspace();
     }, []);
 
     const filteredUsers = users.filter(u => {
@@ -4020,6 +4080,7 @@ function CrmPanel({ toast }) {
 
     return (
         <div className="crm-super-container admin-domain-page">
+            {loadError && <div className="memory-insight-state is-error" role="alert"><CircleAlert size={16} /> <span>{loadError}</span><Button size="sm" variant="outline" onClick={loadWorkspace}>Повторить</Button></div>}
             <div className="crm-subnav">
                 <Button variant={crmTab === 'clients' ? 'primary' : 'outline'} size="sm" onClick={() => setCrmTab('clients')}>
                     <Users size={14} /> 👥 Клиенты ({users.length})
@@ -5797,14 +5858,26 @@ function App() {
     const state = data?.state || {}; const profile = data?.profile; const items = data?.timeline || [];
     function exportDay(selectedItems = items) { const body = selectedItems.map(item => `${formatTime(item.at)} — ${item.title}`).join('\n'); const blob = new Blob([`Дневник Леры · ${formatDay(`${day}T12:00:00+03:00`)}\n\n${body}`], { type: 'text/plain;charset=utf-8' }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `lera-${day}.txt`; link.click(); URL.revokeObjectURL(link.href); }
     const viewTitle = view === 'diary' ? 'Дневник жизни' : view === 'dialogs' ? 'Диалоги' : view === 'llm-settings' ? 'AI Sandbox & Prompts' : view === 'crm' ? 'CRM Пользователей и Клиенты' : view === 'content' ? 'Контент и Telegram-канал' : view === 'inventory' ? 'Рюкзак Леры' : 'Движок и Оперативный Контроль';
+    const viewDescription = view === 'dialogs'
+        ? 'История ответов, trace и контекст генерации.'
+        : view === 'llm-settings'
+            ? 'Черновики промптов, тесты и контролируемая публикация.'
+            : view === 'crm'
+                ? 'Пользователи, отношения и рабочие договорённости.'
+                : view === 'content'
+                    ? 'Фото, темы и публикации канала.'
+                    : view === 'inventory'
+                        ? 'Рюкзак, гардероб и запасы Леры.'
+                        : 'Провайдеры, правила и оперативная диагностика.';
     return (
         <div className="v2-shell diary-shell">
             <main className="v2-main"><DiaryTabbar view={view} setView={setView} />
                 {view !== 'diary' && (
                     <header className="v2-header">
-                        <div>
-                            <div className="eyebrow">{view.toUpperCase()}</div>
+                        <div className="v2-page-heading">
+                            <div className="eyebrow">{view === 'inventory' ? 'ИНВЕНТАРЬ ЛЕРЫ' : view.toUpperCase()}</div>
                             <h1>{viewTitle}</h1>
+                            <p>{viewDescription}</p>
                         </div>
                         <div className="header-actions">
                             <Badge variant={data?.health?.status === 'ONLINE' ? 'green' : 'yellow'} aria-label={`Статус системы: ${data?.health?.status || 'Проверка'}`}>

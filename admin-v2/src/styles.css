@@ -10638,3 +10638,347 @@ html.dark .diary-shell .chip-metric {
     flex-basis: 100%;
   }
 }
+
+/* Final product contract: diary-like headers, state panel flow, and kanban cards. */
+.diary-shell {
+  --diary-canvas: #09090b;
+  --diary-surface: #141518;
+  --diary-surface-elevated: #171d27;
+  --diary-border: #252b35;
+  --diary-text: #f4f4f5;
+  --diary-muted: #9ca3af;
+  --diary-subtle: #717784;
+  --diary-accent: #cbd5e1;
+  --diary-focus: #a8b4c7;
+}
+
+.diary-shell .v2-header,
+.diary-shell .diary-page-header {
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: space-between !important;
+  gap: 24px !important;
+  min-height: 132px !important;
+  padding: 28px 42px 24px !important;
+  border-bottom: 1px solid var(--diary-border) !important;
+  background: var(--diary-canvas) !important;
+}
+
+.diary-shell .v2-page-heading,
+.diary-shell .diary-page-heading {
+  min-width: 0 !important;
+}
+
+.diary-shell .v2-header .eyebrow,
+.diary-shell .diary-page-heading .eyebrow {
+  color: var(--diary-subtle) !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  letter-spacing: .1em !important;
+  line-height: 1.1 !important;
+}
+
+.diary-shell .v2-header h1,
+.diary-shell .diary-page-heading h1 {
+  margin: 16px 0 8px !important;
+  color: var(--diary-text) !important;
+  font-size: clamp(30px, 3.2vw, 52px) !important;
+  font-weight: 400 !important;
+  letter-spacing: -.045em !important;
+  line-height: 1.02 !important;
+}
+
+.diary-shell .v2-header p,
+.diary-shell .diary-page-heading p {
+  max-width: 680px !important;
+  margin: 0 !important;
+  color: var(--diary-muted) !important;
+  font-size: 17px !important;
+  line-height: 1.35 !important;
+}
+
+.diary-shell .v2-header .header-actions {
+  align-self: flex-end !important;
+}
+
+.diary-shell .diary-home > .needs-card {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 16px !important;
+}
+
+.diary-shell .diary-home > .needs-card > .card-header,
+.diary-shell .diary-home > .needs-card > .profile-compact-card,
+.diary-shell .diary-home > .needs-card > .needs-compact-grid,
+.diary-shell .diary-home > .needs-card > .bento-needs-layout {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.diary-shell .diary-home .bento-needs-layout {
+  display: block !important;
+}
+
+.diary-shell .diary-home .bento-left {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  width: 100% !important;
+}
+
+.diary-shell .diary-home .bento-left > .bento-stat-card {
+  min-width: 0 !important;
+  min-height: 112px !important;
+}
+
+.diary-shell .decision-compact-card {
+  display: grid !important;
+  grid-template-columns: minmax(190px, .8fr) minmax(0, 2fr) !important;
+  align-items: center !important;
+  gap: 20px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  padding: 20px !important;
+  border: 1px solid var(--diary-border) !important;
+  border-radius: 12px !important;
+  background: var(--diary-surface) !important;
+}
+
+.diary-shell .decision-compact-head {
+  display: grid !important;
+  align-content: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+
+.diary-shell .decision-title-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+}
+
+.diary-shell .decision-title-copy {
+  display: grid !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+}
+
+.diary-shell .decision-label {
+  color: var(--diary-subtle) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: .1em !important;
+  line-height: 1.1 !important;
+}
+
+.diary-shell .decision-task-name {
+  overflow-wrap: anywhere !important;
+  color: var(--diary-text) !important;
+  font-size: 18px !important;
+  line-height: 1.15 !important;
+}
+
+.diary-shell .decision-selected-label {
+  color: var(--diary-muted) !important;
+  font-size: 12px !important;
+}
+
+.diary-shell .decision-compact-body {
+  display: grid !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+}
+
+.diary-shell .decision-row-main {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+}
+
+.diary-shell .decision-row-sub {
+  min-width: 0 !important;
+}
+
+.diary-shell .decision-pill {
+  display: grid !important;
+  align-content: center !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+  min-height: 58px !important;
+  padding: 11px 12px !important;
+  border: 1px solid var(--diary-border) !important;
+  border-radius: 8px !important;
+  background: var(--diary-surface-elevated) !important;
+}
+
+.diary-shell .decision-pill span {
+  color: var(--diary-subtle) !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: .05em !important;
+}
+
+.diary-shell .decision-pill strong {
+  overflow-wrap: anywhere !important;
+  color: var(--diary-text) !important;
+  font-size: 13px !important;
+  line-height: 1.25 !important;
+}
+
+.diary-shell .decision-pill em {
+  color: var(--diary-muted) !important;
+  font-style: normal !important;
+  font-weight: 400 !important;
+}
+
+.diary-shell .decision-pill-reason {
+  display: flex !important;
+  align-items: baseline !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  background: transparent !important;
+}
+
+.diary-shell .decision-pill-reason strong {
+  text-align: right !important;
+}
+
+.diary-shell .kanban-board {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.diary-shell .kanban-column {
+  display: flex !important;
+  flex-direction: column !important;
+  min-width: 0 !important;
+  min-height: 250px !important;
+  padding: 12px !important;
+  border: 1px solid var(--diary-border) !important;
+  border-radius: 9px !important;
+  background: var(--diary-surface) !important;
+}
+
+.diary-shell .kanban-list {
+  display: flex !important;
+  flex: 1 1 auto !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+}
+
+.diary-shell .kanban-item {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 12px !important;
+  border: 1px solid var(--diary-border) !important;
+  border-radius: 8px !important;
+  color: var(--diary-text) !important;
+  background: var(--diary-surface-elevated) !important;
+  text-align: left !important;
+}
+
+.diary-shell .kanban-item:hover {
+  border-color: var(--diary-focus) !important;
+  background: #1b222d !important;
+}
+
+.diary-shell .kanban-item-active,
+.diary-shell .kanban-item-planned,
+.diary-shell .kanban-item-done,
+.diary-shell .kanban-item-cancelled {
+  border-color: var(--diary-border) !important;
+  background: var(--diary-surface-elevated) !important;
+}
+
+.diary-shell .kanban-item-active .progress i {
+  background: var(--diary-accent) !important;
+}
+
+.diary-shell .kanban-item strong {
+  color: var(--diary-text) !important;
+}
+
+.diary-shell .kanban-item span,
+.diary-shell .kanban-item small,
+.diary-shell .kanban-column-head span {
+  color: var(--diary-muted) !important;
+}
+
+.diary-shell :where(.kanban-item, .diary-page-controls button, .v2-header button, input, select, textarea):focus-visible {
+  outline-color: var(--diary-focus) !important;
+  box-shadow: 0 0 0 3px rgba(168, 180, 199, .18) !important;
+}
+
+@media (max-width: 1180px) {
+  .diary-shell .kanban-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .diary-shell .v2-header,
+  .diary-shell .diary-page-header {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    padding: 24px 24px 20px !important;
+  }
+
+  .diary-shell .v2-header .header-actions {
+    align-self: flex-start !important;
+  }
+
+  .diary-shell .diary-home .bento-left {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .diary-shell .decision-compact-card {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 620px) {
+  .diary-shell .v2-header,
+  .diary-shell .diary-page-header {
+    padding: 20px 16px 18px !important;
+  }
+
+  .diary-shell .v2-header h1,
+  .diary-shell .diary-page-heading h1 {
+    font-size: 32px !important;
+  }
+
+  .diary-shell .v2-header p,
+  .diary-shell .diary-page-heading p {
+    font-size: 15px !important;
+  }
+
+  .diary-shell .diary-home .bento-left,
+  .diary-shell .kanban-board,
+  .diary-shell .decision-row-main {
+    grid-template-columns: 1fr !important;
+  }
+
+  .diary-shell .decision-pill-reason {
+    display: grid !important;
+    gap: 6px !important;
+  }
+
+  .diary-shell .decision-pill-reason strong {
+    text-align: left !important;
+  }
+}

@@ -110,7 +110,7 @@ test('admin v2 has one diary workspace and no duplicate decisions tab', () => {
     assert.doesNotMatch(source, /Причины решений/);
     assert.doesNotMatch(source, /value="decisions"/);
     assert.match(source, /function KanbanBoard/);
-    for (const marker of ['Предстоит', 'В процессе', 'Сделано', 'Отменено', 'decision-symbol', 'remaining_minutes']) {
+    for (const marker of ['Предстоит', 'В процессе', 'Сделано', 'Отменено', 'decision-label', 'remaining_minutes']) {
         assert.match(source, new RegExp(marker));
     }
     assert.doesNotMatch(source, /view === 'decisions'/);

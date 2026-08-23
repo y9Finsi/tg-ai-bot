@@ -110,8 +110,10 @@ test('Figma kanban cards preserve their status-specific composition and mobile w
     assert.match(source, /if \(column === 'done'\)[\s\S]*kanban-item-done/);
     assert.match(source, /if \(column === 'cancelled'\)[\s\S]*причина:/);
     assert.match(source, /const plannedMeta = reasonText/);
-    assert.match(source, /<i className="decision-symbol" aria-hidden="true">=<\/i>/);
-    assert.match(source, /<i className="decision-symbol" aria-hidden="true">\+<\/i>/);
+    assert.match(source, /aria-labelledby="current-decision-title"/);
+    assert.match(source, /className="decision-label">ТЕКУЩЕЕ РЕШЕНИЕ<\/span>/);
+    assert.match(source, /<span>Потребности<\/span>/);
+    assert.match(source, /<span>Ресурс<\/span>/);
     assert.match(css, /\.diary-home \.kanban-item > span,[\s\S]*overflow-wrap: anywhere;/);
     assert.match(css, /@media \(max-width: 460px\) \{[\s\S]*grid-template-columns: 1fr auto 1fr;/);
     assert.match(css, /@media \(max-width: 760px\) \{[\s\S]*\.diary-home \.bento-left \{[\s\S]*grid-template-rows: auto auto auto auto;/);

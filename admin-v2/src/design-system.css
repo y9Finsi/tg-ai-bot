@@ -1,0 +1,322 @@
+/*
+ * Admin design system
+ *
+ * This is the only final layer for shared geometry, surfaces, controls and
+ * semantic states. The older selectors in styles.css remain compatibility
+ * aliases for feature-specific markup, but new UI should use these tokens.
+ */
+
+:root {
+  --admin-canvas: #09090b;
+  --admin-surface-1: #141518;
+  --admin-surface-2: #171a20;
+  --admin-surface-3: #1d222a;
+  --admin-border: #292f39;
+  --admin-border-strong: #3a4350;
+  --admin-text: #f4f4f5;
+  --admin-text-muted: #a7adb8;
+  --admin-text-subtle: #7d8592;
+  --admin-accent: #cbd5e1;
+  --admin-accent-strong: #f4f4f5;
+  --admin-accent-soft: #252b35;
+  --admin-success: #86efac;
+  --admin-success-bg: #102a1a;
+  --admin-warning: #fde68a;
+  --admin-warning-bg: #3d2d0b;
+  --admin-danger: #fca5a5;
+  --admin-danger-bg: #351316;
+  --admin-info: #cbd5e1;
+  --admin-info-bg: #252b35;
+  --admin-radius-sm: 8px;
+  --admin-radius-md: 10px;
+  --admin-radius-lg: 12px;
+  --admin-control-sm: 36px;
+  --admin-control: 40px;
+  --admin-space-1: 4px;
+  --admin-space-2: 8px;
+  --admin-space-3: 12px;
+  --admin-space-4: 16px;
+  --admin-space-5: 24px;
+  --admin-space-6: 32px;
+  --admin-ease-out: cubic-bezier(.23, 1, .32, 1);
+  --admin-focus-ring: 0 0 0 3px rgb(203 213 225 / .22);
+}
+
+html,
+body,
+.diary-shell {
+  background: var(--admin-canvas);
+  color: var(--admin-text);
+}
+
+body {
+  min-width: 320px;
+  font-family: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
+}
+
+.diary-shell {
+  --bg: var(--admin-canvas);
+  --panel: var(--admin-surface-1);
+  --panel2: var(--admin-surface-2);
+  --line: var(--admin-border);
+  --legacy-muted: var(--admin-text-muted);
+  --legacy-subtle: var(--admin-text-subtle);
+  --blue: var(--admin-info);
+  --yellow: var(--admin-warning);
+  --green: var(--admin-success);
+  --red: var(--admin-danger);
+  --purple: #d8b4fe;
+  --pink: #f9a8d4;
+  --color-canvas: var(--admin-canvas);
+  --color-surface-1: var(--admin-surface-1);
+  --color-surface-2: var(--admin-surface-2);
+  --color-surface-3: var(--admin-surface-3);
+  --color-border: var(--admin-border);
+  --color-border-strong: var(--admin-border-strong);
+  --color-text-primary: var(--admin-text);
+  --color-text-secondary: var(--admin-text-muted);
+  --color-text-tertiary: var(--admin-text-subtle);
+  --color-accent: var(--admin-accent);
+  --color-accent-subtle: var(--admin-accent-soft);
+  --color-success: var(--admin-success);
+  --color-success-bg: var(--admin-success-bg);
+  --color-warning: var(--admin-warning);
+  --color-warning-bg: var(--admin-warning-bg);
+  --color-danger: var(--admin-danger);
+  --color-danger-bg: var(--admin-danger-bg);
+}
+
+.diary-shell :where(button, input, select, textarea, [role="button"], [role="tab"], summary) {
+  font: inherit;
+}
+
+.diary-shell :where(button, input, select, textarea, [role="button"], [role="tab"]):focus-visible {
+  outline: 2px solid var(--admin-accent);
+  outline-offset: 2px;
+  box-shadow: var(--admin-focus-ring);
+}
+
+.diary-shell :where(button, [data-slot="button"], input, select, textarea) {
+  min-height: var(--admin-control);
+}
+
+.diary-shell :where(.ui-button-sm, [data-slot="button"][data-size="sm"], .ui-button-icon) {
+  min-height: var(--admin-control-sm);
+}
+
+.diary-shell :where(input, select, textarea) {
+  border-color: var(--admin-border);
+  border-radius: var(--admin-radius-sm);
+  color: var(--admin-text);
+  background: var(--admin-canvas);
+}
+
+.diary-shell :where(input, select, textarea)::placeholder {
+  color: var(--admin-text-subtle);
+}
+
+.diary-shell :where(.ui-card, [data-slot="card"], .studio-card, .studio-section, .studio-module-card, .studio-candidate-card, .studio-compare-intro, .studio-result-comparison, .studio-publish-page, .studio-live-page, .lera-control-section) {
+  border-color: var(--admin-border);
+  border-radius: var(--admin-radius-lg);
+  background: var(--admin-surface-1);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .2);
+}
+
+.diary-shell :where(.ui-card-frameless) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.diary-shell :where(.ui-card, [data-slot="card"]) {
+  color: var(--admin-text);
+}
+
+.diary-shell :where(.ui-button, [data-slot="button"]) {
+  border-color: var(--admin-border-strong);
+  border-radius: var(--admin-radius-sm);
+  color: var(--admin-text);
+  background: var(--admin-surface-2);
+  box-shadow: none;
+}
+
+.diary-shell :where(.ui-button, [data-slot="button"]):hover {
+  border-color: var(--admin-accent);
+  background: var(--admin-surface-3);
+}
+
+.diary-shell :where(.ui-button-primary, [data-slot="button"].bg-primary) {
+  border-color: var(--admin-accent);
+  color: #111318;
+  background: var(--admin-accent);
+}
+
+.diary-shell :where(.ui-button-primary, [data-slot="button"].bg-primary):hover {
+  color: #09090b;
+  background: var(--admin-accent-strong);
+}
+
+.diary-shell :where(.ui-button-warning) {
+  border-color: #927026;
+  color: var(--admin-warning);
+  background: var(--admin-warning-bg);
+}
+
+.diary-shell :where(.ui-button-danger, [data-slot="button"].bg-destructive) {
+  border-color: #7f1d1d;
+  color: var(--admin-danger);
+  background: var(--admin-danger-bg);
+}
+
+.diary-shell :where(.ui-badge, [data-slot="badge"]) {
+  min-height: 24px;
+  border-radius: 999px;
+  font-family: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+.admin-badge-default,
+.admin-badge-secondary,
+.admin-badge-muted {
+  color: var(--admin-text-muted);
+  border-color: var(--admin-border);
+  background: var(--admin-surface-2);
+}
+
+.admin-badge-outline {
+  color: var(--admin-text-muted);
+  border-color: var(--admin-border-strong);
+  background: transparent;
+}
+
+.admin-badge-ghost,
+.admin-badge-link {
+  color: var(--admin-text-muted);
+  background: transparent;
+}
+
+.admin-badge-info,
+.admin-badge-accent {
+  color: var(--admin-info);
+  border-color: var(--admin-border-strong);
+  background: var(--admin-info-bg);
+}
+
+.admin-badge-success {
+  color: var(--admin-success);
+  border-color: #1f6a3a;
+  background: var(--admin-success-bg);
+}
+
+.admin-badge-warning {
+  color: var(--admin-warning);
+  border-color: #927026;
+  background: var(--admin-warning-bg);
+}
+
+.admin-badge-danger {
+  color: var(--admin-danger);
+  border-color: #7f1d1d;
+  background: var(--admin-danger-bg);
+}
+
+.diary-shell :where(.v2-header, .diary-page-header) {
+  border-color: var(--admin-border);
+  background: var(--admin-canvas);
+}
+
+.diary-shell :where(.v2-header h1, .diary-page-heading h1, [data-slot="card-title"], .card-header h2) {
+  color: var(--admin-text);
+}
+
+.diary-shell :where(.v2-header p, .diary-page-heading p, [data-slot="card-description"], .card-header p) {
+  color: var(--admin-text-muted);
+}
+
+.diary-shell :where(.eyebrow) {
+  color: var(--admin-text-subtle);
+}
+
+.diary-shell :where(.kanban-column, .kanban-item, .stat-card, .profile-window div, .commitment, .operation-item, .managed-row, .bento-stat-card, .bento-influence-card, .diagnostic-cell, .need-compact-item, .llm-row, .provider-managed-row, .summary-grid > div) {
+  border-color: var(--admin-border);
+  background: var(--admin-surface-2);
+  box-shadow: none;
+}
+
+.diary-shell :where(.kanban-item:hover, .llm-row:hover, .managed-row:hover) {
+  border-color: var(--admin-border-strong);
+  background: var(--admin-surface-3);
+  box-shadow: none;
+}
+
+.diary-shell :where(.kanban-item-active, .kanban-item-planned, .kanban-item-done, .kanban-item-cancelled) {
+  border-color: var(--admin-border);
+  background: var(--admin-surface-2);
+}
+
+.diary-shell :where(.kanban-item-active .progress i, .progress i) {
+  background: var(--admin-accent);
+}
+
+.diary-shell :where(.need-icon-badge, .bento-icon, .stat-icon, .operation-icon) {
+  color: var(--admin-text-muted);
+  background: var(--admin-surface-3);
+}
+
+.diary-shell :where(.ui-badge-blue, .badge-blue, .stat-blue, .bento-icon-blue, .npc-blue) {
+  color: var(--admin-info);
+  background: var(--admin-info-bg);
+}
+
+.diary-shell :where(.ui-badge-green, .stat-green) {
+  color: var(--admin-success);
+  background: var(--admin-success-bg);
+}
+
+.diary-shell :where(.ui-badge-yellow, .stat-yellow, .bento-icon-yellow) {
+  color: var(--admin-warning);
+  background: var(--admin-warning-bg);
+}
+
+.diary-shell :where(.ui-badge-red, .stat-red, .danger-icon) {
+  color: var(--admin-danger);
+  background: var(--admin-danger-bg);
+}
+
+.diary-shell :where(.toast-v2, [role="status"], [role="alert"]) {
+  border-radius: var(--admin-radius-md);
+}
+
+.diary-shell :where(.toast-v2) {
+  border-color: #1f6a3a;
+  color: var(--admin-success);
+  background: var(--admin-success-bg);
+}
+
+.diary-shell :where(.toast-v2-error) {
+  border-color: #7f1d1d;
+  color: var(--admin-danger);
+  background: var(--admin-danger-bg);
+}
+
+@media (max-width: 760px) {
+  .diary-shell :where(.v2-content, .diary-home) {
+    padding-inline: 16px;
+  }
+
+  .diary-shell :where(.diary-tabbar) {
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diary-shell *,
+  .diary-shell *::before,
+  .diary-shell *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+}
