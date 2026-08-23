@@ -113,6 +113,12 @@ test('wide-screen tabs share one workspace frame and card padding', () => {
     assert.match(css, /padding-inline: var\(--admin-card-padding\) !important/);
 });
 
+test('diary home resets the legacy grid shorthand on wide screens', () => {
+    assert.match(css, /html\.dark \.diary-shell \.v2-content\.diary-home \{\s*display:\s*grid !important;\s*grid:\s*none !important;\s*grid-template-columns:\s*minmax\(0,\s*1fr\) !important/s);
+    assert.match(css, /grid-template-rows:\s*none !important/);
+    assert.match(css, /grid-template-areas:\s*none !important/);
+});
+
 test('legacy feature accents resolve to the canonical neutral palette', () => {
     assert.match(css, /--blue:\s*var\(--admin-info\)\s*!important/);
     assert.match(css, /--purple:\s*var\(--admin-text-muted\)\s*!important/);

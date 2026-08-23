@@ -1728,3 +1728,18 @@ html.dark .login-screen input:focus-visible {
   outline-offset: 2px;
   box-shadow: 0 0 0 4px var(--admin-accent-soft) !important;
 }
+
+/*
+ * Diary home must not inherit the historical Figma canvas shorthand
+ * (`grid: ... / 298px minmax(...)`). That shorthand created implicit
+ * columns even after the canonical one-column workspace rule won.
+ */
+html.dark .diary-shell .v2-content.diary-home {
+  display: grid !important;
+  grid: none !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: none !important;
+  grid-template-areas: none !important;
+  align-content: start !important;
+  gap: var(--admin-section-spacing) !important;
+}
