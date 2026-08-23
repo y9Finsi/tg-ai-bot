@@ -1672,3 +1672,23 @@ html.dark .diary-shell :is(
   color: var(--admin-text-muted) !important;
   background: var(--admin-surface-3) !important;
 }
+
+/*
+ * Primary controls are the last legacy accent that can win through a
+ * feature-specific selector. Keep them strictly monochrome, including
+ * background-image, because older rules used blue/purple gradients.
+ */
+html.dark .diary-shell :is(.ui-button-primary, .photo-file-button) {
+  color: var(--admin-canvas) !important;
+  border-color: var(--admin-text) !important;
+  background: var(--admin-text) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+html.dark .diary-shell :is(.ui-button-primary, .photo-file-button):hover {
+  color: var(--admin-canvas) !important;
+  border-color: var(--admin-accent-strong) !important;
+  background: var(--admin-accent-strong) !important;
+  background-image: none !important;
+}

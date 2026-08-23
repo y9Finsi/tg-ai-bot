@@ -120,3 +120,9 @@ test('legacy feature accents resolve to the canonical neutral palette', () => {
     assert.match(css, /\.sandbox-result-bubble/);
     assert.match(css, /background:\s*var\(--admin-surface-2\)\s*!important/);
 });
+
+test('primary controls cannot reintroduce blue or purple gradients', () => {
+    assert.match(css, /html\.dark \.diary-shell :is\(\.ui-button-primary, \.photo-file-button\)/);
+    assert.match(css, /background-image:\s*none\s*!important/);
+    assert.match(css, /background:\s*var\(--admin-text\)\s*!important/);
+});
