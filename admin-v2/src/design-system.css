@@ -31,6 +31,17 @@
   --admin-radius-lg: 12px;
   --admin-control-sm: 36px;
   --admin-control: 40px;
+  --admin-font-size-xs: 11px;
+  --admin-font-size-sm: 12px;
+  --admin-font-size-md: 14px;
+  --admin-font-size-lg: 16px;
+  --admin-font-size-xl: 20px;
+  --admin-font-size-2xl: 24px;
+  --admin-leading-tight: 1.2;
+  --admin-leading-normal: 1.45;
+  --admin-leading-relaxed: 1.55;
+  --admin-tracking-eyebrow: .08em;
+  --admin-tracking-heading: -.02em;
   --admin-space-1: 4px;
   --admin-space-2: 8px;
   --admin-space-3: 12px;
@@ -604,5 +615,291 @@ body {
 
   .diary-shell :where(.ui-card, [data-slot="card"], .crm-section, .inventory-section-card, .photo-card) {
     padding: var(--admin-space-4) !important;
+  }
+}
+
+/*
+ * Canonical typography, spacing and palette pass.
+ *
+ * Feature CSS is intentionally kept for domain-specific layout, but these
+ * shared selectors are the final source of truth for repeated UI primitives.
+ */
+.diary-shell {
+  font-size: var(--admin-font-size-md);
+  line-height: var(--admin-leading-normal);
+}
+
+.diary-shell :where(
+  h1,
+  h2,
+  h3,
+  h4,
+  p,
+  ul,
+  ol
+) {
+  margin-block: 0;
+}
+
+.diary-shell :where(.v2-header h1, .diary-page-heading h1, .inventory-hero h2) {
+  font-size: var(--admin-font-size-2xl) !important;
+  line-height: var(--admin-leading-tight) !important;
+  letter-spacing: var(--admin-tracking-heading) !important;
+  color: var(--admin-text) !important;
+}
+
+.diary-shell :where(.card-header h2, [data-slot="card-title"], .crm-section-heading h3, .studio-section-heading h3, .lera-control-section-heading, .kanban-column-head strong) {
+  font-size: var(--admin-font-size-lg) !important;
+  line-height: var(--admin-leading-tight) !important;
+  letter-spacing: var(--admin-tracking-heading) !important;
+  color: var(--admin-text) !important;
+}
+
+.diary-shell :where(
+  .task-card-title strong,
+  .profile-compact-title strong,
+  .provider-row-title strong,
+  .error-audit-title strong,
+  .topic-card-header strong,
+  .decision-title-copy strong,
+  .bento-stat-card strong,
+  .stat-card strong
+) {
+  font-size: var(--admin-font-size-md) !important;
+  line-height: var(--admin-leading-tight) !important;
+  color: var(--admin-text) !important;
+}
+
+.diary-shell :where(
+  .v2-header p,
+  .diary-page-heading p,
+  [data-slot="card-description"],
+  .card-header p,
+  .crm-section-heading p,
+  .studio-section-copy,
+  .field-hint,
+  .profile-compact-status,
+  .provider-row-title span,
+  .provider-row-url,
+  .error-audit-meta,
+  .kpi-label,
+  .task-card-subtitle,
+  .task-card-reason,
+  .task-card-location,
+  .task-card-time,
+  .kanban-column-head span,
+  .kanban-item small,
+  .kanban-empty
+) {
+  font-size: var(--admin-font-size-sm) !important;
+  line-height: var(--admin-leading-normal) !important;
+  color: var(--admin-text-muted) !important;
+}
+
+.diary-shell :where(.eyebrow, .prompt-module-label, .retrieval-label, .group-label) {
+  font-size: var(--admin-font-size-xs) !important;
+  line-height: var(--admin-leading-tight) !important;
+  letter-spacing: var(--admin-tracking-eyebrow) !important;
+  color: var(--admin-text-subtle) !important;
+}
+
+.diary-shell :where(
+  .ui-card,
+  [data-slot="card"],
+  .kanban-column,
+  .stat-card,
+  .profile-compact-card,
+  .crm-section,
+  .inventory-section-card,
+  .inventory-activity-card,
+  .photo-card,
+  .topic-card-item,
+  .studio-candidate-card,
+  .studio-module-card,
+  .rationale-panel-card,
+  .errors-list-card,
+  .server-terminal-card
+) {
+  margin-block-end: var(--admin-space-6);
+  padding: var(--admin-card-padding) !important;
+}
+
+.diary-shell :where(
+  .card-header,
+  .crm-section-heading,
+  .studio-section-heading,
+  .routing-section-head,
+  .inventory-widget-head,
+  .error-audit-header,
+  .kanban-column-head,
+  .profile-compact-header,
+  .photo-card-header,
+  .topic-card-header
+) {
+  gap: var(--admin-space-3) !important;
+  margin-block-end: var(--admin-space-4) !important;
+}
+
+.diary-shell :where(
+  .diary-grid,
+  .diary-side,
+  .decision-view,
+  .llm-layout-v2,
+  .llm-sections,
+  .operation-grid,
+  .commitment-list,
+  .image-generation-layout,
+  .bento-needs-layout,
+  .bento-right,
+  .studio-context-grid,
+  .studio-sampling-grid,
+  .routing-section,
+  .memory-section,
+  .relationship-section,
+  .response-trace-section
+) {
+  gap: var(--admin-grid-gap) !important;
+}
+
+.diary-shell :where(
+  .v2-content,
+  .admin-domain-page,
+  .diary-home,
+  .content-super-container,
+  .crm-super-container,
+  .system-super-layout
+) {
+  padding-inline: var(--admin-workspace-gutter) !important;
+}
+
+.diary-shell :where(
+  .ui-button,
+  [data-slot="button"],
+  .image-upload-button,
+  .diary-page-controls button
+) {
+  min-height: var(--admin-control) !important;
+  padding: var(--admin-space-2) var(--admin-space-3) !important;
+  border-radius: var(--admin-radius-sm) !important;
+  font-size: var(--admin-font-size-sm) !important;
+  line-height: var(--admin-leading-tight) !important;
+}
+
+.diary-shell :where(
+  input,
+  select,
+  textarea,
+  .admin-code-editor
+) {
+  padding: var(--admin-space-2) var(--admin-space-3) !important;
+  border-radius: var(--admin-radius-sm) !important;
+  font-size: var(--admin-font-size-sm) !important;
+  line-height: var(--admin-leading-normal) !important;
+}
+
+.diary-shell :where(
+  .ui-badge,
+  [data-slot="badge"],
+  .task-badge,
+  .kanban-count,
+  .chat-model-badge,
+  .user-balance-badge
+) {
+  min-height: 24px;
+  padding: var(--admin-space-1) var(--admin-space-2) !important;
+  border-radius: 999px !important;
+  font-size: var(--admin-font-size-xs) !important;
+  line-height: var(--admin-leading-tight) !important;
+  letter-spacing: 0 !important;
+}
+
+.diary-shell :where(.ui-button, [data-slot="button"]) {
+  color: var(--admin-text) !important;
+  background: var(--admin-surface-2) !important;
+  border-color: var(--admin-border-strong) !important;
+}
+
+.diary-shell :where(.ui-button:hover, [data-slot="button"]:hover) {
+  color: var(--admin-text) !important;
+  background: var(--admin-surface-3) !important;
+  border-color: var(--admin-accent) !important;
+}
+
+.diary-shell :where(
+  .ui-button-primary,
+  [data-slot="button"].bg-primary,
+  .admin-button-primary
+) {
+  color: #111318 !important;
+  background: var(--admin-accent) !important;
+  border-color: var(--admin-accent) !important;
+}
+
+.diary-shell :where(
+  .stat-blue,
+  .stat-purple,
+  .stat-pink,
+  .bento-icon-blue,
+  .bento-icon-purple,
+  .bento-icon-pink,
+  .task-inviter-blue,
+  .task-inviter-pink
+) {
+  color: var(--admin-text-muted) !important;
+  background: var(--admin-surface-3) !important;
+  border-color: var(--admin-border) !important;
+}
+
+.diary-shell :where(
+  .image-download-link,
+  .channel-status a,
+  .provider-row-url
+) {
+  color: var(--admin-info) !important;
+}
+
+.diary-shell :where(.kanban-board) {
+  grid-template-columns: var(--admin-grid-columns) !important;
+  gap: var(--admin-grid-gap) !important;
+}
+
+.diary-shell :where(.kanban-column, .kanban-item) {
+  min-width: 0 !important;
+  border: 1px solid var(--admin-border) !important;
+  border-radius: var(--admin-radius-md) !important;
+  background: var(--admin-surface-2) !important;
+}
+
+.diary-shell :where(.kanban-item) {
+  padding: var(--admin-space-3) !important;
+}
+
+.diary-shell :where(button, [role="button"], .ui-button, [data-slot="button"]):active {
+  transform: scale(.98);
+}
+
+@media (max-width: 1100px) {
+  .diary-shell :where(.kanban-board) {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .diary-shell :where(.kanban-board) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .diary-shell :where(
+    .v2-header h1,
+    .diary-page-heading h1,
+    .inventory-hero h2
+  ) {
+    font-size: var(--admin-font-size-xl) !important;
+  }
+
+  .diary-shell :where(.kanban-board) {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 }
