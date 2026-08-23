@@ -11027,3 +11027,15 @@ html.dark .diary-shell .chip-metric {
     overflow-y: hidden !important;
   }
 }
+
+/* Final monochrome cleanup for the two feature-specific active states that
+   still carried the old blue visual language at runtime. */
+html.dark .diary-shell .diary-home .kanban-item-active .progress {
+  background: var(--admin-surface-3) !important;
+}
+
+html.dark .diary-shell .studio-workspace-tabs > [role="tablist"] [role="tab"][data-state="active"] {
+  color: var(--admin-text) !important;
+  border-color: var(--admin-border-strong) !important;
+  background: var(--admin-surface-3) !important;
+}

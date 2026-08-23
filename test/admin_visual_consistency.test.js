@@ -94,3 +94,8 @@ test('mobile topbar gives the tablist its own non-overlapping row', () => {
     assert.match(featureCss, /html\.dark \.diary-shell \.v2-topbar \.diary-tabs-root \{\s*grid-area: tabs/s);
     assert.match(featureCss, /html\.dark \.diary-shell \.v2-topbar \.diary-tabbar \{\s*width: 100% !important/s);
 });
+
+test('runtime feature states stay in the monochrome canonical palette', () => {
+    assert.match(featureCss, /html\.dark \.diary-shell \.diary-home \.kanban-item-active \.progress \{\s*background: var\(--admin-surface-3\) !important/s);
+    assert.match(featureCss, /html\.dark \.diary-shell \.studio-workspace-tabs > \[role="tablist"\] \[role="tab"\]\[data-state="active"\]/s);
+});
