@@ -222,8 +222,15 @@ export function setBotInstanceForServer(bot) {
 
 export function startAdminServer() {
     const app = express();
-    const PORT = process.env.ADMIN_PORT || 3000;
-    const ADMIN_KEY = process.env.ADMIN_WEB_KEY;
+    const normalizeAdminKey = (val) => {
+        if (!val) return '';
+        let str = String(val).trim();
+        if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+            str = str.slice(1, -1).trim();
+        }
+        return str;
+    };
+    const ADMIN_KEY = normalizeAdminKey(process.env.ADMIN_WEB_KEY);
 
     // Синхронизация сохранённых настроек навыков (Actions) из БД
     ToolsRepository.syncRegistryFromDb().catch(err => {
@@ -334,7 +341,7 @@ export function startAdminServer() {
             ?.slice('admin_key='.length);
         if (!rawValue) return null;
         try {
-            return decodeURIComponent(rawValue);
+            return normalizeAdminKey(decodeURIComponent(rawValue));
         } catch {
             return null;
         }
@@ -343,8 +350,8 @@ export function startAdminServer() {
     // Browser login: the secret stays in an HttpOnly cookie and is never embedded
     // into app.js or an SSE URL.
     app.post('/api/admin/login', (req, res) => {
-        const clientKey = typeof req.body?.key === 'string' ? req.body.key.trim() : req.body?.key;
-        if (clientKey !== ADMIN_KEY) {
+        const clientKey = normalizeAdminKey(req.body?.key);
+        if (!clientKey || clientKey !== ADMIN_KEY) {
             return res.status(401).json({ error: 'Неверный ключ админки.' });
         }
         const isHttps = Boolean(req.secure || req.headers['x-forwarded-proto'] === 'https');
@@ -368,7 +375,7 @@ export function startAdminServer() {
 
     app.get('/api/admin/session', (req, res) => {
         const cookieKey = readAdminCookie(req);
-        const headerKey = req.headers['x-admin-key'];
+        const headerKey = normalizeAdminKey(req.headers['x-admin-key']);
         const authenticated = (cookieKey === ADMIN_KEY) || (headerKey === ADMIN_KEY);
         res.json({ success: true, authenticated });
     });
@@ -379,7 +386,7 @@ export function startAdminServer() {
             return next();
         }
         const cookieKey = readAdminCookie(req);
-        const clientKey = req.headers['x-admin-key'] || cookieKey;
+        const clientKey = normalizeAdminKey(req.headers['x-admin-key']) || cookieKey;
         if (clientKey !== ADMIN_KEY) {
             return res.status(401).json({ error: 'Доступ запрещен. Неверный токен авторизации.' });
         }
