@@ -41,3 +41,12 @@ test('prompt editor exposes the shared day context without choosing a personal c
     const endpoint = server.slice(server.indexOf("app.get('/api/admin/prompt-day-context'"), server.indexOf('// =========================================================================', server.indexOf("app.get('/api/admin/prompt-day-context'")));
     assert.match(endpoint, /ContextBuilder\.buildTelegramContextDetailed\(null\)/);
 });
+
+test('channel draft and publication do not force photos on purely textual posts', () => {
+    const poster = read('src/channel_poster.js');
+
+    assert.doesNotMatch(poster, /settings\.media_mode === 'none'/);
+    assert.match(poster, /const isMediaRequested = Boolean\(contentId \|\| media \|\| isPhotoFormat \|\| isMemeFormat\);/);
+    assert.match(poster, /if \(isMediaRequested && !contentMedia && !photoToSend/);
+});
+

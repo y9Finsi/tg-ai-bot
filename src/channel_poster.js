@@ -120,7 +120,7 @@ export async function generateChannelPostDraft(overrideSettings = null) {
     const timeOfDay = getTimeOfDayMSK();
     const topic = overrideSettings?.topic || selectWeightedTopic(settings);
     let topicDescription = TOPIC_DESCRIPTIONS[topic] || 'Мысли вслух и жизненные заметки';
-    const hasMediaCapability = settings.media_mode === 'db_photo' || settings.media_mode === 'meme' || settings.media_mode === 'ai_photo' || settings.media_mode === 'none';
+    const hasMediaCapability = settings.media_mode === 'db_photo' || settings.media_mode === 'meme' || settings.media_mode === 'ai_photo';
 
     const contentFormat = selectChannelContentFormat({
         recentPosts,
@@ -137,7 +137,7 @@ export async function generateChannelPostDraft(overrideSettings = null) {
     if (contentFormat === 'photo_caption') {
         if (settings.media_mode === 'meme') {
             mediaContent = await getRandomChannelContent({ type: 'photo' }) || await getRandomChannelContent();
-        } else {
+        } else if (settings.media_mode === 'db_photo') {
             selectedPhoto = await getRandomLeraPhoto({ access_level: 'free', time_of_day: timeOfDay, excludeChannelUsed: true });
         }
         topicDescription = 'Короткая подпись к фото в 1 строку (например: «привет», «сегодня такой день», «настроение такое», «красиво») или пара слов';
@@ -381,7 +381,11 @@ export async function publishChannelDraft(bot, { text, topic, provenance = {}, m
     } else if (contentId) {
         contentMedia = await getLeraContent(contentId).catch(() => null);
     }
-    if (!contentMedia && !photoToSend && (settings.media_mode === 'ai_photo' || settings.media_mode === 'db_photo')) {
+    const isPhotoFormat = contentFormat === 'photo_caption' || provenance.content_format === 'photo_caption';
+    const isMemeFormat = contentFormat === 'meme_caption' || provenance.content_format === 'meme_caption';
+    const isMediaRequested = Boolean(contentId || media || isPhotoFormat || isMemeFormat);
+
+    if (isMediaRequested && !contentMedia && !photoToSend && (settings.media_mode === 'ai_photo' || settings.media_mode === 'db_photo')) {
         if (settings.media_mode === 'ai_photo') {
             try {
                 const prompt = `Candid photo of Lera for Telegram channel post. Topic: ${topic}. Post text: "${cleanedText.slice(0, 300)}"`;

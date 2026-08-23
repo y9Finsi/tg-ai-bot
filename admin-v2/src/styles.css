@@ -10042,3 +10042,316 @@ html.dark .diary-shell .chip-metric {
   border-radius: 6px !important;
 }
 
+/* Final diary layout pass: one spacing scale, one surface language, predictable reflow. */
+.diary-shell .diary-home {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 24px !important;
+  max-width: 1440px !important;
+  padding-block: 24px 64px !important;
+}
+
+.diary-page-header {
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: space-between !important;
+  gap: 24px !important;
+  min-width: 0 !important;
+  padding: 4px 0 0 !important;
+}
+
+.diary-page-heading {
+  min-width: 0 !important;
+}
+
+.diary-page-heading h1 {
+  margin: 6px 0 4px !important;
+  color: var(--text-main) !important;
+  font-size: clamp(22px, 2vw, 30px) !important;
+  line-height: 1.1 !important;
+  letter-spacing: -0.03em !important;
+}
+
+.diary-page-heading p {
+  max-width: 620px !important;
+  margin: 0 !important;
+  color: var(--text-muted) !important;
+  font-size: 13px !important;
+}
+
+.diary-page-controls {
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: flex-end !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+
+.diary-date-field {
+  display: grid !important;
+  gap: 4px !important;
+  min-width: 148px !important;
+  color: var(--text-subtle) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: .06em !important;
+  text-transform: uppercase !important;
+}
+
+.diary-date-field input {
+  min-height: 34px !important;
+  padding: 7px 9px !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 7px !important;
+  color: var(--text-main) !important;
+  background: var(--bg-surface) !important;
+}
+
+.diary-shell .diary-home > :where(.needs-card, .decision-compact-card, .kanban-card, .inventory-widget, .day-summary) {
+  width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 20px !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 12px !important;
+  background: var(--bg-surface) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .12) !important;
+}
+
+.diary-shell .diary-home > .needs-card {
+  display: flex !important;
+  gap: 16px !important;
+}
+
+.diary-shell .diary-home > .needs-card > .card-header {
+  margin: 0 !important;
+}
+
+.diary-shell .diary-home > .needs-card > .profile-compact-card {
+  margin: 0 !important;
+}
+
+.diary-shell .diary-home > .needs-card > .needs-compact-grid {
+  margin: 0 !important;
+}
+
+.diary-shell .diary-home .need-compact-item,
+.diary-shell .diary-home .bento-stat-card,
+.diary-shell .diary-home .kanban-column,
+.diary-shell .diary-home .inventory-widget-stat,
+.diary-shell .diary-home .summary-grid > div {
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 9px !important;
+  background: var(--bg-surface-elevated) !important;
+  box-shadow: none !important;
+}
+
+.diary-shell .diary-home .needs-compact-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+
+.diary-shell .diary-home .need-compact-item {
+  min-height: 118px !important;
+  height: auto !important;
+  padding: 12px !important;
+}
+
+.diary-shell .diary-home .need-icon-badge {
+  width: 30px !important;
+  height: 30px !important;
+  margin: 0 0 8px !important;
+  border-radius: 8px !important;
+}
+
+.diary-shell .diary-home .need-icon-badge svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+.diary-shell .diary-home .need-title-group strong {
+  font-size: 12px !important;
+  line-height: 1.25 !important;
+}
+
+.diary-shell .diary-home .need-compact-foot {
+  gap: 6px !important;
+  margin-top: auto !important;
+}
+
+.diary-shell .diary-home .need-compact-foot .ui-badge {
+  font-size: 11px !important;
+}
+
+.diary-shell .diary-home .bento-needs-layout {
+  display: block !important;
+  margin: 0 !important;
+}
+
+.diary-shell .diary-home .bento-left {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  height: auto !important;
+}
+
+.diary-shell .diary-home .bento-left > .bento-stat-card {
+  min-height: 112px !important;
+  padding: 14px !important;
+}
+
+.diary-shell .diary-home > .decision-compact-card {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 2fr) !important;
+  align-items: center !important;
+  gap: 16px !important;
+}
+
+.diary-shell .diary-home .decision-compact-head {
+  min-width: 0 !important;
+}
+
+.diary-shell .diary-home .decision-compact-body {
+  min-width: 0 !important;
+}
+
+.diary-shell .diary-home .decision-pill-reason strong {
+  overflow-wrap: anywhere !important;
+}
+
+.diary-shell .diary-home > .kanban-card {
+  gap: 16px !important;
+}
+
+.diary-shell .diary-home .kanban-board {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+}
+
+.diary-shell .diary-home .kanban-column {
+  min-height: 250px !important;
+  padding: 12px !important;
+}
+
+.diary-shell .diary-home .kanban-column-head {
+  min-width: 0 !important;
+  padding-bottom: 10px !important;
+  margin: 0 !important;
+}
+
+.diary-shell .diary-home .kanban-column-head > div {
+  min-width: 0 !important;
+}
+
+.diary-shell .diary-home .kanban-column-head span:not(.kanban-count) {
+  display: block !important;
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+}
+
+.diary-shell .diary-home .kanban-list {
+  gap: 8px !important;
+  overflow: visible !important;
+}
+
+.diary-shell .diary-home .kanban-item {
+  min-width: 0 !important;
+  padding: 11px !important;
+  border-radius: 8px !important;
+  outline: none !important;
+}
+
+.diary-shell .diary-home .kanban-item:focus-visible,
+.diary-shell .diary-page-controls button:focus-visible,
+.diary-shell .diary-date-field input:focus-visible {
+  outline: 2px solid var(--color-accent-blue, #93c5fd) !important;
+  outline-offset: 2px !important;
+}
+
+.diary-shell .diary-home .kanban-item strong,
+.diary-shell .diary-home .kanban-item span,
+.diary-shell .diary-home .kanban-item small {
+  overflow-wrap: anywhere !important;
+}
+
+.diary-shell .diary-home .summary-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+
+.diary-shell .diary-home .summary-footer {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px 16px !important;
+  color: var(--text-muted) !important;
+}
+
+@media (max-width: 1180px) {
+  .diary-shell .diary-home .needs-compact-grid,
+  .diary-shell .diary-home .summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .diary-shell .diary-home .kanban-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .diary-page-header {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+
+  .diary-page-controls {
+    justify-content: flex-start !important;
+  }
+
+  .diary-shell .diary-home .bento-left {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .diary-shell .diary-home > .decision-compact-card {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 620px) {
+  .diary-shell .diary-home {
+    gap: 16px !important;
+    padding-inline: 16px !important;
+  }
+
+  .diary-shell .diary-home > :where(.needs-card, .decision-compact-card, .kanban-card, .inventory-widget, .day-summary) {
+    padding: 16px !important;
+    border-radius: 10px !important;
+  }
+
+  .diary-shell .diary-home .needs-compact-grid,
+  .diary-shell .diary-home .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .diary-shell .diary-home .kanban-board,
+  .diary-shell .diary-home .bento-left {
+    grid-template-columns: 1fr !important;
+  }
+
+  .diary-page-controls {
+    align-items: stretch !important;
+  }
+
+  .diary-date-field {
+    flex: 1 1 140px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diary-shell * {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as Tabs from '@radix-ui/react-tabs';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Command, Search, Copy, Check, Pause, Trash2, Clock, Coins, Cpu, Layers, AlertTriangle, XCircle, Filter, Activity, ChevronRight, ChevronDown, User, SlidersHorizontal, Plus, Globe, Server, Network, Brain, BrainCircuit, GitBranch, Gauge, ShieldCheck } from 'lucide-react';
+import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Command, Search, Copy, Check, Pause, Trash2, Clock, Coins, Cpu, Layers, AlertTriangle, XCircle, Filter, Activity, ChevronRight, ChevronLeft, ChevronDown, User, SlidersHorizontal, Plus, Globe, Server, Network, Brain, BrainCircuit, GitBranch, Gauge, ShieldCheck } from 'lucide-react';
 import './index.css';
 import './styles.css';
 import { Button } from './components/ui/button.jsx';
@@ -64,6 +64,17 @@ function formatDate(value) {
         dateStyle: 'short',
         timeStyle: 'short'
     }).format(new Date(value));
+}
+
+function shiftIsoDate(value, amount) {
+    const date = new Date(`${value}T12:00:00+03:00`);
+    date.setDate(date.getDate() + amount);
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Moscow',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(date);
 }
 
 function memoryGraphData(payload) {
@@ -418,7 +429,7 @@ function NeedsPanel({ state, profile, activeTask, health, rationale }) {
                     const toneClass = critical ? 'need-icon-critical' : warning ? 'need-icon-warning' : 'need-icon-good';
                     const barTone = item.key === 'hygiene' ? (critical ? 'red' : warning ? 'yellow' : 'green') : (critical ? 'red' : warning ? 'yellow' : 'purple');
                     return (
-                        <div className={cn('need-compact-item', `need-${item.key}`, critical && 'need-compact-critical')} key={item.key} title={item.hint}>
+                        <div className={cn('need-compact-item', `need-${item.key}`, critical && 'need-compact-critical')} key={item.key} title={item.hint} aria-label={`${item.label}: ${item.status.label}, ${item.value}%`}>
                             <div className="need-compact-head">
                                 <div className="need-title-group">
                                     <span className={cn('need-icon-badge', toneClass)}><IconComp size={13} /></span>
@@ -427,7 +438,7 @@ function NeedsPanel({ state, profile, activeTask, health, rationale }) {
                             </div>
                             <div className="need-compact-foot">
                                 <div className={cn('need-status', `need-status-${item.status.tone}`)}><span>{item.status.label}</span><em>{item.value}%</em></div>
-                                <Progress value={item.value} tone={barTone} />
+                                <Progress value={item.key === 'hygiene' ? 100 - item.value : item.value} tone={barTone} />
                             </div>
                         </div>
                     );
@@ -652,10 +663,17 @@ function TaskCard({ row, column, clockAt, rationale, onSelectTask }) {
     const lastRationale = validRationale.at(-1);
     const decisionReason = formatDecisionReason(lastRationale, type);
     const handleClick = () => { if (onSelectTask) onSelectTask(row); };
+    const handleKeyDown = event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            handleClick();
+        }
+    };
+    const interactiveProps = { role: 'button', tabIndex: 0, onKeyDown: handleKeyDown };
 
     if (column === 'active') {
         return (
-            <article className="kanban-item kanban-item-active" onClick={handleClick}>
+            <article {...interactiveProps} className="kanban-item kanban-item-active" onClick={handleClick}>
                 <div className="task-card-title"><strong>{label}</strong></div>
                 <span className="task-card-time">{endLabel}</span>
                 <Progress value={progress} tone="blue" />
@@ -666,14 +684,14 @@ function TaskCard({ row, column, clockAt, rationale, onSelectTask }) {
     }
 
     if (column === 'done') {
-        return <article className="kanban-item kanban-item-done" onClick={handleClick}><div className="task-card-title"><strong>{label}</strong></div><span className="task-card-time">{endLabel}</span></article>;
+        return <article {...interactiveProps} className="kanban-item kanban-item-done" onClick={handleClick}><div className="task-card-title"><strong>{label}</strong></div><span className="task-card-time">{endLabel}</span></article>;
     }
 
     if (column === 'cancelled') {
-        return <article className={cn('kanban-item', 'kanban-item-cancelled', row.invitation && 'kanban-invitation')} onClick={handleClick}>{inviter}<div className="task-card-title"><strong>{label}</strong></div><small>причина: {formatCancelReason(row, staleForecast)}</small></article>;
+        return <article {...interactiveProps} className={cn('kanban-item', 'kanban-item-cancelled', row.invitation && 'kanban-invitation')} onClick={handleClick}>{inviter}<div className="task-card-title"><strong>{label}</strong></div><small>причина: {formatCancelReason(row, staleForecast)}</small></article>;
     }
 
-    return <article className={cn('kanban-item', 'kanban-item-planned', (isOverdue || staleForecast) && 'kanban-item-overdue', row.invitation && 'kanban-invitation')} onClick={handleClick}><div className="task-card-title"><strong>{label}</strong></div><span className="task-card-time">{endLabel}</span><small>{plannedMeta}</small></article>;
+    return <article {...interactiveProps} className={cn('kanban-item', 'kanban-item-planned', (isOverdue || staleForecast) && 'kanban-item-overdue', row.invitation && 'kanban-invitation')} onClick={handleClick}><div className="task-card-title"><strong>{label}</strong></div><span className="task-card-time">{endLabel}</span><small>{plannedMeta}</small></article>;
 }
 
 function TaskDetailModal({ task, onClose, health, state, rationale = [] }) {
@@ -836,6 +854,31 @@ function CurrentDecision({ activeTask, health, state, rationale = [] }) {
                 </div>
             </div>
         </div>
+    );
+}
+
+function DiaryHeader({ day, setDay, health, location }) {
+    const today = isoDate(new Date());
+    const isToday = day === today;
+    return (
+        <header className="diary-page-header">
+            <div className="diary-page-heading">
+                <div className="eyebrow">ДНЕВНИК ДНЯ</div>
+                <h1>{isToday ? 'Сегодня у Леры' : `День ${formatDay(`${day}T12:00:00+03:00`)}`}</h1>
+                <p>{isToday ? 'Состояние, планы и решения в текущем контексте.' : 'Архивный срез состояния и фактов за выбранную дату.'}</p>
+            </div>
+            <div className="diary-page-controls">
+                <Button size="sm" variant="outline" aria-label="Предыдущий день" onClick={() => setDay(current => shiftIsoDate(current, -1))}><ChevronLeft size={14} /></Button>
+                <label className="diary-date-field">
+                    <span>Дата</span>
+                    <input type="date" value={day} max={today} onChange={event => event.target.value && setDay(event.target.value)} />
+                </label>
+                <Button size="sm" variant="outline" aria-label="Следующий день" disabled={isToday} onClick={() => setDay(current => shiftIsoDate(current, 1))}><ChevronRight size={14} /></Button>
+                {!isToday && <Button size="sm" variant="primary" onClick={() => setDay(today)}>Сегодня</Button>}
+                <Badge variant={health?.status === 'ONLINE' ? 'green' : 'yellow'}><span className="status-dot" /> {health?.status || 'Проверка'}</Badge>
+                <Badge>{location || '—'}</Badge>
+            </div>
+        </header>
     );
 }
 
@@ -5259,7 +5302,7 @@ function ContentPanel({ toast }) {
                             <label>Ссылка на канал<input value={channelForm.channelUrl} placeholder="t.me/..." onChange={event => setChannelForm({ ...channelForm, channelUrl: event.target.value })} /></label>
                             <label>Частота (ч)<input type="number" min="1" max="168" value={channelForm.frequencyHours} onChange={event => setChannelForm({ ...channelForm, frequencyHours: event.target.value })} /></label>
                             <label>Постов в сутки<select value={channelForm.postsPerDay} onChange={event => setChannelForm({ ...channelForm, postsPerDay: Number(event.target.value), frequencyHours: Number(event.target.value) === 1 ? 24 : 12 })}><option value={1}>1</option><option value={2}>2</option></select></label>
-                            <label>Редакционный режим<select value={channelForm.editorialMode} onChange={event => setChannelForm({ ...channelForm, editorialMode: event.target.value, ...(event.target.value === 'reference_short' ? { postsPerDay: 2, frequencyHours: 12, mediaMode: channelForm.mediaMode === 'none' ? 'db_photo' : channelForm.mediaMode, topics: ['thoughts', 'life'], topicWeights: { thoughts: 1, life: 1 } } : {}) })}><option value="reference_short">Эталон Леры · короткий</option><option value="legacy_mix">Свободный микс</option></select></label>
+                            <label>Редакционный режим<select value={channelForm.editorialMode} onChange={event => setChannelForm({ ...channelForm, editorialMode: event.target.value, ...(event.target.value === 'reference_short' ? { postsPerDay: 2, frequencyHours: 12, topics: ['thoughts', 'life'], topicWeights: { thoughts: 1, life: 1 } } : {}) })}><option value="reference_short">Эталон Леры · короткий</option><option value="legacy_mix">Свободный микс</option></select></label>
                             <label>Цикл 1<select value={channelForm.formatSequence?.[0] || 'photo_caption'} onChange={event => setChannelForm({ ...channelForm, formatSequence: [event.target.value, ...(channelForm.formatSequence || []).slice(1)] })}><option value="photo_caption">Фото + состояние</option><option value="short_thought">Короткая мысль</option><option value="life_observation">Бытовое наблюдение</option></select></label>
                             <label>Цикл 2<select value={channelForm.formatSequence?.[1] || 'short_thought'} onChange={event => setChannelForm({ ...channelForm, formatSequence: [channelForm.formatSequence?.[0] || 'photo_caption', event.target.value, ...(channelForm.formatSequence || []).slice(2)] })}><option value="photo_caption">Фото + состояние</option><option value="short_thought">Короткая мысль</option><option value="life_observation">Бытовое наблюдение</option></select></label>
                             <label>Цикл 3<select value={channelForm.formatSequence?.[2] || 'life_observation'} onChange={event => setChannelForm({ ...channelForm, formatSequence: [channelForm.formatSequence?.[0] || 'photo_caption', channelForm.formatSequence?.[1] || 'short_thought', event.target.value] })}><option value="photo_caption">Фото + состояние</option><option value="short_thought">Короткая мысль</option><option value="life_observation">Бытовое наблюдение</option></select></label>
@@ -5705,7 +5748,7 @@ function DiaryTabbar({ view, setView }) {
 }
 
 function App() {
-    const [authenticated, setAuthenticated] = useState(null); const [day] = useState(() => isoDate(new Date())); const [view, setView] = useState(adminViewFromHash); const [data, setData] = useState(null); const [readOnly, setReadOnly] = useState(true); const [notice, setNotice] = useState(null); const toastTimerRef = useRef(null);
+    const [authenticated, setAuthenticated] = useState(null); const [day, setDay] = useState(() => isoDate(new Date())); const [view, setView] = useState(adminViewFromHash); const [data, setData] = useState(null); const [readOnly, setReadOnly] = useState(true); const [notice, setNotice] = useState(null); const toastTimerRef = useRef(null);
     const counts = useMemo(() => ({ meals: data?.meals?.length || 0, sleep: data?.sleep?.length || 0, random: data?.randomEvents?.length || 0 }), [data]);
     useEffect(() => { api('/api/admin/session').then(result => setAuthenticated(result.authenticated)).catch(() => setAuthenticated(false)); }, []);
     useEffect(() => {
@@ -5773,6 +5816,7 @@ function App() {
                 <div className={cn('v2-content', view === 'diary' && 'diary-home')}>
                     {view === 'diary' && (
                         <>
+                            <DiaryHeader day={day} setDay={setDay} health={data?.health} location={state.location_name || 'Санкт-Петербург'} />
                             <NeedsPanel state={state} profile={profile} />
                             <CurrentDecision activeTask={data?.activeTask} health={data?.health} state={state} rationale={data?.rationale} />
                             <KanbanBoard schedule={data?.schedule} activeTask={data?.activeTask} clockAt={data?.at} health={data?.health} state={state} rationale={data?.rationale} />
