@@ -4,7 +4,7 @@ import fs from 'node:fs';
 
 test('admin v2 source contains SVG icon mappings for all needs, willingness, mood, and cycle tracker', () => {
     const source = fs.readFileSync('admin-v2/src/main.jsx', 'utf8');
-    const css = fs.readFileSync('admin-v2/src/styles.css', 'utf8');
+    const css = fs.readFileSync('admin-v2/src/feature-components.css', 'utf8');
 
     // Check SVG icon imports
     for (const icon of ['Utensils', 'Zap', 'Sparkles', 'Droplets', 'Heart', 'BatteryCharging', 'HeartPulse', 'Flame', 'MapPin', 'Wallet', 'Calendar']) {
@@ -13,7 +13,7 @@ test('admin v2 source contains SVG icon mappings for all needs, willingness, moo
 
     // Check CSS animation rules and classes
     for (const cssClass of ['need-icon-badge', 'pulse-critical', 'need-compact-item', 'bento-needs-layout', 'bento-left', 'bento-right', 'bento-cycle-card', 'bento-cycle-bar']) {
-        assert.ok(css.includes(cssClass), `styles.css should contain ${cssClass} rule`);
+        assert.ok(css.includes(cssClass), `feature-components.css should contain ${cssClass} rule`);
     }
 });
 

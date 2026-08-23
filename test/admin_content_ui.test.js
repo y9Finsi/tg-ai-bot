@@ -17,7 +17,7 @@ test('photo catalog shows an inline Telegram preview and keeps technical IDs out
 
 test('photo upload keeps the file control accessible and manual Telegram ID behind expert disclosure', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /className="photo-file-input"/);
     assert.match(source, /htmlFor="photo-upload-input"/);
@@ -29,7 +29,7 @@ test('photo upload keeps the file control accessible and manual Telegram ID behi
 
 test('channel workspace has a separate draft action, prompt builder, responsive feed and safe history actions', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /\/api\/admin\/channel\/draft/);
     assert.match(source, /\/api\/admin\/channel\/publish-draft/);
@@ -54,7 +54,7 @@ test('channel workspace has a separate draft action, prompt builder, responsive 
 
 test('channel topic controls explain their prompt effect and keep one normalized selection distribution', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /Один режим для одного черновика/);
     assert.match(source, /Это не набор промптов/);
@@ -69,7 +69,7 @@ test('channel topic controls explain their prompt effect and keep one normalized
 
 test('LLM setup uses named prompt modules instead of a raw JSON editor in the regular flow', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /const LERA_PROMPT_MODULES/);
     assert.match(source, /Личность Леры/);

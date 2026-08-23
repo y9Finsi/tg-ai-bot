@@ -201,7 +201,7 @@ test('Sandbox keeps free A/B behind an expert disclosure and declares preset sco
 
 test('Sandbox makes global Production rules a separate immediate-save surface', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /Общие правила Production/);
     assert.match(source, /Сохраняются сразу и влияют на будущие ответы всех пользователей/);

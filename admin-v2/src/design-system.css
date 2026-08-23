@@ -2,8 +2,7 @@
  * Admin design system
  *
  * This is the only final layer for shared geometry, surfaces, controls and
- * semantic states. The older selectors in styles.css remain compatibility
- * aliases for feature-specific markup, but new UI should use these tokens.
+ * semantic states. Feature-only markup lives in feature-components.css.
  */
 
 :root {
@@ -329,7 +328,7 @@ body {
 /*
  * Canonical layout contract.
  *
- * styles.css still contains feature rules required by the existing markup, but
+ * feature-components.css still contains feature rules required by the existing markup, but
  * these final selectors own shared geometry. Feature screens must use the
  * same six-track workspace grid, spacing scale and diary palette.
  */

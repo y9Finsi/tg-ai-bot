@@ -14,7 +14,7 @@ test('root admin serves the React diary homepage while legacy admin remains isol
 
 test('diary homepage composes the Figma frame from live needs and kanban data', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /diary-home/);
     assert.match(source, /function DiaryTabbar/);
@@ -62,7 +62,7 @@ test('diary homepage composes the Figma frame from live needs and kanban data', 
 
 test('all admin sections stay reachable through one tab bar', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /<main className="v2-main"><DiaryTabbar view=\{view\} setView=\{setView\} \/>/);
     assert.doesNotMatch(source, /view === 'diary' && <><DiaryTabbar/);
@@ -77,7 +77,7 @@ test('all admin sections stay reachable through one tab bar', () => {
 
 
 test('all admin tabs share one responsive workspace container without clipping the diary', () => {
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(css, /--workspace-max: 990px;/);
     assert.match(css, /\.diary-shell \.v2-header \{[\s\S]*calc\(\(100% - var\(--workspace-max\)\) \/ 2\)/);
@@ -96,7 +96,7 @@ test('all admin tabs share one responsive workspace container without clipping t
 });
 
 test('Figma home typography keeps the compact 990px reference proportions', () => {
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(css, /\.diary-home > \.kanban-card > \.card-header h2 \{\s+margin: 4px 0;\s+font-size: 20px;\s+line-height: 28px;/);
     assert.match(css, /\.diary-home > \.kanban-card > \.card-header p \{\s+max-width: 672px;\s+color: #9ca0b0;\s+font-size: 14px;\s+line-height: 20px;/);
@@ -104,7 +104,7 @@ test('Figma home typography keeps the compact 990px reference proportions', () =
 
 test('Figma kanban cards preserve their status-specific composition and mobile wrapping', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /if \(column === 'active'\)[\s\S]*<Progress value=\{progress\} tone="blue" \/>/);
     assert.match(source, /if \(column === 'done'\)[\s\S]*kanban-item-done/);
@@ -126,7 +126,7 @@ test('admin v2 build uses relative assets so root and /admin-v2 work from one ar
 
 test('kanban active card renders decision reason subtext and detail modal on click', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /task-card-reason/);
     assert.match(source, /TaskDetailModal/);
@@ -136,7 +136,7 @@ test('kanban active card renders decision reason subtext and detail modal on cli
 });
 
 test('mood summary keeps its score and wrapped state readable', () => {
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(css, /\.diary-home \.bento-mood \{\s+grid-template-rows: auto auto minmax\(0, 1fr\);/);
     assert.match(css, /\.diary-home \.bento-mood strong \{[\s\S]*white-space: nowrap;/);

@@ -16,7 +16,7 @@ test('admin P1 routes each operational domain into an explicit workspace class',
 });
 
 test('admin P2 keeps the shared interaction and responsive contracts', () => {
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
     const source = read('admin-v2/src/main.jsx');
 
     assert.doesNotMatch(css, /transition\s*:\s*all/);
@@ -55,7 +55,7 @@ test('admin P3 splits node_modules into a vendor chunk', () => {
 
 test('admin diary and operational views share the diary header contract', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /className="v2-page-heading"/);
     assert.match(source, /className="diary-page-heading"/);
@@ -66,7 +66,7 @@ test('admin diary and operational views share the diary header contract', () => 
 
 test('current decision keeps its content in a vertical, readable state panel', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /aria-labelledby="current-decision-title"/);
     assert.match(source, /decision-label/);
@@ -78,7 +78,7 @@ test('current decision keeps its content in a vertical, readable state panel', (
 
 test('kanban buttons have a stable full-width card layout and diary palette', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /<button type="button" className="kanban-item kanban-item-active"/);
     assert.match(source, /<button type="button" className="kanban-item kanban-item-done"/);

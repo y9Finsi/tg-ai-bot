@@ -4,7 +4,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { CircleHelp, CloudRain, Database, Download, ExternalLink, EyeOff, FileImage, FileText, HeartPulse, ListTree, Lock, MessageSquare, MoreHorizontal, Play, RefreshCw, ShieldAlert, Sparkles, Sun, Terminal, Upload, UserRound, WandSparkles, X, Users, Settings2, Image, Radio, CheckCircle2, Utensils, Zap, Droplets, Heart, BatteryCharging, Flame, CircleAlert, Wallet, MapPin, Calendar, BarChart3, Tag, CreditCard, Backpack, Shirt, Umbrella, Package, ArrowRight, ArrowUp, ArrowDown, CircleCheck, CircleOff, Info, Pencil, Command, Search, Copy, Check, Pause, Trash2, Clock, Coins, Cpu, Layers, AlertTriangle, XCircle, Filter, Activity, ChevronRight, ChevronLeft, ChevronDown, User, SlidersHorizontal, Plus, Globe, Server, Network, Brain, BrainCircuit, GitBranch, Gauge, ShieldCheck } from 'lucide-react';
 import './index.css';
-import './styles.css';
+import './feature-components.css';
 import './design-system.css';
 import { Button } from './components/ui/button.jsx';
 import { Badge } from './components/ui/badge.jsx';

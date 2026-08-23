@@ -98,7 +98,7 @@ test('admin v2 makes operational sections explicit and keeps dry-run boundaries 
     for (const marker of ['Пользователи', 'Провайдеры', 'Фото', 'Канал', 'Ключи и секреты скрыты', 'Черновик не отправляется в Telegram.']) {
         assert.match(source, new RegExp(marker));
     }
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
     assert.match(css, /schedule-detail/);
     assert.match(css, /plan-fact-links/);
     assert.match(css, /@media\(max-width:540px\)/);
@@ -118,7 +118,7 @@ test('admin v2 has one diary workspace and no duplicate decisions tab', () => {
 
 test('prompt studio uses an intent workspace with a staged draft-to-production flow', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /className="[^"]*\bstudio-shell\b[^"]*"/);
     assert.match(source, /AUTO — это маршрутизация Telegram, его не редактируем/);
@@ -189,7 +189,7 @@ test('production settings expose the reply judge observation and enforce modes',
 
 test('prompt studio compares Production to the local candidate and keeps free A/B expert-only', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     for (const marker of [
         'Контекст пользователя',
@@ -213,7 +213,7 @@ test('prompt studio compares Production to the local candidate and keeps free A/
 
 test('prompt studio blocks publication of unsaved edits and publishes the saved selected intent', () => {
     const source = read('admin-v2/src/main.jsx');
-    const css = read('admin-v2/src/styles.css');
+    const css = read('admin-v2/src/feature-components.css');
 
     assert.match(source, /body: JSON\.stringify\(\{ intent: activeIntent \}\)/);
     assert.match(source, /disabled=\{hasUnsavedEdits \|\| !draftDiffersFromProduction\}/);
