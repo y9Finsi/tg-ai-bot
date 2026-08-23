@@ -9771,35 +9771,6 @@ html.dark .diary-shell .bento-location-name {
   color: #f4f4f5 !important;
 }
 
-/* Canonical six-track kanban board */
-.diary-shell .kanban-board,
-.diary-shell .diary-home .kanban-board,
-html.dark .diary-shell .kanban-board,
-html.dark .diary-shell .diary-home .kanban-board {
-  display: grid !important;
-  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-  gap: 16px !important;
-  width: 100% !important;
-}
-
-@media (max-width: 1100px) {
-  .diary-shell .kanban-board,
-  .diary-shell .diary-home .kanban-board,
-  html.dark .diary-shell .kanban-board,
-  html.dark .diary-shell .diary-home .kanban-board {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-}
-
-@media (max-width: 600px) {
-  .diary-shell .kanban-board,
-  .diary-shell .diary-home .kanban-board,
-  html.dark .diary-shell .kanban-board,
-  html.dark .diary-shell .diary-home .kanban-board {
-    grid-template-columns: 1fr !important;
-  }
-}
-
 .diary-shell .kanban-column,
 .diary-shell .diary-home .kanban-column,
 html.dark .diary-shell .kanban-column,

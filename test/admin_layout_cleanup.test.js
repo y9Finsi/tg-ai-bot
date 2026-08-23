@@ -7,11 +7,18 @@ const featureCss = fs.readFileSync('admin-v2/src/feature-components.css', 'utf8'
 
 test('admin layout has one six-track desktop grid contract', () => {
     assert.match(css, /--admin-grid-columns:\s*repeat\(6,\s*minmax\(0,\s*1fr\)\)/);
-    assert.match(css, /\.needs-compact-grid,\s*\.bento-left,/);
+    assert.match(css, /\.needs-compact-grid,\s*\.stat-grid,/);
     assert.match(css, /grid-template-columns:\s*var\(--admin-grid-columns\)\s*!important/);
     assert.match(css, /@media \(max-width: 1100px\)/);
     assert.match(css, /@media \(max-width: 760px\)/);
     assert.match(css, /@media \(max-width: 520px\)/);
+});
+
+test('feature containers do not override the shared grid contract at runtime', () => {
+    assert.match(css, /html\.dark \.diary-shell \.bento-left \{\s*display:\s*flex/s);
+    assert.match(css, /html\.dark \.diary-shell \.kanban-board \{\s*display:\s*grid/s);
+    assert.match(css, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)\s*!important/);
+    assert.match(css, /html\.dark \.diary-shell \.ui-card-frameless \{/);
 });
 
 test('admin layout uses shared spacing, gutter, surfaces and control geometry', () => {

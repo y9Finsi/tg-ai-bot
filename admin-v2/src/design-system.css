@@ -49,6 +49,7 @@
   --admin-space-5: 24px;
   --admin-space-6: 32px;
   --admin-workspace-gutter: clamp(16px, 3vw, 32px);
+  --admin-workspace-max: 1480px;
   --admin-grid-columns: repeat(6, minmax(0, 1fr));
   --admin-grid-gap: var(--admin-space-4);
   --admin-card-padding: var(--admin-space-4);
@@ -917,11 +918,6 @@ html.dark .diary-shell {
   color: var(--admin-text-muted) !important;
 }
 
-.diary-shell :where(.kanban-board) {
-  grid-template-columns: var(--admin-grid-columns) !important;
-  gap: var(--admin-grid-gap) !important;
-}
-
 .diary-shell :where(.kanban-column, .kanban-item) {
   min-width: 0 !important;
   border: 1px solid var(--admin-border) !important;
@@ -1223,4 +1219,456 @@ html.dark .diary-shell :where(
   width: 100% !important;
   max-width: none !important;
   margin-inline: 0 !important;
+}
+
+/*
+ * Final shared frame contract.
+ *
+ * feature-components.css contains historical feature rules with selectors
+ * such as `.diary-shell .v2-content`. This block intentionally uses the
+ * same scope and is imported last, so every screen resolves to one frame
+ * instead of winning by accident through selector specificity.
+ */
+html.dark .diary-shell .v2-header,
+html.dark .diary-shell .diary-page-header {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: var(--admin-workspace-max) !important;
+  margin-inline: auto !important;
+  min-height: 132px !important;
+  padding: var(--admin-space-6) var(--admin-workspace-gutter) var(--admin-space-5) !important;
+  border-bottom: 1px solid var(--admin-border) !important;
+  background: var(--admin-canvas) !important;
+  box-shadow: none !important;
+}
+
+html.dark .diary-shell .v2-content,
+html.dark .diary-shell .diary-home {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: var(--admin-workspace-max) !important;
+  margin-inline: auto !important;
+  padding: var(--admin-space-5) var(--admin-workspace-gutter) var(--admin-space-6) !important;
+  gap: var(--admin-section-spacing) !important;
+}
+
+html.dark .diary-shell .diary-home {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  align-content: start !important;
+}
+
+html.dark .diary-shell .diary-page-header {
+  /*
+   * DiaryHeader is already inside .diary-home. Its parent owns the gutter;
+   * keeping header padding at zero prevents a second, hidden inner frame.
+   */
+  max-width: none !important;
+  margin-inline: 0 !important;
+  padding-inline: 0 !important;
+}
+
+html.dark .diary-shell .v2-content > *,
+html.dark .diary-shell .diary-home > * {
+  min-width: 0 !important;
+  margin-block-end: 0 !important;
+}
+
+html.dark .diary-shell .admin-domain-page,
+html.dark .diary-shell .content-super-container,
+html.dark .diary-shell .crm-super-container,
+html.dark .diary-shell .system-super-layout,
+html.dark .diary-shell .inventory-page,
+html.dark .diary-shell .content-photos-layout,
+html.dark .diary-shell .content-channel-layout,
+html.dark .diary-shell .management-layout,
+html.dark .diary-shell .studio-workspace {
+  width: 100% !important;
+  max-width: none !important;
+  margin-inline: 0 !important;
+  padding-inline: 0 !important;
+}
+
+html.dark .diary-shell .v2-header h1,
+html.dark .diary-shell .diary-page-heading h1 {
+  margin: 0 0 var(--admin-space-2) !important;
+  color: var(--admin-text) !important;
+  font-size: clamp(30px, 3.2vw, 52px) !important;
+  font-weight: 400 !important;
+  letter-spacing: -.045em !important;
+  line-height: 1.02 !important;
+}
+
+html.dark .diary-shell .v2-header p,
+html.dark .diary-shell .diary-page-heading p {
+  margin: 0 !important;
+  color: var(--admin-text-muted) !important;
+  font-size: 17px !important;
+  line-height: 1.35 !important;
+}
+
+html.dark .diary-shell .v2-header .header-actions,
+html.dark .diary-shell .diary-page-controls {
+  align-self: flex-end !important;
+}
+
+html.dark .diary-shell :where(
+  .needs-compact-grid,
+  .stat-grid,
+  .summary-grid,
+  .profile-window,
+  .diagnostic-grid,
+  .crm-metrics-grid,
+  .inventory-items-grid,
+  .inventory-summary,
+  .photos-card-grid,
+  .topic-cards-grid,
+  .prompt-modules-grid,
+  .prompt-blocks-grid,
+  .providers-grid,
+  .routing-fields-grid,
+  .channel-settings-grid,
+  .memory-settings-grid,
+  .judge-fields-grid,
+  .judge-transfer-grid,
+  .lera-judge-surface-grid
+) {
+  display: grid !important;
+  grid-template-columns: var(--admin-grid-columns) !important;
+  grid-auto-flow: row !important;
+  gap: var(--admin-grid-gap) !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+html.dark .diary-shell .inventory-summary > * {
+  grid-column: span 2 !important;
+}
+
+html.dark .diary-shell :where(
+  .needs-compact-grid > *,
+  .bento-left > *,
+  .stat-grid > *,
+  .summary-grid > *,
+  .profile-window > *,
+  .diagnostic-grid > *,
+  .crm-metrics-grid > *,
+  .inventory-items-grid > *,
+  .inventory-summary > *,
+  .photos-card-grid > *,
+  .topic-cards-grid > *,
+  .prompt-modules-grid > *,
+  .prompt-blocks-grid > *,
+  .providers-grid > *,
+  .routing-fields-grid > *,
+  .channel-settings-grid > *,
+  .memory-settings-grid > *,
+  .judge-fields-grid > *,
+  .judge-transfer-grid > *,
+  .lera-judge-surface-grid > *
+) {
+  min-width: 0 !important;
+}
+
+html.dark .diary-shell :where(
+  .ui-card,
+  [data-slot="card"],
+  .crm-section,
+  .inventory-section-card,
+  .inventory-activity-card,
+  .photo-card,
+  .topic-card-item,
+  .studio-candidate-card,
+  .studio-module-card,
+  .studio-presets-library,
+  .studio-compare-intro,
+  .studio-test-chat,
+  .studio-result-comparison,
+  .studio-publish-page,
+  .studio-live-page,
+  .lera-control-section,
+  .server-terminal-card,
+  .errors-list-card,
+  .rationale-panel-card,
+  .diagnostics-broadcast-card,
+  .inventory-hero,
+  .expert-inventory-card
+) {
+  box-sizing: border-box !important;
+  padding: var(--admin-card-padding) !important;
+  border: 1px solid var(--admin-border) !important;
+  border-radius: var(--admin-radius-lg) !important;
+  background: var(--admin-surface-1) !important;
+  box-shadow: none !important;
+}
+
+html.dark .diary-shell :where(
+  .card-header h2,
+  [data-slot="card-title"],
+  .crm-section-heading h3,
+  .studio-section-heading h3,
+  .lera-control-section-heading,
+  .kanban-column-head strong
+) {
+  color: var(--admin-text) !important;
+  font-size: var(--admin-font-size-lg) !important;
+  line-height: var(--admin-leading-tight) !important;
+  letter-spacing: var(--admin-tracking-heading) !important;
+}
+
+html.dark .diary-shell :where(
+  .card-header p,
+  [data-slot="card-description"],
+  .crm-section p,
+  .studio-section-description
+) {
+  color: var(--admin-text-muted) !important;
+  font-size: var(--admin-font-size-sm) !important;
+  line-height: var(--admin-leading-normal) !important;
+}
+
+html.dark .diary-shell :where(
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea
+) {
+  min-height: var(--admin-control) !important;
+  border-radius: var(--admin-radius-sm) !important;
+}
+
+html.dark .diary-shell :where(
+  .ui-badge-blue,
+  .badge-blue,
+  .stat-blue,
+  .bento-icon-blue,
+  .npc-blue,
+  .task-inviter-blue
+) {
+  color: var(--admin-text-muted) !important;
+  border-color: var(--admin-border) !important;
+  background: var(--admin-surface-3) !important;
+}
+
+@media (max-width: 1100px) {
+html.dark .diary-shell :where(
+  .needs-compact-grid,
+  .stat-grid,
+    .summary-grid,
+    .profile-window,
+    .diagnostic-grid,
+    .crm-metrics-grid,
+    .inventory-items-grid,
+    .inventory-summary,
+    .photos-card-grid,
+    .topic-cards-grid,
+    .prompt-modules-grid,
+    .prompt-blocks-grid,
+    .providers-grid,
+    .routing-fields-grid,
+    .channel-settings-grid,
+    .memory-settings-grid,
+    .judge-fields-grid,
+    .judge-transfer-grid,
+    .lera-judge-surface-grid
+  ) {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  html.dark .diary-shell .inventory-summary > * {
+    grid-column: span 1 !important;
+  }
+}
+
+@media (max-width: 760px) {
+  html.dark .diary-shell .v2-header,
+  html.dark .diary-shell .diary-page-header {
+    min-height: 0 !important;
+    padding: var(--admin-space-5) var(--admin-space-4) !important;
+  }
+
+  html.dark .diary-shell .diary-page-header {
+    padding-inline: 0 !important;
+  }
+
+  html.dark .diary-shell :where(
+    .needs-compact-grid,
+    .bento-left,
+    .stat-grid,
+    .summary-grid,
+    .profile-window,
+    .diagnostic-grid,
+    .crm-metrics-grid,
+    .inventory-items-grid,
+    .inventory-summary,
+    .photos-card-grid,
+    .topic-cards-grid,
+    .prompt-modules-grid,
+    .prompt-blocks-grid,
+    .providers-grid,
+    .routing-fields-grid,
+    .channel-settings-grid,
+    .memory-settings-grid,
+    .judge-fields-grid,
+    .judge-transfer-grid,
+    .lera-judge-surface-grid
+  ) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  html.dark .diary-shell .inventory-summary > * {
+    grid-column: span 1 !important;
+  }
+}
+
+@media (max-width: 520px) {
+  html.dark .diary-shell :where(
+    .needs-compact-grid,
+    .bento-left,
+    .stat-grid,
+    .summary-grid,
+    .profile-window,
+    .diagnostic-grid,
+    .crm-metrics-grid,
+    .inventory-items-grid,
+    .inventory-summary,
+    .photos-card-grid,
+    .topic-cards-grid,
+    .prompt-modules-grid,
+    .prompt-blocks-grid,
+    .providers-grid,
+    .routing-fields-grid,
+    .channel-settings-grid,
+    .memory-settings-grid,
+    .judge-fields-grid,
+    .judge-transfer-grid,
+    .lera-judge-surface-grid
+  ) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/*
+ * Last-mile specificity fixes.
+ *
+ * A few historical feature selectors are more specific than the shared
+ * :where() contract. Keep semantic containers (bento-left) as flex layouts,
+ * keep the kanban's four status columns, and make frameless cards truly
+ * frameless after the shared card rule.
+ */
+html.dark .diary-shell .bento-left {
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-columns: none !important;
+  gap: var(--admin-grid-gap) !important;
+}
+
+html.dark .diary-shell .kanban-board {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: var(--admin-grid-gap) !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+html.dark .diary-shell .ui-card-frameless {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+@media (max-width: 1180px) {
+  html.dark .diary-shell .kanban-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  html.dark .diary-shell .kanban-board {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  html.dark .diary-shell .v2-content.diary-home {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: none !important;
+  }
+
+  html.dark .diary-shell .diary-home .needs-compact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 520px) {
+  html.dark .diary-shell .diary-home .needs-compact-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/*
+ * Neutral palette must win over old feature literals too. The :is() selector
+ * intentionally has enough specificity to beat legacy `.diary-home ...`
+ * rules without rewriting feature-only CSS in bulk.
+ */
+html.dark .diary-shell {
+  --blue: var(--admin-info) !important;
+  --purple: var(--admin-text-muted) !important;
+  --pink: var(--admin-text-muted) !important;
+  --color-accent-hover: var(--admin-accent-strong) !important;
+  --color-accent-blue: var(--admin-accent) !important;
+  --color-accent-purple: var(--admin-text-muted) !important;
+  --focus-ring: var(--admin-accent) !important;
+}
+
+html.dark .diary-shell :is(
+  .bento-location-sub,
+  .task-card-reason,
+  .prompt-module-card summary::after,
+  .retrieval-fact code,
+  .channel-draft-ai-text strong,
+  .sandbox-current-message-bubble small,
+  .studio-impact-note small,
+  .studio-preset-button em,
+  .studio-saved-preset em,
+  .lera-control-center-map strong,
+  .lera-profile-meta span,
+  .rationale-payload-box summary,
+  .llm-row-icon,
+  .admin-code-editor
+) {
+  color: var(--admin-text-muted) !important;
+}
+
+html.dark .diary-shell :is(
+  .topbar-brand .brand-mark,
+  .sandbox-history-assistant .sandbox-history-bubble,
+  .sandbox-result-bubble,
+  .sandbox-typing-bubble,
+  .lera-day-context-preview
+) {
+  color: var(--admin-text) !important;
+  border-color: var(--admin-border) !important;
+  background: var(--admin-surface-2) !important;
+}
+
+html.dark .diary-shell :is(
+  .routing-mode-card-blue,
+  .routing-mode-card-rose,
+  .routing-mode-card-amber,
+  .error-kpi-card.is-purple
+) {
+  border-color: var(--admin-border) !important;
+}
+
+html.dark .diary-shell :is(
+  .bento-icon-purple,
+  .bento-icon-pink,
+  .stat-purple,
+  .stat-pink
+) {
+  color: var(--admin-text-muted) !important;
+  background: var(--admin-surface-3) !important;
 }
