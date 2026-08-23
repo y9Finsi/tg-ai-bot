@@ -222,6 +222,7 @@ export function setBotInstanceForServer(bot) {
 
 export function startAdminServer() {
     const app = express();
+    const PORT = process.env.ADMIN_PORT || 3000;
     const normalizeAdminKey = (val) => {
         if (!val) return '';
         let str = String(val).trim();
