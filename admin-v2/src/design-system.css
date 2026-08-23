@@ -38,6 +38,11 @@
   --admin-space-4: 16px;
   --admin-space-5: 24px;
   --admin-space-6: 32px;
+  --admin-workspace-gutter: clamp(16px, 3vw, 32px);
+  --admin-grid-columns: repeat(6, minmax(0, 1fr));
+  --admin-grid-gap: var(--admin-space-4);
+  --admin-card-padding: var(--admin-space-4);
+  --admin-section-spacing: var(--admin-space-6);
   --admin-ease-out: cubic-bezier(.23, 1, .32, 1);
   --admin-focus-ring: 0 0 0 3px rgb(203 213 225 / .22);
 }
@@ -318,5 +323,287 @@ body {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: .01ms !important;
+  }
+}
+
+/*
+ * Canonical layout contract.
+ *
+ * styles.css still contains feature rules required by the existing markup, but
+ * these final selectors own shared geometry. Feature screens must use the
+ * same six-track workspace grid, spacing scale and diary palette.
+ */
+.diary-shell {
+  --diary-canvas: var(--admin-canvas);
+  --diary-surface: var(--admin-surface-1);
+  --diary-surface-elevated: var(--admin-surface-2);
+  --diary-border: var(--admin-border);
+  --diary-text: var(--admin-text);
+  --diary-muted: var(--admin-text-muted);
+  --diary-subtle: var(--admin-text-subtle);
+  --diary-accent: var(--admin-accent);
+  --diary-focus: var(--admin-accent);
+  --stroke: var(--admin-border);
+  --surface-0: var(--admin-canvas);
+  --surface-1: var(--admin-surface-1);
+  --surface-2: var(--admin-surface-2);
+  --accent: var(--admin-accent);
+}
+
+.diary-shell :where(.v2-content, .diary-home, .admin-domain-page) {
+  min-width: 0;
+  padding-inline: var(--admin-workspace-gutter);
+}
+
+.diary-shell :where(.v2-header, .diary-page-header) {
+  min-height: 132px !important;
+  padding: var(--admin-space-6) var(--admin-workspace-gutter) var(--admin-space-5) !important;
+  border-bottom: 1px solid var(--admin-border) !important;
+  background: var(--admin-canvas) !important;
+}
+
+.diary-shell :where(.v2-header h1, .diary-page-heading h1) {
+  margin: 0 0 var(--admin-space-2) !important;
+  color: var(--admin-text) !important;
+  font-size: clamp(30px, 3.2vw, 52px) !important;
+  font-weight: 400 !important;
+  letter-spacing: -.045em !important;
+  line-height: 1.02 !important;
+}
+
+.diary-shell :where(.v2-header p, .diary-page-heading p) {
+  margin: 0 !important;
+  color: var(--admin-text-muted) !important;
+  font-size: 17px !important;
+  line-height: 1.35 !important;
+}
+
+.diary-shell :where(
+  .needs-compact-grid,
+  .bento-left,
+  .crm-metrics-grid,
+  .inventory-items-grid,
+  .photos-card-grid,
+  .topic-cards-grid,
+  .prompt-modules-grid,
+  .prompt-blocks-grid,
+  .providers-grid,
+  .routing-fields-grid,
+  .channel-settings-grid,
+  .memory-settings-grid,
+  .judge-fields-grid,
+  .judge-transfer-grid,
+  .lera-judge-surface-grid
+) {
+  display: grid !important;
+  grid-template-columns: var(--admin-grid-columns) !important;
+  gap: var(--admin-grid-gap) !important;
+  min-width: 0;
+}
+
+.diary-shell :where(
+  .needs-compact-grid > *,
+  .bento-left > *,
+  .crm-metrics-grid > *,
+  .inventory-items-grid > *,
+  .photos-card-grid > *,
+  .topic-cards-grid > *,
+  .prompt-modules-grid > *,
+  .prompt-blocks-grid > *,
+  .providers-grid > *,
+  .routing-fields-grid > *,
+  .channel-settings-grid > *,
+  .memory-settings-grid > *,
+  .judge-fields-grid > *,
+  .judge-transfer-grid > *,
+  .lera-judge-surface-grid > *
+) {
+  min-width: 0;
+}
+
+.diary-shell :where(
+  .ui-card,
+  [data-slot="card"],
+  .crm-section,
+  .inventory-section-card,
+  .inventory-activity-card,
+  .photo-card,
+  .topic-card-item,
+  .studio-candidate-card,
+  .studio-module-card,
+  .studio-presets-library,
+  .studio-compare-intro,
+  .studio-test-chat,
+  .studio-result-comparison,
+  .studio-publish-page,
+  .studio-live-page,
+  .lera-control-section,
+  .server-terminal-card,
+  .errors-list-card,
+  .rationale-panel-card,
+  .diagnostics-broadcast-card,
+  .inventory-hero,
+  .expert-inventory-card
+) {
+  padding: var(--admin-card-padding) !important;
+  border: 1px solid var(--admin-border) !important;
+  border-radius: var(--admin-radius-lg) !important;
+  background: var(--admin-surface-1) !important;
+  box-shadow: none !important;
+}
+
+.diary-shell :where(
+  .card-header,
+  .routing-section-head,
+  .inventory-widget-head,
+  .error-audit-header,
+  .error-audit-footer,
+  .rationale-item-head,
+  .user-group-head,
+  .terminal-actions-bar,
+  .terminal-footer-info,
+  .inventory-item-topline,
+  .inventory-item-foot
+) {
+  gap: var(--admin-space-3);
+}
+
+.diary-shell :where(button, [role="button"], input, select, textarea) {
+  min-height: var(--admin-control);
+  border-radius: var(--admin-radius-sm);
+}
+
+.diary-shell :where(button, [role="button"]):active {
+  transform: scale(.98);
+}
+
+.diary-shell :where(.ui-button, [data-slot="button"]) {
+  border-color: var(--admin-border-strong) !important;
+  color: var(--admin-text) !important;
+  background: var(--admin-surface-2) !important;
+}
+
+.diary-shell :where(.ui-button:hover, [data-slot="button"]:hover) {
+  border-color: var(--admin-accent) !important;
+  background: var(--admin-surface-3) !important;
+}
+
+.diary-shell :where(.ui-button-primary, [data-slot="button"].bg-primary) {
+  border-color: var(--admin-accent) !important;
+  color: #111318 !important;
+  background: var(--admin-accent) !important;
+}
+
+.diary-shell :where(input, select, textarea) {
+  border-color: var(--admin-border) !important;
+  color: var(--admin-text) !important;
+  background: var(--admin-canvas) !important;
+}
+
+.diary-shell :where(input, select, textarea)::placeholder {
+  color: var(--admin-text-subtle) !important;
+}
+
+.diary-shell :where(.ui-badge, [data-slot="badge"]) {
+  border-radius: 999px !important;
+  letter-spacing: 0 !important;
+}
+
+/* Legacy color class names are compatibility hooks, not blue/purple themes. */
+.diary-shell :where(.ui-badge-blue, .badge-blue, .stat-blue, .bento-icon-blue, .npc-blue) {
+  color: var(--admin-text-muted) !important;
+  border-color: var(--admin-border) !important;
+  background: var(--admin-surface-3) !important;
+}
+
+.diary-shell :where(.ui-badge-green, .stat-green) {
+  color: var(--admin-success) !important;
+  border-color: var(--admin-success-bg) !important;
+  background: var(--admin-success-bg) !important;
+}
+
+.diary-shell :where(.ui-badge-yellow, .stat-yellow, .bento-icon-yellow) {
+  color: var(--admin-warning) !important;
+  border-color: var(--admin-warning-bg) !important;
+  background: var(--admin-warning-bg) !important;
+}
+
+.diary-shell :where(.ui-badge-red, .stat-red, .danger-icon) {
+  color: var(--admin-danger) !important;
+  border-color: var(--admin-danger-bg) !important;
+  background: var(--admin-danger-bg) !important;
+}
+
+@media (max-width: 1100px) {
+  .diary-shell :where(
+    .needs-compact-grid,
+    .bento-left,
+    .crm-metrics-grid,
+    .inventory-items-grid,
+    .photos-card-grid,
+    .topic-cards-grid,
+    .prompt-modules-grid,
+    .prompt-blocks-grid,
+    .providers-grid,
+    .routing-fields-grid,
+    .channel-settings-grid,
+    .memory-settings-grid,
+    .judge-fields-grid,
+    .judge-transfer-grid,
+    .lera-judge-surface-grid
+  ) {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .diary-shell :where(.v2-content, .diary-home, .admin-domain-page) {
+    padding-inline: var(--admin-space-4);
+  }
+
+  .diary-shell :where(
+    .needs-compact-grid,
+    .bento-left,
+    .crm-metrics-grid,
+    .inventory-items-grid,
+    .photos-card-grid,
+    .topic-cards-grid,
+    .prompt-modules-grid,
+    .prompt-blocks-grid,
+    .providers-grid,
+    .routing-fields-grid,
+    .channel-settings-grid,
+    .memory-settings-grid,
+    .judge-fields-grid,
+    .judge-transfer-grid,
+    .lera-judge-surface-grid
+  ) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .diary-shell :where(
+    .needs-compact-grid,
+    .bento-left,
+    .crm-metrics-grid,
+    .inventory-items-grid,
+    .photos-card-grid,
+    .topic-cards-grid,
+    .prompt-modules-grid,
+    .prompt-blocks-grid,
+    .providers-grid,
+    .routing-fields-grid,
+    .channel-settings-grid,
+    .memory-settings-grid,
+    .judge-fields-grid,
+    .judge-transfer-grid,
+    .lera-judge-surface-grid
+  ) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .diary-shell :where(.ui-card, [data-slot="card"], .crm-section, .inventory-section-card, .photo-card) {
+    padding: var(--admin-space-4) !important;
   }
 }
