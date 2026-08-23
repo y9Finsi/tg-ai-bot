@@ -10987,7 +10987,7 @@ html.dark .diary-shell .chip-metric {
    desktop three-item flex layout here compresses the tablist to a few pixels
    and lets the status cluster intercept tab clicks. */
 @media (max-width: 760px) {
-  .diary-shell .v2-topbar {
+  html.dark .diary-shell .v2-topbar {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) auto !important;
     grid-template-areas:
@@ -11000,17 +11000,17 @@ html.dark .diary-shell .chip-metric {
     padding: 8px 12px 0 !important;
   }
 
-  .diary-shell .v2-topbar .topbar-brand {
+  html.dark .diary-shell .v2-topbar .topbar-brand {
     grid-area: brand !important;
     min-width: 0 !important;
   }
 
-  .diary-shell .v2-topbar .topbar-status-bar {
+  html.dark .diary-shell .v2-topbar .topbar-status-bar {
     grid-area: status !important;
     min-width: 0 !important;
   }
 
-  .diary-shell .v2-topbar .diary-tabs-root {
+  html.dark .diary-shell .v2-topbar .diary-tabs-root {
     grid-area: tabs !important;
     width: 100% !important;
     height: 48px !important;
@@ -11019,7 +11019,7 @@ html.dark .diary-shell .chip-metric {
     overflow: hidden !important;
   }
 
-  .diary-shell .v2-topbar .diary-tabbar {
+  html.dark .diary-shell .v2-topbar .diary-tabbar {
     width: 100% !important;
     min-width: 0 !important;
     justify-content: flex-start !important;

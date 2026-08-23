@@ -89,8 +89,8 @@ test('legacy runtime overrides cannot reintroduce blue accents or four-track pri
 });
 
 test('mobile topbar gives the tablist its own non-overlapping row', () => {
-    assert.match(featureCss, /@media \(max-width: 760px\) \{\s*\.diary-shell \.v2-topbar \{/s);
+    assert.match(featureCss, /@media \(max-width: 760px\) \{\s*html\.dark \.diary-shell \.v2-topbar \{/s);
     assert.match(featureCss, /grid-template-areas:\s*"brand status"\s*"tabs tabs"/s);
-    assert.match(featureCss, /\.diary-shell \.v2-topbar \.diary-tabs-root \{\s*grid-area: tabs/s);
-    assert.match(featureCss, /\.diary-shell \.v2-topbar \.diary-tabbar \{\s*width: 100% !important/s);
+    assert.match(featureCss, /html\.dark \.diary-shell \.v2-topbar \.diary-tabs-root \{\s*grid-area: tabs/s);
+    assert.match(featureCss, /html\.dark \.diary-shell \.v2-topbar \.diary-tabbar \{\s*width: 100% !important/s);
 });
