@@ -117,6 +117,7 @@ test('diary home resets the legacy grid shorthand on wide screens', () => {
     assert.match(css, /html\.dark \.diary-shell \.v2-content\.diary-home \{\s*display:\s*grid !important;\s*grid:\s*none !important;\s*grid-template-columns:\s*minmax\(0,\s*1fr\) !important/s);
     assert.match(css, /grid-template-rows:\s*none !important/);
     assert.match(css, /grid-template-areas:\s*none !important/);
+    assert.match(css, /html\.dark \.diary-shell \.v2-content\.diary-home > \* \{\s*grid-area:\s*auto !important;\s*grid-column:\s*auto !important;\s*grid-row:\s*auto !important/s);
 });
 
 test('legacy feature accents resolve to the canonical neutral palette', () => {

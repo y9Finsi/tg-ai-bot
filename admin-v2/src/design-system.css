@@ -1743,3 +1743,9 @@ html.dark .diary-shell .v2-content.diary-home {
   align-content: start !important;
   gap: var(--admin-section-spacing) !important;
 }
+
+html.dark .diary-shell .v2-content.diary-home > * {
+  grid-area: auto !important;
+  grid-column: auto !important;
+  grid-row: auto !important;
+}
