@@ -55,4 +55,25 @@ test('canonical interaction layer avoids global transition and old theme colors'
 
     assert.doesNotMatch(canonical, /transition\s*:\s*all/);
     assert.doesNotMatch(canonical, /#6366f1|#a855f7|#60a5fa|#c084fc|#f472b6/);
+    assert.match(canonical, /\.schedule-detail/);
+    assert.match(canonical, /background: var\(--admin-surface-3\) !important/);
+});
+
+test('all repeated admin card grids share the six-track contract', () => {
+    for (const selector of [
+        '.stat-grid',
+        '.summary-grid',
+        '.decision-summary',
+        '.profile-window',
+        '.diagnostic-grid',
+        '.crm-metrics-grid',
+        '.inventory-items-grid',
+        '.photos-card-grid',
+        '.topic-cards-grid',
+        '.prompt-modules-grid',
+    ]) {
+        assert.match(css, new RegExp(`${selector.replace('.', '\\.')}[\\s,\\)]`));
+    }
+
+    assert.match(css, /grid-template-columns: var\(--admin-grid-columns\) !important/);
 });

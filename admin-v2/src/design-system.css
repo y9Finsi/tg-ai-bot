@@ -24,8 +24,8 @@
   --admin-warning-bg: #3d2d0b;
   --admin-danger: #fca5a5;
   --admin-danger-bg: #351316;
-  --admin-info: #cbd5e1;
-  --admin-info-bg: #252b35;
+  --admin-info: var(--admin-text-muted);
+  --admin-info-bg: var(--admin-surface-3);
   --admin-radius-sm: 8px;
   --admin-radius-md: 10px;
   --admin-radius-lg: 12px;
@@ -81,8 +81,8 @@ body {
   --yellow: var(--admin-warning);
   --green: var(--admin-success);
   --red: var(--admin-danger);
-  --purple: #d8b4fe;
-  --pink: #f9a8d4;
+  --purple: var(--admin-text-muted);
+  --pink: var(--admin-text-muted);
   --color-canvas: var(--admin-canvas);
   --color-surface-1: var(--admin-surface-1);
   --color-surface-2: var(--admin-surface-2);
@@ -853,9 +853,27 @@ body {
 .diary-shell :where(
   .image-download-link,
   .channel-status a,
-  .provider-row-url
+  .provider-row-url,
+  .schedule-detail,
+  .schedule-sleep,
+  .lera-day-context-preview,
+  .sandbox-result-bubble,
+  .trait-row:hover,
+  .trait-row.selected
 ) {
-  color: var(--admin-info) !important;
+  color: var(--admin-text-muted) !important;
+  border-color: var(--admin-border) !important;
+  background: var(--admin-surface-3) !important;
+}
+
+.diary-shell :where(
+  input[type="range"],
+  .schedule-detail svg,
+  .schedule-sleep svg,
+  .sandbox-result-bubble svg
+) {
+  accent-color: var(--admin-accent) !important;
+  color: var(--admin-text-muted) !important;
 }
 
 .diary-shell :where(.kanban-board) {
@@ -874,6 +892,37 @@ body {
   padding: var(--admin-space-3) !important;
 }
 
+.diary-shell :where(
+  .stat-grid,
+  .summary-grid,
+  .decision-summary,
+  .profile-window,
+  .routine-strip,
+  .diagnostic-grid,
+  .crm-metrics-grid,
+  .inventory-items-grid,
+  .photos-card-grid,
+  .topic-cards-grid,
+  .topic-weights-grid,
+  .packages-grid,
+  .providers-grid,
+  .routing-fields-grid,
+  .channel-settings-grid,
+  .memory-settings-grid,
+  .judge-fields-grid,
+  .judge-transfer-grid,
+  .lera-judge-surface-grid,
+  .needs-compact-grid,
+  .bento-left,
+  .prompt-modules-grid,
+  .prompt-blocks-grid
+) {
+  display: grid !important;
+  grid-template-columns: var(--admin-grid-columns) !important;
+  gap: var(--admin-grid-gap) !important;
+  min-width: 0;
+}
+
 .diary-shell :where(button, [role="button"], .ui-button, [data-slot="button"]):active {
   transform: scale(.98);
 }
@@ -882,10 +931,66 @@ body {
   .diary-shell :where(.kanban-board) {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }
+
+  .diary-shell :where(
+    .stat-grid,
+    .summary-grid,
+    .decision-summary,
+    .profile-window,
+    .routine-strip,
+    .diagnostic-grid,
+    .crm-metrics-grid,
+    .inventory-items-grid,
+    .photos-card-grid,
+    .topic-cards-grid,
+    .topic-weights-grid,
+    .packages-grid,
+    .providers-grid,
+    .routing-fields-grid,
+    .channel-settings-grid,
+    .memory-settings-grid,
+    .judge-fields-grid,
+    .judge-transfer-grid,
+    .lera-judge-surface-grid,
+    .needs-compact-grid,
+    .bento-left,
+    .prompt-modules-grid,
+    .prompt-blocks-grid
+  ) {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
 }
 
 @media (max-width: 760px) {
   .diary-shell :where(.kanban-board) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .diary-shell :where(
+    .stat-grid,
+    .summary-grid,
+    .decision-summary,
+    .profile-window,
+    .routine-strip,
+    .diagnostic-grid,
+    .crm-metrics-grid,
+    .inventory-items-grid,
+    .photos-card-grid,
+    .topic-cards-grid,
+    .topic-weights-grid,
+    .packages-grid,
+    .providers-grid,
+    .routing-fields-grid,
+    .channel-settings-grid,
+    .memory-settings-grid,
+    .judge-fields-grid,
+    .judge-transfer-grid,
+    .lera-judge-surface-grid,
+    .needs-compact-grid,
+    .bento-left,
+    .prompt-modules-grid,
+    .prompt-blocks-grid
+  ) {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
@@ -900,6 +1005,34 @@ body {
   }
 
   .diary-shell :where(.kanban-board) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .diary-shell :where(
+    .stat-grid,
+    .summary-grid,
+    .decision-summary,
+    .profile-window,
+    .routine-strip,
+    .diagnostic-grid,
+    .crm-metrics-grid,
+    .inventory-items-grid,
+    .photos-card-grid,
+    .topic-cards-grid,
+    .topic-weights-grid,
+    .packages-grid,
+    .providers-grid,
+    .routing-fields-grid,
+    .channel-settings-grid,
+    .memory-settings-grid,
+    .judge-fields-grid,
+    .judge-transfer-grid,
+    .lera-judge-surface-grid,
+    .needs-compact-grid,
+    .bento-left,
+    .prompt-modules-grid,
+    .prompt-blocks-grid
+  ) {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
