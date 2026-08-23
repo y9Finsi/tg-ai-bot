@@ -280,6 +280,9 @@ export function startAdminServer() {
 
     if (!ADMIN_KEY) throw new Error('ADMIN_WEB_KEY обязателен для запуска веб-админки');
 
+    app.use(express.json({ limit: '10mb' }));
+    app.use(express.urlencoded({ extended: true }));
+
     app.use('/legacy-admin', express.static(path.join(__dirname, '../public/admin')));
     const modernAdminRoot = path.join(__dirname, '../public/admin-v2');
     const modernAdminStaticOptions = {
