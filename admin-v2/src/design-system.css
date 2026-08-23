@@ -8,16 +8,16 @@
 :root {
   --admin-canvas: #09090b;
   --admin-surface-1: #141518;
-  --admin-surface-2: #171a20;
-  --admin-surface-3: #1d222a;
-  --admin-border: #292f39;
-  --admin-border-strong: #3a4350;
+  --admin-surface-2: #18181b;
+  --admin-surface-3: #202023;
+  --admin-border: #27272a;
+  --admin-border-strong: #3f3f46;
   --admin-text: #f4f4f5;
   --admin-text-muted: #a7adb8;
   --admin-text-subtle: #7d8592;
   --admin-accent: #cbd5e1;
   --admin-accent-strong: #f4f4f5;
-  --admin-accent-soft: #252b35;
+  --admin-accent-soft: #27272a;
   --admin-success: #86efac;
   --admin-success-bg: #102a1a;
   --admin-warning: #fde68a;
@@ -104,6 +104,15 @@ body {
   --primary-foreground: var(--admin-canvas);
   --accent: var(--admin-accent-soft);
   --background: var(--admin-canvas);
+  --diary-canvas: var(--admin-canvas);
+  --diary-surface: var(--admin-surface-1);
+  --diary-surface-elevated: var(--admin-surface-2);
+  --diary-border: var(--admin-border);
+  --diary-text: var(--admin-text);
+  --diary-muted: var(--admin-text-muted);
+  --diary-subtle: var(--admin-text-subtle);
+  --diary-accent: var(--admin-accent);
+  --diary-focus: var(--admin-accent);
 }
 
 .diary-shell :where(button, input, select, textarea, [role="button"], [role="tab"], summary) {
@@ -1039,6 +1048,43 @@ body {
   ) {
     grid-template-columns: minmax(0, 1fr) !important;
   }
+}
+
+/*
+ * The feature sheet still contains a few historical blue literals.  Keep
+ * those selectors harmless while the feature styles are retired: every
+ * rendered surface must resolve to the same neutral token set.
+ */
+html.dark .diary-shell :where(
+  .lera-control-center-header,
+  .lera-day-context-preview,
+  .sandbox-regenerate-button,
+  .sandbox-result-bubble,
+  .sandbox-current-message-bubble,
+  .studio-preset-button,
+  .studio-saved-preset,
+  .studio-live-page,
+  .admin-control-card
+) {
+  color: var(--admin-text) !important;
+  border-color: var(--admin-border) !important;
+  background: var(--admin-surface-2) !important;
+}
+
+html.dark .diary-shell :where(
+  .lera-control-center-map strong,
+  .lera-profile-meta span,
+  .sandbox-current-message-bubble small,
+  .studio-impact-note small,
+  .studio-preset-button em,
+  .studio-saved-preset em,
+  .image-download-link
+) {
+  color: var(--admin-text-muted) !important;
+}
+
+html.dark .diary-shell .kanban-item:hover {
+  background: var(--admin-surface-3) !important;
 }
 
 /*
