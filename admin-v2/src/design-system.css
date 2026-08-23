@@ -115,6 +115,34 @@ body {
   --diary-focus: var(--admin-accent);
 }
 
+/* Override the higher-specificity legacy theme scope. */
+html.dark .diary-shell {
+  --admin-canvas: #09090b;
+  --admin-surface-1: #141518;
+  --admin-surface-2: #18181b;
+  --admin-surface-3: #202023;
+  --admin-border: #27272a;
+  --admin-border-strong: #3f3f46;
+  --admin-text: #f4f4f5;
+  --admin-text-muted: #a1a1aa;
+  --admin-text-subtle: #71717a;
+  --admin-accent: #cbd5e1;
+  --admin-accent-soft: #27272a;
+  --background: var(--admin-canvas);
+  --foreground: var(--admin-text);
+  --card: var(--admin-surface-1);
+  --card-foreground: var(--admin-text);
+  --popover: var(--admin-surface-3);
+  --popover-foreground: var(--admin-text);
+  --muted: var(--admin-surface-2);
+  --muted-foreground: var(--admin-text-muted);
+  --accent: var(--admin-accent-soft);
+  --accent-foreground: var(--admin-text);
+  --border: var(--admin-border);
+  --input: var(--admin-border);
+  --ring: var(--admin-accent);
+}
+
 .diary-shell :where(button, input, select, textarea, [role="button"], [role="tab"], summary) {
   font: inherit;
 }
