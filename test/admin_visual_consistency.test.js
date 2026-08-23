@@ -47,6 +47,8 @@ test('shared headings, controls, cards and badges consume canonical tokens', () 
 test('kanban uses the same six-track desktop contract and responsive collapse', () => {
     assert.match(css, /html\.dark \.diary-shell \.kanban-board \{\s*display:\s*grid/s);
     assert.match(css, /grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)\s*!important/);
+    assert.match(css, /html\.dark \.diary-shell \.diary-home \.kanban-item \{\s*display:\s*grid\s*!important/s);
+    assert.match(css, /html\.dark \.diary-shell \.diary-home \.kanban-item > \* \{\s*min-width:\s*0\s*!important/s);
     assert.doesNotMatch(css, /\.diary-shell :where\(\.kanban-board\)\s*\{\s*grid-template-columns:\s*var\(--admin-grid-columns\)/s);
     assert.match(css, /@media \(max-width: 1180px\) \{\s*html\.dark \.diary-shell \.kanban-board/s);
     assert.match(css, /@media \(max-width: 760px\) \{\s*html\.dark \.diary-shell \.kanban-board/s);
