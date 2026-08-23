@@ -245,7 +245,9 @@ function formatCancelReason(row, staleForecast) {
 }
 
 async function api(path, options = {}) {
-    const response = await fetch(path, { credentials: 'same-origin', ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) } });
+    const savedKey = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('admin_key') : null;
+    const authHeaders = savedKey ? { 'x-admin-key': savedKey } : {};
+    const response = await fetch(path, { credentials: 'same-origin', ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...authHeaders, ...(options.headers || {}) } });
     const data = await response.json().catch(() => ({}));
     if (response.status === 401) throw new Error('AUTH');
     if (!response.ok || data.success === false) throw new Error(data.error || `HTTP ${response.status}`);
@@ -284,8 +286,12 @@ function Login({ onLogin }) {
         event.preventDefault();
         setError('');
         setLoading(true);
+        const trimmedKey = key.trim();
         try {
-            await api('/api/admin/login', { method: 'POST', body: JSON.stringify({ key }) });
+            await api('/api/admin/login', { method: 'POST', body: JSON.stringify({ key: trimmedKey }) });
+            if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.setItem('admin_key', trimmedKey);
+            }
             onLogin();
         } catch {
             setError('Не удалось войти. Проверь ключ админки.');

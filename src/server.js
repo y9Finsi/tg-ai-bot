@@ -343,20 +343,23 @@ export function startAdminServer() {
     // Browser login: the secret stays in an HttpOnly cookie and is never embedded
     // into app.js or an SSE URL.
     app.post('/api/admin/login', (req, res) => {
-        if (req.body?.key !== ADMIN_KEY) {
+        const clientKey = typeof req.body?.key === 'string' ? req.body.key.trim() : req.body?.key;
+        if (clientKey !== ADMIN_KEY) {
             return res.status(401).json({ error: 'Неверный ключ админки.' });
         }
-        const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
-        res.setHeader(
-            'Set-Cookie',
-            `admin_key=${encodeURIComponent(ADMIN_KEY)}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=43200${secure}`
-        );
+        const isHttps = Boolean(req.secure || req.headers['x-forwarded-proto'] === 'https');
+        const secure = isHttps ? '; Secure' : '';
+        res.setHeader('Set-Cookie', [
+            `admin_key=${encodeURIComponent(ADMIN_KEY)}; HttpOnly; SameSite=Lax; Path=/api; Max-Age=43200${secure}`,
+            `admin_key=${encodeURIComponent(ADMIN_KEY)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200${secure}`
+        ]);
         res.json({ success: true });
     });
 
     app.post('/api/admin/logout', (req, res) => {
         // Clear both the current cookie and the legacy /api/admin-scoped cookie.
         res.setHeader('Set-Cookie', [
+            'admin_key=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0',
             'admin_key=; HttpOnly; SameSite=Strict; Path=/api; Max-Age=0',
             'admin_key=; HttpOnly; SameSite=Strict; Path=/api/admin; Max-Age=0'
         ]);
@@ -364,7 +367,9 @@ export function startAdminServer() {
     });
 
     app.get('/api/admin/session', (req, res) => {
-        const authenticated = readAdminCookie(req) === ADMIN_KEY;
+        const cookieKey = readAdminCookie(req);
+        const headerKey = req.headers['x-admin-key'];
+        const authenticated = (cookieKey === ADMIN_KEY) || (headerKey === ADMIN_KEY);
         res.json({ success: true, authenticated });
     });
 
