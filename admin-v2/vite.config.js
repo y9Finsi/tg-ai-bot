@@ -16,6 +16,13 @@ export default defineConfig({
     build: {
         outDir: '../public/admin-v2',
         emptyOutDir: true,
-        rollupOptions: { input: 'admin-v2/index.html' }
+        rollupOptions: {
+            input: 'admin-v2/index.html',
+            output: {
+                manualChunks(id) {
+                    return id.includes('node_modules') ? 'vendor' : undefined;
+                }
+            }
+        }
     }
 });

@@ -663,35 +663,27 @@ function TaskCard({ row, column, clockAt, rationale, onSelectTask }) {
     const lastRationale = validRationale.at(-1);
     const decisionReason = formatDecisionReason(lastRationale, type);
     const handleClick = () => { if (onSelectTask) onSelectTask(row); };
-    const handleKeyDown = event => {
-        if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            handleClick();
-        }
-    };
-    const interactiveProps = { role: 'button', tabIndex: 0, onKeyDown: handleKeyDown };
-
     if (column === 'active') {
         return (
-            <article {...interactiveProps} className="kanban-item kanban-item-active" onClick={handleClick}>
+            <button type="button" className="kanban-item kanban-item-active" onClick={handleClick}>
                 <div className="task-card-title"><strong>{label}</strong></div>
                 <span className="task-card-time">{endLabel}</span>
                 <Progress value={progress} tone="blue" />
                 <small className="task-card-reason">причина: {decisionReason}</small>
                 <small className="task-card-location">{locText ? `локация: ${locText}` : 'локация не указана'}</small>
-            </article>
+            </button>
         );
     }
 
     if (column === 'done') {
-        return <article {...interactiveProps} className="kanban-item kanban-item-done" onClick={handleClick}><div className="task-card-title"><strong>{label}</strong></div><span className="task-card-time">{endLabel}</span></article>;
+        return <button type="button" className="kanban-item kanban-item-done" onClick={handleClick}><div className="task-card-title"><strong>{label}</strong></div><span className="task-card-time">{endLabel}</span></button>;
     }
 
     if (column === 'cancelled') {
-        return <article {...interactiveProps} className={cn('kanban-item', 'kanban-item-cancelled', row.invitation && 'kanban-invitation')} onClick={handleClick}>{inviter}<div className="task-card-title"><strong>{label}</strong></div><small>причина: {formatCancelReason(row, staleForecast)}</small></article>;
+        return <button type="button" className={cn('kanban-item', 'kanban-item-cancelled', row.invitation && 'kanban-invitation')} onClick={handleClick}>{inviter}<div className="task-card-title"><strong>{label}</strong></div><small>причина: {formatCancelReason(row, staleForecast)}</small></button>;
     }
 
-    return <article {...interactiveProps} className={cn('kanban-item', 'kanban-item-planned', (isOverdue || staleForecast) && 'kanban-item-overdue', row.invitation && 'kanban-invitation')} onClick={handleClick}><div className="task-card-title"><strong>{label}</strong></div><span className="task-card-time">{endLabel}</span><small>{plannedMeta}</small></article>;
+    return <button type="button" className={cn('kanban-item', 'kanban-item-planned', (isOverdue || staleForecast) && 'kanban-item-overdue', row.invitation && 'kanban-invitation')} onClick={handleClick}><div className="task-card-title"><strong>{label}</strong></div><span className="task-card-time">{endLabel}</span><small>{plannedMeta}</small></button>;
 }
 
 function TaskDetailModal({ task, onClose, health, state, rationale = [] }) {
@@ -1317,7 +1309,7 @@ function ErrorsAuditTab({ logs = [], onSelectLog }) {
                 ) : (
                     <div className="errors-items-list">
                         {filtered.map(log => (
-                            <div key={log.id} className="error-audit-item" onClick={() => onSelectLog && onSelectLog(log.id)}>
+                            <button type="button" key={log.id} className="error-audit-item" onClick={() => onSelectLog && onSelectLog(log.id)}>
                                 <div className="error-audit-header">
                                     <div className="error-audit-title">
                                         {log.command_gate_status === 'COMMAND_REFUSED' && <Badge variant="red">COMMAND REFUSED</Badge>}
@@ -1347,7 +1339,7 @@ function ErrorsAuditTab({ logs = [], onSelectLog }) {
                                     <span>{log.provider_name || 'LLM'} · {log.model || '—'} · {log.latency_ms || 0} мс</span>
                                     <Button size="sm" variant="outline"><ChevronRight size={13} /> Открыть разбор</Button>
                                 </div>
-                            </div>
+                            </button>
                         ))}
                     </div>
                 )}
@@ -4027,7 +4019,7 @@ function CrmPanel({ toast }) {
     });
 
     return (
-        <div className="crm-super-container">
+        <div className="crm-super-container admin-domain-page">
             <div className="crm-subnav">
                 <Button variant={crmTab === 'clients' ? 'primary' : 'outline'} size="sm" onClick={() => setCrmTab('clients')}>
                     <Users size={14} /> 👥 Клиенты ({users.length})
@@ -4876,7 +4868,7 @@ function ContentPanel({ toast }) {
     };
 
     return (
-        <div className="content-super-container">
+        <div className="content-super-container admin-domain-page">
             <div className="crm-subnav">
                 <Button variant={contentTab === 'photos' ? 'primary' : 'outline'} size="sm" onClick={() => setContentTab('photos')}>
                     <Image size={14} /> 🖼️ Галерея и Загрузка фото ({photos.length})
@@ -5619,8 +5611,8 @@ function SystemPanel({ readOnly, setReadOnly, toast }) {
     useEffect(() => { loadOps(); loadQueue(); loadInventory(); }, []);
 
     return (
-        <div className="system-super-layout">
-            <Card className="operations-card">
+        <div className="system-super-layout admin-domain-page">
+            <Card className="operations-card system-card system-card-primary">
                 <CardHeader eyebrow="Система" title="Контроль и безопасность" description="Сначала включён безопасный режим. Любое изменение требует подтверждения." action={<Button variant={readOnly ? 'primary' : 'warning'} onClick={() => setReadOnly(!readOnly)}>{readOnly ? <><Lock size={15} /> Только чтение</> : <><EyeOff size={15} /> Изменения разрешены</>}</Button>} />
                 <div className="operation-grid">
                     <div className="operation-item">
@@ -5637,7 +5629,7 @@ function SystemPanel({ readOnly, setReadOnly, toast }) {
                 <div className="read-only-note"><CircleHelp size={15} /> {readOnly ? 'Режим только чтение: действия изменения отключены.' : 'Изменения разрешены до перезагрузки страницы.'}</div>
             </Card>
 
-            <Card className="god-mode-card">
+            <Card className="god-mode-card system-card system-card-danger">
                 <CardHeader eyebrow="God Mode" title="Прямое управление состоянием движка" description="Принудительное изменение физиологии, ресурсов и состояния симуляции." />
                 <div className="inline-controls god-form">
                     <select value={godAction} onChange={event => setGodAction(event.target.value)}>
@@ -5652,7 +5644,7 @@ function SystemPanel({ readOnly, setReadOnly, toast }) {
                 </div>
             </Card>
 
-            <Card className="queue-inventory-card">
+            <Card className="queue-inventory-card system-card">
                 <CardHeader eyebrow="Очередь" title="Очередь задач GOAP" description="Техническое вмешательство в план действий — только при необходимости." />
                 <div className="inline-controls">
                     <input value={queueForm.taskType} placeholder="TASK_TYPE" onChange={event => setQueueForm({ ...queueForm, taskType: event.target.value })} />
@@ -5673,7 +5665,7 @@ function SystemPanel({ readOnly, setReadOnly, toast }) {
                 </div>
             </Card>
 
-            <Card className="expert-inventory-card">
+            <Card className="expert-inventory-card system-card system-card-expert">
                 <CardHeader eyebrow="Экспертный режим" title="Сырой CRUD инвентаря" description="Только для отладки и выдачи нестандартных предметов. В обычном сценарии используйте «Рюкзак Леры»." />
                 <details>
                     <summary>Открыть техническое управление предметами</summary>
@@ -5690,7 +5682,7 @@ function SystemPanel({ readOnly, setReadOnly, toast }) {
                 </details>
             </Card>
 
-            <Card className="diagnostics-broadcast-card">
+            <Card className="diagnostics-broadcast-card system-card">
                 <CardHeader eyebrow="Диагностика" title="Диагностика и Рассылка" description="Проверка работы БД, Redis, Воркера и управление очередью рассылок." />
                 <div className="diagnostic-grid">
                     {[['DB', diagnostics?.db?.ok], ['Redis', diagnostics?.redis?.ok], ['Worker', diagnostics?.worker?.timerActive]].map(([label, ok]) => (
@@ -5729,16 +5721,16 @@ function DiaryTabbar({ view, setView }) {
             <Tabs.Root className="diary-tabs-root" value={view} onValueChange={setView}>
                 <Tabs.List className="diary-tabbar" aria-label="Разделы админки">
                     <Tabs.Trigger value="diary"><FileText size={14} /> <span>Дневник дня</span></Tabs.Trigger>
+                    <Tabs.Trigger value="inventory"><Backpack size={14} /> <span>Рюкзак Леры</span></Tabs.Trigger>
                     <Tabs.Trigger value="dialogs"><MessageSquare size={14} /> <span>Диалоги</span></Tabs.Trigger>
                     <Tabs.Trigger value="llm-settings"><Settings2 size={14} /> <span>AI Sandbox & Prompts</span></Tabs.Trigger>
                     <Tabs.Trigger value="crm"><Users size={14} /> <span>CRM Пользователей</span></Tabs.Trigger>
                     <Tabs.Trigger value="content"><Image size={14} /> <span>Контент и Канал</span></Tabs.Trigger>
-                    <Tabs.Trigger value="inventory"><Backpack size={14} /> <span>Рюкзак Леры</span></Tabs.Trigger>
                     <Tabs.Trigger value="system"><Zap size={14} /> <span>Движок и Операции</span></Tabs.Trigger>
                 </Tabs.List>
             </Tabs.Root>
             <div className="topbar-status-bar">
-                <Badge variant="green">
+                <Badge variant="green" aria-label="Статус админки: онлайн">
                     <span className="status-dot" /> ONLINE
                 </Badge>
                 <Badge>Санкт-Петербург</Badge>
@@ -5777,7 +5769,16 @@ function App() {
                 const health = await api('/api/admin/radiant/health');
                 if (!cancelled) setData(current => current ? { ...current, health } : current);
             } catch {
-                // The full day snapshot remains visible if a health refresh fails.
+                if (!cancelled) {
+                    setData(current => current ? {
+                        ...current,
+                        health: {
+                            ...(current.health || {}),
+                            status: 'DEGRADED',
+                            error: 'Не удалось обновить health-check'
+                        }
+                    } : current);
+                }
             }
         };
         const timer = setInterval(refreshHealth, 15000);
@@ -5806,14 +5807,14 @@ function App() {
                             <h1>{viewTitle}</h1>
                         </div>
                         <div className="header-actions">
-                            <Badge variant={data?.health?.status === 'ONLINE' ? 'green' : 'yellow'}>
+                            <Badge variant={data?.health?.status === 'ONLINE' ? 'green' : 'yellow'} aria-label={`Статус системы: ${data?.health?.status || 'Проверка'}`}>
                                 <span className="status-dot" /> {data?.health?.status || 'Проверка'}
                             </Badge>
                             <Badge>{state.location_name || '—'}</Badge>
                         </div>
                     </header>
                 )}
-                <div className={cn('v2-content', view === 'diary' && 'diary-home')}>
+                <div className={cn('v2-content', view === 'diary' && 'diary-home', `admin-view-${view}`)}>
                     {view === 'diary' && (
                         <>
                             <DiaryHeader day={day} setDay={setDay} health={data?.health} location={state.location_name || 'Санкт-Петербург'} />
