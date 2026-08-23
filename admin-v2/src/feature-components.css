@@ -10982,3 +10982,48 @@ html.dark .diary-shell .chip-metric {
     text-align: left !important;
   }
 }
+
+/* Mobile topbar contract: navigation must have its own row. Keeping the
+   desktop three-item flex layout here compresses the tablist to a few pixels
+   and lets the status cluster intercept tab clicks. */
+@media (max-width: 760px) {
+  .diary-shell .v2-topbar {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      "brand status"
+      "tabs tabs" !important;
+    align-items: center !important;
+    gap: 8px !important;
+    height: auto !important;
+    min-height: 104px !important;
+    padding: 8px 12px 0 !important;
+  }
+
+  .diary-shell .v2-topbar .topbar-brand {
+    grid-area: brand !important;
+    min-width: 0 !important;
+  }
+
+  .diary-shell .v2-topbar .topbar-status-bar {
+    grid-area: status !important;
+    min-width: 0 !important;
+  }
+
+  .diary-shell .v2-topbar .diary-tabs-root {
+    grid-area: tabs !important;
+    width: 100% !important;
+    height: 48px !important;
+    min-width: 0 !important;
+    justify-content: flex-start !important;
+    overflow: hidden !important;
+  }
+
+  .diary-shell .v2-topbar .diary-tabbar {
+    width: 100% !important;
+    min-width: 0 !important;
+    justify-content: flex-start !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+  }
+}
