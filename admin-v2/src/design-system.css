@@ -1692,3 +1692,39 @@ html.dark .diary-shell :is(.ui-button-primary, .photo-file-button):hover {
   background: var(--admin-accent-strong) !important;
   background-image: none !important;
 }
+
+html.dark .login-screen {
+  background: var(--admin-canvas) !important;
+}
+
+html.dark .login-screen .login-box {
+  border-color: var(--admin-border) !important;
+  background: var(--admin-surface-1) !important;
+  box-shadow: none !important;
+}
+
+html.dark .login-screen .brand-mark {
+  color: var(--admin-canvas) !important;
+  background: var(--admin-text) !important;
+  background-image: none !important;
+}
+
+html.dark .login-screen :is(.ui-button-primary, .photo-file-button) {
+  color: var(--admin-canvas) !important;
+  border-color: var(--admin-text) !important;
+  background: var(--admin-text) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+html.dark .login-screen :is(.ui-button-primary, .photo-file-button):hover {
+  color: var(--admin-canvas) !important;
+  border-color: var(--admin-accent-strong) !important;
+  background: var(--admin-accent-strong) !important;
+}
+
+html.dark .login-screen input:focus-visible {
+  outline: 2px solid var(--admin-border-strong) !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--admin-accent-soft) !important;
+}
