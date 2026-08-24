@@ -1796,3 +1796,22 @@ html.dark .diary-shell .crm-filter-btn.active {
   background: var(--admin-text) !important;
   box-shadow: none !important;
 }
+
+/*
+ * Provider management is a vertical list of compound rows, not a dashboard
+ * card collection. Keeping it in the shared six-track selector makes each
+ * provider card only ~170px wide on desktop and collapses its text track to
+ * 0px. Preserve the row's own internal grid and use one full-width track.
+ */
+html.dark .diary-shell .providers-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: var(--admin-space-2) !important;
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+html.dark .diary-shell .providers-grid > * {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}

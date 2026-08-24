@@ -84,6 +84,12 @@ test('all repeated admin card grids share the six-track contract', () => {
     assert.match(css, /grid-template-columns: var\(--admin-grid-columns\) !important/);
 });
 
+test('provider management stays a full-width vertical list', () => {
+    assert.match(css, /html\.dark \.diary-shell \.providers-grid \{\s*display:\s*grid !important;\s*grid-template-columns:\s*minmax\(0, 1fr\) !important/s);
+    assert.match(css, /html\.dark \.diary-shell \.providers-grid > \* \{\s*min-width:\s*0 !important;\s*max-width:\s*100% !important/s);
+    assert.match(featureCss, /\.provider-managed-row \{\s*display:\s*grid;\s*grid-template-columns:\s*minmax\(0, 1fr\) auto;/s);
+});
+
 test('legacy runtime overrides cannot reintroduce blue accents or four-track primary boards', () => {
     assert.ok(css.includes('--primary: var(--admin-accent);'));
     assert.match(css, /\.crm-filter-btn\.active/);
