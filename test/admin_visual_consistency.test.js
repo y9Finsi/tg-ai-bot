@@ -4,6 +4,7 @@ import fs from 'node:fs';
 
 const css = fs.readFileSync('admin-v2/src/design-system.css', 'utf8');
 const featureCss = fs.readFileSync('admin-v2/src/feature-components.css', 'utf8');
+const mainJsx = fs.readFileSync('admin-v2/src/main.jsx', 'utf8');
 
 test('admin visual system exposes one typography scale and semantic palette', () => {
     for (const token of [
@@ -133,6 +134,11 @@ test('dialog and CRM rows keep their natural content height', () => {
 test('CRM active filters stay monochrome', () => {
     assert.match(css, /html\.dark \.diary-shell \.crm-filter-btn\.active \{\s*color:\s*var\(--admin-canvas\) !important/s);
     assert.match(css, /border-color:\s*var\(--admin-text\) !important;\s*background:\s*var\(--admin-text\) !important/);
+});
+
+test('image generation bridge models are declared before runtime use', () => {
+    assert.match(mainJsx, /const bridgeImageModels = \['gemini-3\.1-flash-lite-image', 'gemini-2\.5-flash'\];/);
+    assert.match(mainJsx, /\? bridgeImageModels\s*:/);
 });
 
 test('legacy feature accents resolve to the canonical neutral palette', () => {
