@@ -80,26 +80,109 @@ export function getChannelFormatLimits(contentFormat = 'life_observation') {
     return FORMAT_LIMITS[contentFormat] || FORMAT_LIMITS.life_observation;
 }
 
-export function validateChannelText(text, contentFormat = 'life_observation', editorialMode = 'reference_short') {
-    const value = String(text || '').replace(/\r/g, '').trim();
+export function adaptChannelText(text, contentFormat = 'life_observation', editorialMode = 'reference_short') {
+    if (!text || typeof text !== 'string') return '';
+    let raw = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+    if (!raw) return '';
+
+    const limits = getChannelFormatLimits(contentFormat);
+    const singleParagraphFormats = ['short_thought', 'photo_caption', 'question', 'meme_caption', 'repost_reaction'];
+
+    let cleaned = '';
+    if (singleParagraphFormats.includes(contentFormat) || limits.maxParagraphs === 1) {
+        if (contentFormat === 'photo_caption') {
+            cleaned = raw.replace(/\n+/g, ' ').replace(/[ \t]+/g, ' ').trim();
+        } else {
+            const lines = raw.split('\n').map(l => l.replace(/[ \t]+/g, ' ').trim()).filter(Boolean);
+            cleaned = lines.slice(0, limits.maxLines).join('\n').trim();
+        }
+    } else {
+        const rawParagraphs = raw.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+        const normalizedParagraphs = rawParagraphs
+            .slice(0, limits.maxParagraphs)
+            .map(p => p.split('\n').map(l => l.replace(/[ \t]+/g, ' ').trim()).filter(Boolean).join('\n'))
+            .filter(Boolean);
+        cleaned = normalizedParagraphs.join('\n\n').trim();
+    }
+
+    if (cleaned.length <= limits.maxChars) {
+        return cleaned;
+    }
+
+    const maxChars = limits.maxChars;
+    const maxAllowed = Math.floor(maxChars * 1.20); // 15-20% overflow tolerance
+
+    if (cleaned.length <= maxAllowed) {
+        const targetSlice = cleaned.slice(0, maxChars + 1);
+
+        const sentenceBoundaryRegex = /([.!?…])(?:\s+|$)/g;
+        let lastSentenceEnd = -1;
+        let match;
+        while ((match = sentenceBoundaryRegex.exec(targetSlice)) !== null) {
+            const endIdx = match.index + match[1].length;
+            if (endIdx <= maxChars && endIdx >= maxChars * 0.35) {
+                lastSentenceEnd = endIdx;
+            }
+        }
+
+        if (lastSentenceEnd > 0) {
+            const truncated = cleaned.slice(0, lastSentenceEnd).trim();
+            if (truncated.length > 0) {
+                return truncated;
+            }
+        }
+
+        const clauseBoundaryRegex = /([;,—–])\s+/g;
+        let lastClauseEnd = -1;
+        while ((match = clauseBoundaryRegex.exec(targetSlice)) !== null) {
+            const endIdx = match.index;
+            if (endIdx <= maxChars && endIdx >= maxChars * 0.35) {
+                lastClauseEnd = endIdx;
+            }
+        }
+
+        if (lastClauseEnd > 0) {
+            const truncated = cleaned.slice(0, lastClauseEnd).replace(/[,:;\-–—\s]+$/, '').trim();
+            if (truncated.length > 0) {
+                return truncated;
+            }
+        }
+
+        const lastSpace = targetSlice.lastIndexOf(' ');
+        if (lastSpace >= maxChars * 0.4) {
+            const truncated = targetSlice.slice(0, lastSpace).replace(/[,:;\-–—\s]+$/, '').trim();
+            if (truncated.length > 0) {
+                return truncated;
+            }
+        }
+    }
+
+    return cleaned;
+}
+
+export function validateChannelText(text, contentFormat = 'life_observation', editorialMode = 'reference_short', { adapt = true } = {}) {
+    let value = String(text || '').replace(/\r/g, '').trim();
+    const mode = normalizeChannelEditorialMode(editorialMode);
+    if (!value) return { ok: false, code: 'CHANNEL_EMPTY', reason: 'Пост пустой.', text: '' };
+    if (mode === 'reference_short' && !REFERENCE_FORMATS.has(contentFormat)) {
+        return { ok: false, code: 'CHANNEL_FORMAT_MISMATCH', reason: 'Формат не входит в эталонный короткий режим.', text: value };
+    }
+    if (adapt) {
+        value = adaptChannelText(value, contentFormat, editorialMode);
+    }
     const limits = getChannelFormatLimits(contentFormat);
     const lines = value ? value.split('\n').filter(line => line.trim()) : [];
     const paragraphs = value ? value.split(/\n\s*\n/).filter(part => part.trim()) : [];
-    const mode = normalizeChannelEditorialMode(editorialMode);
-    if (!value) return { ok: false, code: 'CHANNEL_EMPTY', reason: 'Пост пустой.' };
-    if (mode === 'reference_short' && !REFERENCE_FORMATS.has(contentFormat)) {
-        return { ok: false, code: 'CHANNEL_FORMAT_MISMATCH', reason: 'Формат не входит в эталонный короткий режим.' };
-    }
     if (value.length > limits.maxChars) {
-        return { ok: false, code: 'CHANNEL_TOO_LONG', reason: `Пост длиннее лимита ${limits.maxChars} символов.` };
+        return { ok: false, code: 'CHANNEL_TOO_LONG', reason: `Пост длиннее лимита ${limits.maxChars} символов.`, text: value };
     }
     if (lines.length > limits.maxLines) {
-        return { ok: false, code: 'CHANNEL_FORMAT_MISMATCH', reason: 'Слишком много строк для выбранного формата.' };
+        return { ok: false, code: 'CHANNEL_FORMAT_MISMATCH', reason: 'Слишком много строк для выбранного формата.', text: value };
     }
     if (paragraphs.length > limits.maxParagraphs) {
-        return { ok: false, code: 'CHANNEL_FORMAT_MISMATCH', reason: 'Слишком много абзацев для выбранного формата.' };
+        return { ok: false, code: 'CHANNEL_FORMAT_MISMATCH', reason: 'Слишком много абзацев для выбранного формата.', text: value };
     }
-    return { ok: true, code: null, reason: '' };
+    return { ok: true, code: null, reason: '', text: value };
 }
 
 export function selectChannelContentFormat({
@@ -118,7 +201,20 @@ export function selectChannelContentFormat({
     const isAllowed = format => mode === 'legacy_mix' || REFERENCE_FORMATS.has(format);
 
     if (preferredFormat && CHANNEL_CONTENT_FORMATS.includes(preferredFormat) && isAllowed(preferredFormat)) {
-        return preferredFormat;
+        if (preferredFormat !== previousFormat && preferredFormat !== avoidFormat) {
+            return preferredFormat;
+        }
+    }
+
+    const topicFormat = TOPIC_FORMATS[topic];
+    if (topicFormat && isAllowed(topicFormat) && topicFormat !== avoidFormat && topicFormat !== previousFormat) {
+        if (topicFormat === 'meme_caption') {
+            if (hasMedia) return topicFormat;
+        } else if (topicFormat === 'photo_caption') {
+            if (hasMedia) return topicFormat;
+        } else {
+            return topicFormat;
+        }
     }
 
     if (mode === 'reference_short') {

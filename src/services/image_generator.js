@@ -13,24 +13,24 @@ export function buildImagePrompt({ prompt, baseStyle, hasReference = false, isCh
     const style = String(baseStyle || '').trim() || defaultBaseStyle;
     const cleanPrompt = String(prompt || '').trim();
 
-    if (isChatModel) {
-        if (hasReference) {
-            return [
-                `[TASK: CHARACTER-CONSISTENT PHOTO GENERATION - EXACT FACE MATCH]`,
-                `The attached image is the EXACT facial reference of the character (Lera).`,
-                `[CHARACTER FACE & IDENTITY SPECIFICATION]:`,
-                style,
-                `[SCENE / CONTEXT / EMOTION / ACTION]:`,
-                cleanPrompt,
-                `[STRICT RULES]:`,
-                `1. FACE & IDENTITY: Strictly preserve the exact face structure, features, freckles, eye color/shape, and hair from the reference and character specification.`,
-                `2. DYNAMIC SCENE: Follow the requested scene, outfit, pose, expression, and environment described above. Do NOT hardcode unrelated poses or rooms.`,
-                `3. REALISM: Photorealistic candid shot, natural lighting, real depth of field, unedited phone camera quality, zero CGI or plastic smoothing.`,
-                `[OUTPUT FORMAT]:`,
-                `Return the generated image as markdown: ![image](data:image/jpeg;base64,...)`
-            ].join('\n\n');
-        }
+    if (hasReference) {
+        return [
+            `[TASK: CHARACTER-CONSISTENT PHOTO GENERATION - EXACT FACE MATCH]`,
+            `The attached image is the EXACT facial reference of the character (Lera).`,
+            `[CHARACTER FACE & IDENTITY SPECIFICATION]:`,
+            style,
+            `[SCENE / CONTEXT / EMOTION / ACTION]:`,
+            cleanPrompt,
+            `[STRICT RULES]:`,
+            `1. FACE & IDENTITY: Strictly preserve the exact face structure, features, freckles, eye color/shape, and hair from the reference and character specification.`,
+            `2. DYNAMIC SCENE: Follow the requested scene, outfit, pose, expression, and environment described above. Do NOT hardcode unrelated poses or rooms.`,
+            `3. REALISM: Photorealistic candid shot, natural lighting, real depth of field, unedited phone camera quality, zero CGI or plastic smoothing.`,
+            `[OUTPUT FORMAT]:`,
+            `Return the generated image as markdown: ![image](data:image/jpeg;base64,...)`
+        ].join('\n\n');
+    }
 
+    if (isChatModel || !cleanPrompt.includes('Highly detailed')) {
         return [
             `[TASK: REALISTIC PHOTO GENERATION]`,
             `[CHARACTER SPECIFICATION]:`,
@@ -150,10 +150,14 @@ export function isImageCapableProvider(p) {
         model.includes('ideogram') ||
         model.includes('midjourney') ||
         model.includes('imagen') ||
+        model.includes('gemini') ||
+        model.includes('qwen') ||
         name.includes('image') ||
         name.includes('pic') ||
         name.includes('flux') ||
         name.includes('dall') ||
+        name.includes('gemini') ||
+        name.includes('qwen') ||
         url.includes('gemini-web-to-api');
 }
 
@@ -280,6 +284,8 @@ export async function executeImageGenerationRequest({
     referenceDataUrl = null,
     size = '1024x1024',
     stylePrompt = '',
+    protocol = null,
+    requireReference = false,
     signal = null
 }) {
     if (!provider || !provider.base_url) {
@@ -288,13 +294,28 @@ export async function executeImageGenerationRequest({
 
     const selectedModel = String(model || provider.model_name || 'gemini-2.5-flash').trim();
     const baseUrl = String(provider.base_url).replace(/\/+$/, '');
-    const isChatModel = isMultimodalChatModel(selectedModel, baseUrl);
-    const isEditModel = selectedModel.toLowerCase().includes('edit') || String(provider.name || '').toLowerCase().includes('edit');
-    const isChatEligible = (isChatModel || isEditModel) && Boolean(referenceDataUrl);
 
+    // Normalize explicit protocol flag
+    let explicitProtocol = null;
+    if (protocol) {
+        const p = String(protocol).toLowerCase().trim();
+        if (p.includes('chat') || p === 'chat_completions' || p === '/chat/completions') {
+            explicitProtocol = '/chat/completions';
+        } else if (p.includes('image') || p.includes('generation') || p === 'images_generations' || p === '/images/generations') {
+            explicitProtocol = '/images/generations';
+        }
+    }
+
+    const isEditModel = Boolean(requireReference) || selectedModel.toLowerCase().includes('edit') || String(provider.name || '').toLowerCase().includes('edit');
     if (isEditModel && !referenceDataUrl) {
         throw new Error(`Модель ${selectedModel} предназначена для редактирования изображений. Загрузи референс-картинку для обработки.`);
     }
+
+    const isChatModel = explicitProtocol === '/chat/completions'
+        ? true
+        : (explicitProtocol === '/images/generations' ? false : isMultimodalChatModel(selectedModel, baseUrl));
+
+    const isChatEligible = explicitProtocol === '/chat/completions' || (isChatModel && Boolean(referenceDataUrl)) || (isEditModel && Boolean(referenceDataUrl));
 
     let lastError = null;
 
@@ -304,17 +325,22 @@ export async function executeImageGenerationRequest({
             const chatPrompt = buildImagePrompt({
                 prompt,
                 baseStyle: stylePrompt,
-                hasReference: true,
+                hasReference: Boolean(referenceDataUrl),
                 isChatModel: true
             });
+            const content = referenceDataUrl
+                ? [
+                    { type: 'image_url', image_url: { url: referenceDataUrl } },
+                    { type: 'text', text: chatPrompt }
+                  ]
+                : [
+                    { type: 'text', text: chatPrompt }
+                  ];
             const chatPayload = {
                 model: selectedModel,
                 messages: [{
                     role: 'user',
-                    content: [
-                        { type: 'image_url', image_url: { url: referenceDataUrl } },
-                        { type: 'text', text: chatPrompt }
-                    ]
+                    content
                 }],
                 max_tokens: 2000
             };
@@ -336,10 +362,11 @@ export async function executeImageGenerationRequest({
 
             if (res.ok) {
                 const extracted = await extractImageFromResponse(data, raw);
-                if (extracted?.buffer && extracted.buffer.length >= 500) {
+                if (extracted?.buffer && extracted.buffer.length >= 20) {
                     return {
                         success: true,
-                        mode: 'reference_chat',
+                        mode: referenceDataUrl ? 'reference_chat' : 'chat_completions',
+                        protocol: '/chat/completions',
                         model: selectedModel,
                         providerName: provider.name,
                         dataUrl: extracted.dataUrl,
@@ -350,25 +377,25 @@ export async function executeImageGenerationRequest({
                     };
                 }
                 const textMsg = data?.choices?.[0]?.message?.content || raw.slice(0, 300);
-                if (isEditModel) {
+                if (isEditModel || explicitProtocol === '/chat/completions') {
                     throw new Error(textMsg || 'Модель не вернула отредактированное изображение');
                 }
             } else {
                 const detail = data?.error?.message || data?.message || raw.slice(0, 300) || `HTTP ${res.status}`;
-                console.warn(`⚠️ [IMAGE GEN] /chat/completions вернул ошибку (${detail}), переключаюсь на /images/generations...`);
                 lastError = new Error(detail);
-                if (isEditModel) throw lastError;
+                if (isEditModel || explicitProtocol === '/chat/completions') throw lastError;
+                console.warn(`⚠️ [IMAGE GEN] /chat/completions вернул ошибку (${detail}), переключаюсь на /images/generations...`);
             }
         } catch (chatErr) {
             if (chatErr.name === 'AbortError') throw chatErr;
-            if (isEditModel) throw chatErr;
+            if (isEditModel || explicitProtocol === '/chat/completions') throw chatErr;
             console.warn(`⚠️ [IMAGE GEN] Сбой /chat/completions (${chatErr.message}), переключаюсь на /images/generations...`);
             lastError = chatErr;
         }
     }
 
-    if (isEditModel) {
-        throw lastError || new Error(`Модель редактирования ${selectedModel} не смогла обработать изображение`);
+    if (isEditModel || explicitProtocol === '/chat/completions') {
+        throw lastError || new Error(`Модель ${selectedModel} не смогла обработать изображение`);
     }
 
     // Стратегия 2: /images/generations (для gpt-image-2, dall-e, flux, sd, либо как fallback)
@@ -406,10 +433,11 @@ export async function executeImageGenerationRequest({
 
             if (res.ok) {
                 const extracted = await extractImageFromResponse(data, raw);
-                if (extracted?.buffer && extracted.buffer.length >= 500) {
+                if (extracted?.buffer && extracted.buffer.length >= 20) {
                     return {
                         success: true,
                         mode: referenceDataUrl ? 'reference_fallback' : 'generation',
+                        protocol: '/images/generations',
                         model: selectedModel,
                         providerName: provider.name,
                         dataUrl: extracted.dataUrl,
@@ -456,7 +484,9 @@ export async function generateLeraPhoto({
     providerId = null,
     model = null,
     size = '1024x1024',
-    imageDataUrl = null
+    imageDataUrl = null,
+    protocol = null,
+    requireReference = false
 } = {}) {
     const normalizedPrompt = String(prompt || '').trim();
     if (!normalizedPrompt) {
@@ -484,6 +514,7 @@ export async function generateLeraPhoto({
 
     const effectiveReferenceUrl = imageDataUrl || await getMasterReferenceDataUrl(bot);
     const selectedModel = String(model || settings.model || primaryProvider.model_name || 'gemini-2.5-flash').trim();
+    const effectiveProtocol = protocol || settings.protocol || null;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -504,6 +535,8 @@ export async function generateLeraPhoto({
                     referenceDataUrl: effectiveReferenceUrl,
                     size,
                     stylePrompt: settings.style_prompt,
+                    protocol: effectiveProtocol,
+                    requireReference,
                     signal: controller.signal
                 });
 

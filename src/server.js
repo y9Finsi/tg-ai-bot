@@ -12,6 +12,11 @@ import { MemorySummarizer } from './memory/summarizer.js';
 import { memoryRepository } from './memory/memory_repository.js';
 import { ContextBuilder } from './ai/context_builder.js';
 import { generateLeraVoice } from './services/voice_generator.js';
+import {
+    getModelMatrix,
+    updateModelMatrix,
+    runSlotHealthCheck
+} from './services/ai_matrix.js';
 import { ToolsRepository } from './db/tools_repository.js';
 import { executeAction } from './radiant/actions/index.js';
 import {
@@ -220,9 +225,9 @@ export function setBotInstanceForServer(bot) {
     botInstance = bot;
 }
 
-export function startAdminServer() {
+export function createAdminApp(bot = null) {
+    if (bot) botInstance = bot;
     const app = express();
-    const PORT = process.env.ADMIN_PORT || 3000;
     const normalizeAdminKey = (val) => {
         if (!val) return '';
         let str = String(val).trim();
@@ -1584,8 +1589,52 @@ export function startAdminServer() {
     });
 
     // =========================================================================
-    // MODULE 4: AI PROVIDERS & MODULAR SYSTEM PROMPT EDITOR
+    // MODULE 4: AI PROVIDERS, MODEL MATRIX & MODULAR SYSTEM PROMPT EDITOR
     // =========================================================================
+
+    app.get('/api/admin/model-matrix', async (req, res) => {
+        try {
+            const matrixData = await getModelMatrix();
+            res.json({
+                success: true,
+                ok: true,
+                ...matrixData
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, ok: false, error: e.message });
+        }
+    });
+
+    app.post('/api/admin/model-matrix', async (req, res) => {
+        try {
+            const updated = await updateModelMatrix(req.body || {});
+            res.json({
+                success: true,
+                ok: true,
+                message: 'AI Model Matrix updated successfully',
+                ...updated
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, ok: false, error: e.message });
+        }
+    });
+
+    app.post('/api/admin/model-matrix/health-check', async (req, res) => {
+        try {
+            const result = await runSlotHealthCheck(req.body || {});
+            res.json(result);
+        } catch (e) {
+            res.status(500).json({
+                success: false,
+                ok: false,
+                slot: req.body?.slot || 'unknown',
+                status: 'UNHEALTHY',
+                error: e.message,
+                message: `Diagnostic check failed: ${e.message}`,
+                latency_ms: 0
+            });
+        }
+    });
 
     app.get('/api/admin/providers', async (req, res) => {
         try {
@@ -2127,6 +2176,146 @@ export function startAdminServer() {
     // MODULE 5: TELEGRAM CHANNEL POSTER & RETARGETING FUNNELS
     // =========================================================================
 
+    app.get('/api/admin/channel/check-access', async (req, res) => {
+        try {
+            if (!botInstance) {
+                return res.status(503).json({
+                    ok: false,
+                    success: false,
+                    error: 'BOT_NOT_INITIALIZED',
+                    message: 'Telegram-бот не инициализирован'
+                });
+            }
+
+            let channelId = String(req.query.channelId || req.query.channel_id || '').trim();
+            if (!channelId) {
+                try {
+                    const settings = await getChannelPosterSettings();
+                    channelId = String(settings.channel_id || '').trim();
+                } catch {
+                    channelId = '';
+                }
+            }
+
+            if (!channelId) {
+                return res.status(400).json({
+                    ok: false,
+                    success: false,
+                    error: 'CHANNEL_ID_REQUIRED',
+                    message: 'ID или @username канала не указан'
+                });
+            }
+
+            const me = await botInstance.telegram.getMe();
+            let chat = null;
+            let memberCount = null;
+            let botMember = null;
+
+            try {
+                chat = await botInstance.telegram.getChat(channelId);
+            } catch (chatErr) {
+                const msg = chatErr.message || '';
+                let userMessage = 'Канал не найден. Проверьте правильность @username или ID.';
+                if (msg.includes('Unauthorized')) {
+                    userMessage = 'Неверный токен Telegram-бота.';
+                }
+                return res.status(400).json({
+                    ok: false,
+                    success: false,
+                    error: 'CHAT_NOT_FOUND',
+                    message: userMessage,
+                    raw_error: msg
+                });
+            }
+
+            try {
+                if (botInstance.telegram.getChatMemberCount) {
+                    memberCount = await botInstance.telegram.getChatMemberCount(channelId);
+                } else if (botInstance.telegram.getChatMembersCount) {
+                    memberCount = await botInstance.telegram.getChatMembersCount(channelId);
+                }
+            } catch (cntErr) {
+                console.warn('[CHANNEL CHECK-ACCESS] Не удалось получить число участников:', cntErr.message);
+            }
+
+            try {
+                botMember = await botInstance.telegram.getChatMember(channelId, me.id);
+            } catch (memberErr) {
+                const msg = memberErr.message || '';
+                let userMessage = 'Бот не добавлен в канал.';
+                return res.status(400).json({
+                    ok: false,
+                    success: false,
+                    error: 'BOT_NOT_MEMBER',
+                    message: userMessage,
+                    raw_error: msg,
+                    channel: {
+                        id: chat.id,
+                        title: chat.title,
+                        username: chat.username || null,
+                        type: chat.type
+                    },
+                    bot: {
+                        id: me.id,
+                        username: me.username
+                    }
+                });
+            }
+
+            const status = botMember?.status || 'member';
+            const isAdmin = ['creator', 'administrator'].includes(status);
+            const canPost = status === 'creator' || Boolean(botMember?.can_post_messages || botMember?.can_manage_chat);
+            const canEdit = status === 'creator' || Boolean(botMember?.can_edit_messages);
+            const canDelete = status === 'creator' || Boolean(botMember?.can_delete_messages);
+
+            const channelInfo = {
+                id: chat.id,
+                title: chat.title,
+                username: chat.username || null,
+                type: chat.type,
+                description: chat.description || null,
+                member_count: memberCount
+            };
+
+            const botInfo = {
+                id: me.id,
+                username: me.username,
+                can_join_groups: me.can_join_groups ?? true
+            };
+
+            const permissions = {
+                status,
+                can_post_messages: canPost,
+                can_edit_messages: canEdit,
+                can_delete_messages: canDelete
+            };
+
+            const access = {
+                is_admin: isAdmin,
+                can_post: canPost,
+                status,
+                permissions
+            };
+
+            res.json({
+                ok: true,
+                success: true,
+                channel: channelInfo,
+                bot: botInfo,
+                permissions,
+                access
+            });
+        } catch (e) {
+            console.error('[CHANNEL CHECK ACCESS ERROR]:', e.message);
+            res.status(500).json({
+                ok: false,
+                success: false,
+                error: 'CHANNEL_ACCESS_CHECK_FAILED',
+                message: e.message || 'Ошибка проверки доступа к каналу'
+            });
+        }
+    });
+
     app.get('/api/admin/channel/settings', async (req, res) => {
         try {
             const settings = await getChannelPosterSettings();
@@ -2150,10 +2339,8 @@ export function startAdminServer() {
                 ? [...new Set(formatSequence.filter(format => DEFAULT_REFERENCE_FORMAT_SEQUENCE.includes(format)))]
                 : [];
             const editorialSequence = safeFormatSequence.length ? safeFormatSequence : DEFAULT_REFERENCE_FORMAT_SEQUENCE;
-            const safePostsPerDay = Math.max(1, Math.min(2, Number(postsPerDay) || 2));
-            const safeFrequencyHours = safeEditorialMode === 'reference_short'
-                ? Math.max(12, Math.min(168, Number(frequencyHours) || 12))
-                : Math.max(1, Math.min(168, Number(frequencyHours) || 4));
+            const safePostsPerDay = Math.max(1, Math.min(100, Number(postsPerDay) || 2));
+            const safeFrequencyHours = Math.max(1, Math.min(168, Number(frequencyHours) || (safeEditorialMode === 'reference_short' ? 12 : 4)));
             const safeWeights = normalizeTopicDistribution(activeTopics, Object.fromEntries(
                 allowedTopics.map(topic => [topic, Math.max(0, Math.min(100, Number(topicWeights?.[topic]) || 0))])
             ));
@@ -3055,6 +3242,12 @@ export function startAdminServer() {
         req.on('close', () => { clearInterval(heartbeat); devtoolEvents.off('event', send); });
     });
 
+    return app;
+}
+
+export function startAdminServer() {
+    const app = createAdminApp();
+    const PORT = process.env.ADMIN_PORT || 3000;
     app.listen(PORT, () => {
         console.log(`🌐 [ADMIN WEB] Локальная веб-админка Radiant Admin Ultimate 2.0 запущена: http://localhost:${PORT}`);
     });

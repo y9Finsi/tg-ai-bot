@@ -2,9 +2,29 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 const css = fs.readFileSync('admin-v2/src/design-system.css', 'utf8');
 const featureCss = fs.readFileSync('admin-v2/src/feature-components.css', 'utf8');
-const mainJsx = fs.readFileSync('admin-v2/src/main.jsx', 'utf8');
+
+const root = new URL('..', import.meta.url);
+const readAdminSrc = () => {
+    const srcDir = fileURLToPath(new URL('admin-v2/src', root));
+    const collect = dir => {
+        let out = '';
+        for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, item.name);
+            if (item.isDirectory()) out += collect(full);
+            else if (item.name.endsWith('.jsx') || item.name.endsWith('.js')) {
+                out += fs.readFileSync(full, 'utf8') + '\n';
+            }
+        }
+        return out;
+    };
+    return collect(srcDir);
+};
+const mainJsx = readAdminSrc();
 
 test('admin visual system exposes one typography scale and semantic palette', () => {
     for (const token of [

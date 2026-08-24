@@ -16,7 +16,24 @@ import { migratePresetToCurrent } from '../src/ai/sandbox_service.js';
 import { appendSandboxExchange, getSandboxSelectedResult } from '../admin-v2/src/sandbox_chat.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
+const read = relative => {
+    if (relative === 'admin-v2/src/main.jsx') {
+        const srcDir = path.join(root, 'admin-v2/src');
+        const collect = dir => {
+            let out = '';
+            for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, item.name);
+                if (item.isDirectory()) out += collect(full);
+                else if (item.name.endsWith('.jsx') || item.name.endsWith('.js')) {
+                    out += fs.readFileSync(full, 'utf8') + '\n';
+                }
+            }
+            return out;
+        };
+        return collect(srcDir);
+    }
+    return fs.readFileSync(path.join(root, relative), 'utf8');
+};
 
 test('Prompt Studio normalizes an independent sampling config for every intent', () => {
     const settings = {

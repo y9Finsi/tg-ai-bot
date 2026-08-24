@@ -1737,14 +1737,16 @@ export async function getImageGenerationSettings() {
         stylePrompt,
         masterRefDataUrl,
         autoGenerateChannel,
-        autoSaveCatalog
+        autoSaveCatalog,
+        protocol
     ] = await Promise.all([
         getSetting('image_provider_id', ''),
         getSetting('image_model', 'gemini-2.5-flash'),
         getSetting('image_style_prompt', 'Candid authentic amateur photo of Lera, a 19-year-old Russian student girl from Saint Petersburg. Appearance: fair skin with natural freckles across cheeks and nose bridge, distinct grey-green almond-shaped eyes with subtle thin winged eyeliner, soft natural brows, full natural lips. Shoulder-length messy textured dirty-blonde hair with wispy curtain bangs framing her face. Vibe & Aesthetic: cute, natural, expressive, genuine real-life iPhone camera photo, natural skin texture with subtle pores, warm ambient lighting, filmic grain, no CGI, no 3D render, no plastic AI smoothing.'),
         getSetting('image_master_reference_dataurl', ''),
         getSetting('image_auto_channel', 'true'),
-        getSetting('image_auto_save_catalog', 'true')
+        getSetting('image_auto_save_catalog', 'true'),
+        getSetting('image_protocol', '')
     ]);
 
     const masterPhoto = await getMasterReferencePhoto();
@@ -1752,6 +1754,7 @@ export async function getImageGenerationSettings() {
     return {
         provider_id: providerId ? Number(providerId) : null,
         model: model || 'gemini-2.5-flash',
+        protocol: protocol || null,
         style_prompt: stylePrompt,
         master_reference_dataurl: masterRefDataUrl || null,
         master_reference_photo: masterPhoto || null,
@@ -1763,6 +1766,7 @@ export async function getImageGenerationSettings() {
 export async function saveImageGenerationSettings(settings = {}) {
     if (settings.provider_id !== undefined) await setSetting('image_provider_id', settings.provider_id ? String(settings.provider_id) : '');
     if (settings.model !== undefined) await setSetting('image_model', String(settings.model || ''));
+    if (settings.protocol !== undefined) await setSetting('image_protocol', String(settings.protocol || ''));
     if (settings.style_prompt !== undefined) await setSetting('image_style_prompt', String(settings.style_prompt || ''));
     if (settings.master_reference_dataurl !== undefined) {
         await setSetting('image_master_reference_dataurl', String(settings.master_reference_dataurl || ''));
@@ -1773,6 +1777,43 @@ export async function saveImageGenerationSettings(settings = {}) {
     if (settings.auto_generate_channel !== undefined) await setSetting('image_auto_channel', settings.auto_generate_channel ? 'true' : 'false');
     if (settings.auto_save_catalog !== undefined) await setSetting('image_auto_save_catalog', settings.auto_save_catalog ? 'true' : 'false');
     return getImageGenerationSettings();
+}
+
+export async function getImageEditSettings() {
+    const [
+        providerId,
+        model,
+        protocol,
+        stylePrompt,
+        requireReference
+    ] = await Promise.all([
+        getSetting('image_edit_provider_id', ''),
+        getSetting('image_edit_model', ''),
+        getSetting('image_edit_protocol', '/chat/completions'),
+        getSetting('image_edit_style_prompt', ''),
+        getSetting('image_edit_require_reference', 'true')
+    ]);
+
+    return {
+        provider_id: providerId ? Number(providerId) : null,
+        model: model || '',
+        protocol: protocol || '/chat/completions',
+        style_prompt: stylePrompt || '',
+        require_reference: requireReference !== 'false',
+        requires_reference: requireReference !== 'false'
+    };
+}
+
+export async function saveImageEditSettings(settings = {}) {
+    if (settings.provider_id !== undefined) await setSetting('image_edit_provider_id', settings.provider_id ? String(settings.provider_id) : '');
+    if (settings.model !== undefined) await setSetting('image_edit_model', String(settings.model || ''));
+    if (settings.protocol !== undefined) await setSetting('image_edit_protocol', String(settings.protocol || '/chat/completions'));
+    if (settings.style_prompt !== undefined) await setSetting('image_edit_style_prompt', String(settings.style_prompt || ''));
+    if (settings.require_reference !== undefined || settings.requires_reference !== undefined) {
+        const req = settings.require_reference !== undefined ? settings.require_reference : settings.requires_reference;
+        await setSetting('image_edit_require_reference', req ? 'true' : 'false');
+    }
+    return getImageEditSettings();
 }
 
 export async function getVoiceGenerationSettings() {
@@ -1856,8 +1897,8 @@ export async function getChannelPosterSettings() {
     return {
         is_enabled: values.channel_poster_enabled !== 'false',
         channel_id: values.channel_id || values.lera_channel_id || '',
-        frequency_hours: Number(values.channel_frequency_hours || 12),
-        posts_per_day: Math.max(1, Math.min(2, Number(values.channel_posts_per_day || 2))),
+        frequency_hours: Math.max(1, Number(values.channel_frequency_hours || 12)),
+        posts_per_day: Math.max(1, Number(values.channel_posts_per_day || 2)),
         editorial_mode: normalizeChannelEditorialMode(values.channel_editorial_mode),
         format_sequence: (() => {
             try {

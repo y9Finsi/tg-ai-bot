@@ -30,7 +30,7 @@ import { memoryRepository } from './memory/memory_repository.js';
 // --- 1. КОНСТАНТЫ И ДИНАМИЧЕСКИЙ КЛИЕНТ ИИ ---
 
 const rateLimitMap = new Map();
-setInterval(() => rateLimitMap.clear(), 60 * 1000);
+setInterval(() => rateLimitMap.clear(), 60 * 1000).unref();
 
 let activeProviderCache = null;
 let openaiClientInstance = null;
