@@ -1789,3 +1789,10 @@ html.dark .diary-shell :is(.llm-row, .managed-row) > * {
 html.dark .diary-shell :is(.llm-row, .managed-row) > :nth-child(2) {
   min-width: 0 !important;
 }
+
+html.dark .diary-shell .crm-filter-btn.active {
+  color: var(--admin-canvas) !important;
+  border-color: var(--admin-text) !important;
+  background: var(--admin-text) !important;
+  box-shadow: none !important;
+}

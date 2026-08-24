@@ -130,6 +130,11 @@ test('dialog and CRM rows keep their natural content height', () => {
     assert.match(css, /html\.dark \.diary-shell :is\(\.llm-row, \.managed-row\) > \* \{\s*min-width:\s*0 !important/s);
 });
 
+test('CRM active filters stay monochrome', () => {
+    assert.match(css, /html\.dark \.diary-shell \.crm-filter-btn\.active \{\s*color:\s*var\(--admin-canvas\) !important/s);
+    assert.match(css, /border-color:\s*var\(--admin-text\) !important;\s*background:\s*var\(--admin-text\) !important/);
+});
+
 test('legacy feature accents resolve to the canonical neutral palette', () => {
     assert.match(css, /--blue:\s*var\(--admin-info\)\s*!important/);
     assert.match(css, /--purple:\s*var\(--admin-text-muted\)\s*!important/);
