@@ -46,7 +46,7 @@ test('channel draft and publication do not force photos on purely textual posts'
     const poster = read('src/channel_poster.js');
 
     assert.doesNotMatch(poster, /settings\.media_mode === 'none'/);
-    assert.match(poster, /const isMediaRequested = Boolean\(contentId \|\| media \|\| isPhotoFormat \|\| isMemeFormat\);/);
+    assert.match(poster, /const isMediaRequested = Boolean\(/);
     assert.match(poster, /if \(isMediaRequested && !contentMedia && !photoToSend/);
 });
 

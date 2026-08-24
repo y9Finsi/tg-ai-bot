@@ -185,11 +185,12 @@ export async function generateChannelPostDraft(overrideSettings = null) {
     if (judge.passed !== false && !formatCheck.ok) {
         judge = { ...judge, passed: false, verdict: `REJECT:${formatCheck.code}`, code: formatCheck.code, local: true, reason: formatCheck.reason };
     }
+    let finalFormat = contentFormat;
     let attempt = 1;
     if (judge.passed === false && settings.judge_mode === 'ENFORCE') {
         const retryFormat = selectChannelContentFormat({
             recentPosts,
-            hasMedia: Boolean(mediaContent || selectedPhoto || settings.media_mode === 'ai_photo'),
+            hasMedia: hasMediaCapability,
             topic,
             preferredFormat: contentFormat,
             avoidFormat: '',
@@ -197,6 +198,7 @@ export async function generateChannelPostDraft(overrideSettings = null) {
             formatSequence,
             randomValue: 0
         });
+        finalFormat = retryFormat;
         const retryPrompt = buildChannelSystemPrompt({
             time, timeOfDay, topic, topicDescription, recentPosts, messagesCount: '1', promptBlocks: settings.prompt_blocks,
             leraPrompt: settings.public_profile_enabled === false ? '' : getLeraProfileProjection(profile.profile, 'CHANNEL'),
@@ -221,6 +223,53 @@ export async function generateChannelPostDraft(overrideSettings = null) {
         }
         baseProvenance.content_format = retryFormat;
     }
+
+    let media = null;
+    if (finalFormat === 'photo_caption') {
+        if (settings.media_mode === 'meme') {
+            mediaContent = await getRandomChannelContent({ type: 'photo' }) || await getRandomChannelContent();
+        } else if (settings.media_mode === 'db_photo') {
+            selectedPhoto = await getRandomLeraPhoto({ access_level: 'free', time_of_day: timeOfDay, excludeChannelUsed: true });
+        } else if (settings.media_mode === 'ai_photo') {
+            media = {
+                type: 'ai_photo',
+                description: 'AI-генерация фото (Gemini) при отправке'
+            };
+        }
+    } else if (topic === 'meme' && settings.media_mode === 'meme') {
+        mediaContent = await getRandomChannelContent({ type: 'photo' }) || await getRandomChannelContent();
+    } else {
+        mediaContent = null;
+        selectedPhoto = null;
+    }
+
+    if (mediaContent) {
+        media = {
+            type: mediaContent.telegram_type || 'photo',
+            id: mediaContent.id,
+            description: mediaContent.description || 'Мем/картинка из каталога',
+            file_id: mediaContent.telegram_file_id || null,
+            preview_url: mediaContent.telegram_file_id
+                ? `/api/admin/telegram-preview?file_id=${encodeURIComponent(mediaContent.telegram_file_id)}`
+                : (mediaContent.url || null)
+        };
+        baseProvenance.media_content_id = mediaContent.id;
+        baseProvenance.media_type = mediaContent.telegram_type || 'photo';
+    } else if (selectedPhoto) {
+        media = {
+            type: 'photo',
+            id: `photo:${selectedPhoto.id}`,
+            description: selectedPhoto.caption || 'Фото Леры из базы',
+            file_id: selectedPhoto.file_id || null,
+            preview_url: `/api/admin/photos/${selectedPhoto.id}/preview`
+        };
+        baseProvenance.media_content_id = `photo:${selectedPhoto.id}`;
+        baseProvenance.media_type = 'photo';
+    } else {
+        delete baseProvenance.media_content_id;
+        delete baseProvenance.media_type;
+    }
+
     const provenance = {
         ...baseProvenance,
         model: generated.model || null,
@@ -233,32 +282,6 @@ export async function generateChannelPostDraft(overrideSettings = null) {
         judge_latency_ms: judge.latencyMs || 0,
         published: settings.judge_mode !== 'ENFORCE' || judge.passed !== false
     };
-
-    let media = null;
-    if (mediaContent) {
-        media = {
-            type: mediaContent.telegram_type || 'photo',
-            id: mediaContent.id,
-            description: mediaContent.description || 'Мем/картинка из каталога',
-            file_id: mediaContent.telegram_file_id || null,
-            preview_url: mediaContent.telegram_file_id
-                ? `/api/admin/telegram-preview?file_id=${encodeURIComponent(mediaContent.telegram_file_id)}`
-                : (mediaContent.url || null)
-        };
-    } else if (selectedPhoto) {
-        media = {
-            type: 'photo',
-            id: `photo:${selectedPhoto.id}`,
-            description: selectedPhoto.caption || 'Фото Леры из базы',
-            file_id: selectedPhoto.file_id || null,
-            preview_url: `/api/admin/photos/${selectedPhoto.id}/preview`
-        };
-    } else if (settings.media_mode === 'ai_photo') {
-        media = {
-            type: 'ai_photo',
-            description: 'AI-генерация фото (Gemini) при отправке'
-        };
-    }
 
     const draft = {
         text,
@@ -380,10 +403,12 @@ export async function publishChannelDraft(bot, { text, topic, provenance = {}, m
         }
     } else if (contentId) {
         contentMedia = await getLeraContent(contentId).catch(() => null);
+    } else if (media?.file_id) {
+        photoToSend = media.file_id;
     }
     const isPhotoFormat = contentFormat === 'photo_caption' || provenance.content_format === 'photo_caption';
     const isMemeFormat = contentFormat === 'meme_caption' || provenance.content_format === 'meme_caption';
-    const isMediaRequested = Boolean(contentId || media || isPhotoFormat || isMemeFormat);
+    const isMediaRequested = Boolean(contentId || (media && media.type && media.type !== 'none') || isPhotoFormat || isMemeFormat);
 
     if (isMediaRequested && !contentMedia && !photoToSend && (settings.media_mode === 'ai_photo' || settings.media_mode === 'db_photo')) {
         if (settings.media_mode === 'ai_photo') {
