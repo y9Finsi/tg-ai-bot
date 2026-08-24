@@ -16,16 +16,20 @@ export function Header({
                 <h1>{title}</h1>
                 {description && <p>{description}</p>}
             </div>
-            <div className="header-actions">
-                {action}
-                <Badge
-                    variant={health?.status === 'ONLINE' ? 'green' : 'yellow'}
-                    aria-label={`Статус системы: ${health?.status || 'Проверка'}`}
-                >
-                    <span className="status-dot" /> {health?.status || 'Проверка'}
-                </Badge>
-                <Badge>{location || 'Санкт-Петербург'}</Badge>
-            </div>
+            {(action || health || location) && (
+                <div className="header-actions">
+                    {action}
+                    {health && (
+                        <Badge
+                            variant={health?.status === 'ONLINE' ? 'green' : 'yellow'}
+                            aria-label={`Статус системы: ${health?.status || 'Проверка'}`}
+                        >
+                            <span className="status-dot" /> {health?.status || 'Проверка'}
+                        </Badge>
+                    )}
+                    {location && <Badge>{location}</Badge>}
+                </div>
+            )}
         </header>
     );
 }

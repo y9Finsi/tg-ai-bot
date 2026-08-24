@@ -141,13 +141,12 @@ export function App() {
             onNavigate={navigateTo}
             notice={notice}
             onDismissToast={dismissToast}
+            health={health}
         >
             <Header
                 eyebrow={currentConfig.eyebrow}
                 title={currentConfig.title}
                 description={currentConfig.description}
-                health={health}
-                location="Санкт-Петербург"
             />
 
             {/* Keep-alive Tab Containers (preserve scroll, uncommitted form inputs, and state) */}
