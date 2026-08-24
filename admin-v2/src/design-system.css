@@ -1765,3 +1765,27 @@ html.dark .diary-shell .v2-content.diary-home > * {
   grid-column: auto !important;
   grid-row: auto !important;
 }
+
+/*
+ * Repeated rows must size to their content. Legacy flex/cross-axis rules
+ * collapsed Dialogs and CRM rows to one line, causing badges and previews to
+ * paint over the next item.
+ */
+html.dark .diary-shell :is(.llm-row, .managed-row) {
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr) auto !important;
+  align-items: start !important;
+  height: auto !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+}
+
+html.dark .diary-shell :is(.llm-row, .managed-row) > * {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+html.dark .diary-shell :is(.llm-row, .managed-row) > :nth-child(2) {
+  min-width: 0 !important;
+}

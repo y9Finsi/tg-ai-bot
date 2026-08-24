@@ -122,6 +122,14 @@ test('diary home resets the legacy grid shorthand on wide screens', () => {
     assert.match(css, /html\.dark \.diary-shell \.v2-content\.diary-home > \* \{\s*grid-area:\s*auto !important;\s*grid-column:\s*auto !important;\s*grid-row:\s*auto !important/s);
 });
 
+test('dialog and CRM rows keep their natural content height', () => {
+    assert.match(css, /html\.dark \.diary-shell :is\(\.llm-row, \.managed-row\) \{\s*display:\s*grid !important/s);
+    assert.match(css, /grid-template-columns:\s*auto minmax\(0,\s*1fr\) auto !important/);
+    assert.match(css, /height:\s*auto !important/);
+    assert.match(css, /overflow:\s*visible !important/);
+    assert.match(css, /html\.dark \.diary-shell :is\(\.llm-row, \.managed-row\) > \* \{\s*min-width:\s*0 !important/s);
+});
+
 test('legacy feature accents resolve to the canonical neutral palette', () => {
     assert.match(css, /--blue:\s*var\(--admin-info\)\s*!important/);
     assert.match(css, /--purple:\s*var\(--admin-text-muted\)\s*!important/);
