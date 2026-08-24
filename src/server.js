@@ -513,7 +513,7 @@ export function createAdminApp(bot = null) {
         }
     });
 
-    app.get('/api/admin/radiant/health', async (req, res) => {
+    app.get(['/api/admin/health', '/api/admin/radiant/health'], async (req, res) => {
         try { res.json(await buildRadiantHealth()); }
         catch (e) { res.status(500).json({ error: e.message }); }
     });

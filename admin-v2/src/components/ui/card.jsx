@@ -13,8 +13,8 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        !isFrameless && "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-lg bg-card py-(--card-spacing) text-xs/relaxed text-card-foreground ring-1 ring-foreground/10 [--card-spacing:--spacing(4)] has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] *:[img:first-child]:rounded-t-lg *:[img:last-child]:rounded-b-lg",
-        isFrameless && "flex flex-col gap-4 w-full bg-transparent ring-0 border-0 p-0 shadow-none",
+        !isFrameless && "ui-card",
+        isFrameless && "ui-card-frameless",
         className
       )}
       {...props} />
@@ -33,19 +33,16 @@ function CardHeader({
   return (
     <div
       data-slot="card-header"
-      className={cn(
-        "group/card-header flex flex-col gap-1 px-0 py-0",
-        className
-      )}
+      className={cn("card-header", className)}
       {...props}>
       {(eyebrow || title || description || action) ? (
         <>
           <div>
-            {eyebrow && <div className="eyebrow">{eyebrow}</div>}
-            {title && <div data-slot="card-title" className="font-heading text-sm font-medium">{title}</div>}
-            {description && <div data-slot="card-description" className="text-xs/relaxed text-muted-foreground">{description}</div>}
+            {eyebrow && <span className="eyebrow">{eyebrow}</span>}
+            {title && <h2>{title}</h2>}
+            {description && <p>{description}</p>}
           </div>
-          {action && <div data-slot="card-action" className="col-start-2 row-span-2 row-start-1 self-start justify-self-end">{action}</div>}
+          {action && <div className="card-action">{action}</div>}
         </>
       ) : children}
     </div>

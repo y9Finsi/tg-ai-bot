@@ -117,7 +117,7 @@ export function App() {
 
         async function pollHealth() {
             try {
-                const res = await api('/api/admin/health');
+                const res = await api('/api/admin/radiant/health');
                 setHealth(res || { status: 'ONLINE' });
             } catch {
                 setHealth({ status: 'DEGRADED' });
