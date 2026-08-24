@@ -72,8 +72,16 @@ export function isMultimodalChatModel(modelName = '', baseUrl = '') {
         return false;
     }
 
-    // Gemini или явный gemini web-to-api bridge
-    if (m.includes('gemini') || u.includes('gemini-web-to-api')) {
+    // Gemini или явный gemini web-to-api bridge, а также qwen-image-edit и модели редактирования/вижена
+    if (
+        m.includes('gemini') ||
+        u.includes('gemini-web-to-api') ||
+        m.includes('image-edit') ||
+        m.includes('qwen-image') ||
+        m.includes('qwen3-vl') ||
+        m.includes('vl') ||
+        m.includes('vision')
+    ) {
         return true;
     }
 
@@ -280,7 +288,13 @@ export async function executeImageGenerationRequest({
 
     const selectedModel = String(model || provider.model_name || 'gemini-2.5-flash').trim();
     const baseUrl = String(provider.base_url).replace(/\/+$/, '');
-    const isChatEligible = isMultimodalChatModel(selectedModel, baseUrl) && Boolean(referenceDataUrl);
+    const isChatModel = isMultimodalChatModel(selectedModel, baseUrl);
+    const isEditModel = selectedModel.toLowerCase().includes('edit') || String(provider.name || '').toLowerCase().includes('edit');
+    const isChatEligible = (isChatModel || isEditModel) && Boolean(referenceDataUrl);
+
+    if (isEditModel && !referenceDataUrl) {
+        throw new Error(`Модель ${selectedModel} предназначена для редактирования изображений. Загрузи референс-картинку для обработки.`);
+    }
 
     let lastError = null;
 
@@ -335,16 +349,26 @@ export async function executeImageGenerationRequest({
                         rawText: raw
                     };
                 }
+                const textMsg = data?.choices?.[0]?.message?.content || raw.slice(0, 300);
+                if (isEditModel) {
+                    throw new Error(textMsg || 'Модель не вернула отредактированное изображение');
+                }
             } else {
                 const detail = data?.error?.message || data?.message || raw.slice(0, 300) || `HTTP ${res.status}`;
                 console.warn(`⚠️ [IMAGE GEN] /chat/completions вернул ошибку (${detail}), переключаюсь на /images/generations...`);
                 lastError = new Error(detail);
+                if (isEditModel) throw lastError;
             }
         } catch (chatErr) {
             if (chatErr.name === 'AbortError') throw chatErr;
+            if (isEditModel) throw chatErr;
             console.warn(`⚠️ [IMAGE GEN] Сбой /chat/completions (${chatErr.message}), переключаюсь на /images/generations...`);
             lastError = chatErr;
         }
+    }
+
+    if (isEditModel) {
+        throw lastError || new Error(`Модель редактирования ${selectedModel} не смогла обработать изображение`);
     }
 
     // Стратегия 2: /images/generations (для gpt-image-2, dall-e, flux, sd, либо как fallback)
