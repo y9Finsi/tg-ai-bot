@@ -11,7 +11,7 @@ export function SlotHealthPing({ slotKey, slotName, toast }) {
         setPingState({ loading: true, latency: null, status: null, error: null });
         const start = Date.now();
         try {
-            const res = await api('/api/admin/providers/ping', {
+            const res = await api('/api/admin/model-matrix/health-check', {
                 method: 'POST',
                 body: JSON.stringify({ slot: slotKey })
             });

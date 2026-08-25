@@ -7,11 +7,11 @@ import { SlotHealthPing } from './SlotHealthPing.jsx';
 
 export const AI_SLOTS = [
     { key: 'core_dialogue', name: '01 · Core Dialogue (Основной диалог)', icon: MessageSquare, description: 'Генерация диалогов, поддержание роли Леры и эмоциональной связи.' },
-    { key: 'classifier', name: '02 · Style Classifier (Классификатор тем)', icon: Brain, description: 'Классификация тем сообщений, определение тональности и интент-анализ.' },
+    { key: 'style_classifier', name: '02 · Style Classifier (Классификатор тем)', icon: Brain, description: 'Классификация тем сообщений, определение тональности и интент-анализ.' },
     { key: 'judge', name: '03 · AI Judge (Контроль качества)', icon: ShieldCheck, description: 'Проверка ответов и постов перед отправкой пользователям.' },
     { key: 'text_to_image', name: '04 · Text-to-Image (Генерация фото по тексту)', icon: Image, description: 'Генерация селфи и уличных фото Леры в Санкт-Петербурге.' },
     { key: 'image_to_image', name: '05 · Image-to-Image / Edit (Vision & Референс)', icon: Sparkles, description: 'Генерация с сохранением лица эталонного мастер-референса.' },
-    { key: 'voice_tts', name: '06 · Voice TTS (CosyVoice 3)', icon: Mic, description: 'Клонирование голоса и синтез реалистичной русской речи Леры.' }
+    { key: 'voice', name: '06 · Voice TTS (CosyVoice 3)', icon: Mic, description: 'Клонирование голоса и синтез реалистичной русской речи Леры.' }
 ];
 
 export function ModelMatrixTable({

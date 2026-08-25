@@ -2512,6 +2512,47 @@ export async function updateAiProviderSamplingCapabilities(id, samplingCapabilit
     return res.rows[0] || null;
 }
 
+export async function updateAiProvider(id, fields = {}) {
+    const name = fields.name === undefined ? null : String(fields.name || '').trim();
+    const baseUrl = fields.base_url === undefined ? null : String(fields.base_url || '').trim();
+    const apiKey = String(fields.api_key || '').trim();
+    const modelName = fields.model_name === undefined ? null : String(fields.model_name || '').trim();
+    const timeoutMs = fields.timeout_ms === undefined ? null : Number(fields.timeout_ms);
+    const priority = fields.priority === undefined ? null : Number(fields.priority);
+    const isActive = fields.is_active === undefined ? null : Boolean(fields.is_active);
+    const capabilities = fields.sampling_capabilities === undefined
+        ? null
+        : JSON.stringify(fields.sampling_capabilities && typeof fields.sampling_capabilities === 'object'
+            ? fields.sampling_capabilities
+            : {});
+
+    const res = await query(
+        `UPDATE ai_providers
+         SET name = COALESCE($2, name),
+             base_url = COALESCE($3, base_url),
+             api_key = CASE WHEN $4 <> '' THEN $4 ELSE api_key END,
+             model_name = COALESCE($5, model_name),
+             timeout_ms = COALESCE($6, timeout_ms),
+             priority = COALESCE($7, priority),
+             is_active = COALESCE($8, is_active),
+             sampling_capabilities = COALESCE($9::jsonb, sampling_capabilities)
+         WHERE id = $1
+         RETURNING *`,
+        [
+            id,
+            name || null,
+            baseUrl || null,
+            apiKey,
+            modelName || null,
+            Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.round(timeoutMs) : null,
+            Number.isInteger(priority) && priority > 0 ? priority : null,
+            isActive,
+            capabilities
+        ]
+    );
+    return res.rows[0] || null;
+}
+
 export async function listSandboxPresets() {
     const res = await query('SELECT * FROM sandbox_presets ORDER BY updated_at DESC, id DESC');
     return res.rows;

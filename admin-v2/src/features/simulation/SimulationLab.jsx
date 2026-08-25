@@ -19,9 +19,9 @@ export function RandomEventLab({ onTriggerEvent, readOnly = false, toast }) {
 
     async function trigger() {
         try {
-            await api('/api/admin/simulation/random-event', {
+            await api(`/api/admin/random-events/${eventName}`, {
                 method: 'POST',
-                body: JSON.stringify({ event: eventName })
+                body: JSON.stringify({ enabled: true })
             });
             toast?.(`Событие ${eventName} (фактическое событие) запущено в симуляции`);
             onTriggerEvent?.();
@@ -63,9 +63,9 @@ export function PersonalityLab({ onUpdateTrait, readOnly = false, toast }) {
 
     async function applyNeeds() {
         try {
-            await api('/api/admin/simulation/set-needs', {
+            await api('/api/admin/radiant/god-mode', {
                 method: 'POST',
-                body: JSON.stringify(needsForm)
+                body: JSON.stringify({ action: 'SET_STATE', needs: needsForm })
             });
             toast?.('Физиологические потребности обновлены (фактическое событие)');
             onUpdateTrait?.();

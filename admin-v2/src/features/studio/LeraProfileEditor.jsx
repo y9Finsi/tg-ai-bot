@@ -16,67 +16,65 @@ export function LeraProfileEditor({
             />
             <div className="channel-settings-grid">
                 <label>
-                    Имя
+                    Возраст, биография и базовые факты
                     <input
-                        value={profileForm.name || 'Лера'}
-                        onChange={e => setProfileForm({ ...profileForm, name: e.target.value })}
+                        value={profileForm.age_bio || ''}
+                        onChange={e => setProfileForm({ ...profileForm, age_bio: e.target.value })}
                     />
                 </label>
                 <label>
-                    Возраст
+                    Характер
                     <input
-                        type="number"
-                        value={profileForm.age || 19}
-                        onChange={e => setProfileForm({ ...profileForm, age: Number(e.target.value) })}
+                        value={profileForm.character || ''}
+                        onChange={e => setProfileForm({ ...profileForm, character: e.target.value })}
                     />
                 </label>
                 <label>
-                    Город
+                    Речь
                     <input
-                        value={profileForm.city || 'Санкт-Петербург'}
-                        onChange={e => setProfileForm({ ...profileForm, city: e.target.value })}
+                        value={profileForm.speech || ''}
+                        onChange={e => setProfileForm({ ...profileForm, speech: e.target.value })}
                     />
                 </label>
                 <label>
-                    Район
+                    Флирт и границы
                     <input
-                        value={profileForm.district || 'Петроградская сторона'}
-                        onChange={e => setProfileForm({ ...profileForm, district: e.target.value })}
+                        value={profileForm.flirt || ''}
+                        onChange={e => setProfileForm({ ...profileForm, flirt: e.target.value })}
                     />
                 </label>
                 <label>
-                    Университет / Курс
+                    Публичный образ
                     <input
-                        value={profileForm.occupation || '2 курс СПбГИК, подработка в SMM'}
-                        onChange={e => setProfileForm({ ...profileForm, occupation: e.target.value })}
+                        value={profileForm.public_image || ''}
+                        onChange={e => setProfileForm({ ...profileForm, public_image: e.target.value })}
                     />
                 </label>
                 <label>
-                    Архетип
+                    Запреты и приватность
                     <input
-                        value={profileForm.archetype || 'Живая, ироничная, тёплая, слегка рассеянная'}
-                        onChange={e => setProfileForm({ ...profileForm, archetype: e.target.value })}
+                        value={profileForm.forbidden || ''}
+                        onChange={e => setProfileForm({ ...profileForm, forbidden: e.target.value })}
                     />
                 </label>
             </div>
 
             <div className="context-template-editor" style={{ marginTop: 16 }}>
                 <label className="classifier-prompt-editor">
-                    Краткая биография и бэкграунд (Bio)
+                    Факты и проверяемая реальность
                     <textarea
-                        value={profileForm.bio || ''}
-                        placeholder="19 лет, живёт на Петроградке, учится на библиотечно-информационном, любит кофе, гулять по набережным..."
+                        value={profileForm.facts || ''}
+                        placeholder="Не выдавать выдуманные конкретные события за факты..."
                         rows={3}
-                        onChange={e => setProfileForm({ ...profileForm, bio: e.target.value })}
+                        onChange={e => setProfileForm({ ...profileForm, facts: e.target.value })}
                     />
                 </label>
                 <label className="classifier-prompt-editor">
-                    Ключевые черты характера (Тон и манера)
+                    Канонический профиль
                     <textarea
-                        value={profileForm.personality || ''}
-                        placeholder="Пишет короткими сообщениями, использует сленг без кринжа, не соглашается на всё подряд..."
+                        value="Изменения сохраняются новой версией профиля и используются в chat-промпте."
+                        readOnly
                         rows={3}
-                        onChange={e => setProfileForm({ ...profileForm, personality: e.target.value })}
                     />
                 </label>
             </div>

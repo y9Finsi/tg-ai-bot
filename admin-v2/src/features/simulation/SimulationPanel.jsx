@@ -12,7 +12,7 @@ export function SimulationPanel({ toast }) {
     async function loadStatus() {
         setLoading(true);
         try {
-            const res = await api('/api/admin/simulation/status');
+            const res = await api('/api/admin/radiant/health');
             setEngineStatus(res);
         } catch (err) {
             setEngineStatus(null);
@@ -49,13 +49,13 @@ export function SimulationPanel({ toast }) {
                     <div className="crm-metric-card" style={{ padding: 14, background: 'rgba(0,0,0,0.25)', borderRadius: 8, border: '1px solid var(--border)' }}>
                         <span style={{ fontSize: 11, color: '#94a3b8' }}>Очередь событий</span>
                         <strong style={{ fontSize: 16, display: 'block', marginTop: 4 }}>
-                            Очередь пуста (0 задач)
+                            {engineStatus?.queue?.length ?? engineStatus?.queue_size ?? 0} задач
                         </strong>
                     </div>
                     <div className="crm-metric-card" style={{ padding: 14, background: 'rgba(0,0,0,0.25)', borderRadius: 8, border: '1px solid var(--border)' }}>
                         <span style={{ fontSize: 11, color: '#94a3b8' }}>Диагностика памяти</span>
                         <strong style={{ fontSize: 16, display: 'block', marginTop: 4 }}>
-                            Память и состояние в норме
+                            {engineStatus?.status || engineStatus?.database || 'Состояние проверено'}
                         </strong>
                     </div>
                 </div>

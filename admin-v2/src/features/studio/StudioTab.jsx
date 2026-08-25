@@ -26,22 +26,15 @@ export function StudioTab({ toast }) {
 
     async function loadStudioData() {
         try {
-            const [profileRes, judgeRes] = await Promise.allSettled([
-                api('/api/admin/profile'),
-                api('/api/admin/judge-settings')
+            const [profileRes, settingsRes] = await Promise.allSettled([
+                api('/api/admin/lera-profile'),
+                api('/api/admin/llm-settings')
             ]);
             if (profileRes.status === 'fulfilled') {
-                const data = profileRes.value;
-                setProfilePromptBlocks(data.prompt_blocks || data.promptBlocks || {});
-                setProfileForm(data.profile || data);
-                setCommentsPrompt(data.comments_prompt || '');
+                setProfileForm(profileRes.value.profile?.profile || {});
             }
-            if (judgeRes.status === 'fulfilled') {
-                const data = judgeRes.value;
-                setJudgeForm(prev => ({
-                    ...prev,
-                    ...(data.settings || data)
-                }));
+            if (settingsRes.status === 'fulfilled') {
+                setProfilePromptBlocks(settingsRes.value.routingModules || {});
             }
         } catch (err) {
             if (toast) toast(err.message, 'error');
@@ -50,11 +43,19 @@ export function StudioTab({ toast }) {
 
     async function savePromptBlocks() {
         try {
-            await api('/api/admin/profile/prompt-blocks', {
+            await api('/api/admin/llm-settings', {
                 method: 'POST',
-                body: JSON.stringify({ promptBlocks: profilePromptBlocks })
+                body: JSON.stringify({
+                    prompts: {
+                        routing_core: profilePromptBlocks.core || '',
+                        routing_common: profilePromptBlocks.common || '',
+                        routing_casual: profilePromptBlocks.casual || '',
+                        routing_erotic: profilePromptBlocks.erotic || '',
+                        routing_joke: profilePromptBlocks.joke || ''
+                    }
+                })
             });
-            if (toast) toast('Промпт-модули Леры сохранены');
+            if (toast) toast('Модули промпта сохранены');
         } catch (err) {
             if (toast) toast(err.message, 'error');
         }
@@ -62,9 +63,9 @@ export function StudioTab({ toast }) {
 
     async function saveProfile() {
         try {
-            await api('/api/admin/profile', {
+            await api('/api/admin/lera-profile', {
                 method: 'POST',
-                body: JSON.stringify(profileForm)
+                body: JSON.stringify({ profile: profileForm })
             });
             if (toast) toast('Профиль Леры успешно сохранён');
         } catch (err) {
@@ -74,11 +75,7 @@ export function StudioTab({ toast }) {
 
     async function saveJudgeSettings() {
         try {
-            await api('/api/admin/judge-settings', {
-                method: 'POST',
-                body: JSON.stringify(judgeForm)
-            });
-            if (toast) toast('Настройки AI Judge сохранены');
+            if (toast) toast('AI Judge настраивается через Model Matrix');
         } catch (err) {
             if (toast) toast(err.message, 'error');
         }
@@ -86,11 +83,7 @@ export function StudioTab({ toast }) {
 
     async function saveCommentsPrompt() {
         try {
-            await api('/api/admin/channel/comments-prompt', {
-                method: 'POST',
-                body: JSON.stringify({ commentsPrompt })
-            });
-            if (toast) toast('Промпт комментариев сохранён');
+            if (toast) toast('Отдельное хранилище промпта комментариев не подключено');
         } catch (err) {
             if (toast) toast(err.message, 'error');
         }

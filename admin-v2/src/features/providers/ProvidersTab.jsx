@@ -36,7 +36,7 @@ export function ProvidersTab({ toast }) {
     async function loadData() {
         try {
             const [matrixRes, provRes, imgRes, voiceRes] = await Promise.allSettled([
-                api('/api/admin/providers/matrix'),
+                api('/api/admin/model-matrix'),
                 api('/api/admin/providers'),
                 api('/api/admin/image-settings'),
                 api('/api/admin/voice-settings')
@@ -79,7 +79,7 @@ export function ProvidersTab({ toast }) {
 
     async function saveMatrix() {
         try {
-            await api('/api/admin/providers/matrix', {
+            await api('/api/admin/model-matrix', {
                 method: 'POST',
                 body: JSON.stringify({ matrix })
             });

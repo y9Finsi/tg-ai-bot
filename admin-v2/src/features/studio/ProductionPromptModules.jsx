@@ -4,13 +4,11 @@ import { Button } from '@/components/ui/button.jsx';
 import { PromptAssemblyMap } from '@/features/channel/PromptAssemblyMap.jsx';
 
 export const LERA_PROMPT_MODULES = [
-    { key: 'role', label: '01 · Роль и личность', description: 'Кто такая Лера, возраст, город, характер, подача.' },
-    { key: 'language_rules', label: '02 · Правила речи', description: 'Сленг, регистр, оформление, как формулирует мысли.' },
-    { key: 'flirt_rules', label: '03 · Флирт и границы', description: 'Границы общения, динамика симпатии, реакция на напор.' },
-    { key: 'voice_rules', label: '04 · Голосовые ответы', description: 'Формат, длина и правила для генерации аудио.' },
-    { key: 'photo_rules', label: '05 · Фото в диалоге', description: 'Когда предлагает фото, как реагирует на просьбы.' },
-    { key: 'daily_cycle_rules', label: '06 · Жизнь и время', description: 'Как учитывает время суток, свои дела и планы.' },
-    { key: 'restrictions', label: '07 · Ограничения', description: 'Запретные темы, безопасность и сохранение образа.' }
+    { key: 'core', label: '01 · Ядро личности', description: 'Возраст, город, учёба и базовый характер Леры.' },
+    { key: 'common', label: '02 · Речь и общие правила', description: 'Манера общения, формат Telegram и ограничения.' },
+    { key: 'casual', label: '03 · Обычный диалог', description: 'Правила режима CASUAL.' },
+    { key: 'erotic', label: '04 · Интимный диалог', description: 'Правила режима EROTIC.' },
+    { key: 'joke', label: '05 · Шутки и реакции', description: 'Правила режима JOKE.' }
 ];
 
 export function ProductionPromptModulesPanel({
@@ -23,8 +21,8 @@ export function ProductionPromptModulesPanel({
         <Card>
             <CardHeader
                 eyebrow="Маршрутизация ответов"
-                title="Живые тексты Production · Общие правила Production"
-                description="Раздельное редактирование смысловых частей системного промпта. Сохраняются сразу и влияют на будущие ответы всех пользователей; публикация CASUAL / EROTIC / JOKE их не включает."
+                title="Модули маршрутизации Production"
+                description="Общие правила Production разделены на реальные модули core/common/casual/erotic/joke. Профиль Леры редактируется отдельной вкладкой."
                 action={
                     <div className="prompt-header-actions">
                         <Button size="sm" variant="outline" onClick={onReset}>

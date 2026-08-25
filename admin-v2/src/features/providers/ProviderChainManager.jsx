@@ -48,8 +48,8 @@ export function ProviderChainManager({
             api_key: '',
             priority: p.priority || 1,
             is_active: p.is_active !== false,
-            supports_vision: Boolean(p.supports_vision),
-            supports_audio: Boolean(p.supports_audio)
+            supports_vision: Boolean(p.supports_vision || p.sampling_capabilities?.vision),
+            supports_audio: Boolean(p.supports_audio || p.sampling_capabilities?.audio)
         });
         setEditingId(p.id);
         setIsCreating(false);

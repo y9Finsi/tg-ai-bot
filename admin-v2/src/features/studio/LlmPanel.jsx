@@ -1,16 +1,24 @@
 import React, { useState } from 'react';
-import { Terminal, CircleAlert, BrainCircuit, ListCollapse } from 'lucide-react';
+import { Terminal, CircleAlert, BrainCircuit, MessagesSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button.jsx';
 import { LiveServerLogsTab } from './LiveServerLogsTab.jsx';
 import { ErrorsAuditTab } from './ErrorsAuditTab.jsx';
 import { SimulationRationaleTab } from './SimulationRationaleTab.jsx';
+import { PromptLogsTab } from './PromptLogsTab.jsx';
 
 export function LlmPanel({ toast }) {
-    const [subTab, setSubTab] = useState('server-logs');
+    const [subTab, setSubTab] = useState('dialog-logs');
 
     return (
         <div className="llm-panel-container admin-domain-page">
             <div className="crm-subnav">
+                <Button
+                    variant={subTab === 'dialog-logs' ? 'primary' : 'outline'}
+                    size="sm"
+                    onClick={() => setSubTab('dialog-logs')}
+                >
+                    <MessagesSquare size={14} /> Логи диалогов
+                </Button>
                 <Button
                     variant={subTab === 'server-logs' ? 'primary' : 'outline'}
                     size="sm"
@@ -34,6 +42,7 @@ export function LlmPanel({ toast }) {
                 </Button>
             </div>
 
+            {subTab === 'dialog-logs' && <PromptLogsTab toast={toast} />}
             {subTab === 'server-logs' && <LiveServerLogsTab toast={toast} />}
             {subTab === 'errors' && <ErrorsAuditTab toast={toast} />}
             {subTab === 'rationale' && <SimulationRationaleTab toast={toast} />}

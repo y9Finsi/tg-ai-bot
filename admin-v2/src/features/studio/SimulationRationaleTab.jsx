@@ -13,8 +13,8 @@ export function SimulationRationaleTab({ toast }) {
     async function loadDecisions() {
         setLoading(true);
         try {
-            const res = await api('/api/admin/simulation/rationale?limit=30');
-            setDecisions(res.decisions || res.items || []);
+            const res = await api('/api/admin/radiant/rationale?limit=30');
+            setDecisions(res.traces || []);
         } catch (err) {
             setDecisions([]);
             if (toast) toast(err.message, 'error');

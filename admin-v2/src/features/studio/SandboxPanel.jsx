@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sparkles, SlidersHorizontal, Send, RefreshCw, Layers } from 'lucide-react';
 import { Card, CardHeader } from '@/components/ui/card.jsx';
 import { Button } from '@/components/ui/button.jsx';
@@ -115,25 +115,84 @@ export function SandboxPanel({ toast }) {
     const [resultB, setResultB] = useState(null);
     const [loadingA, setLoadingA] = useState(false);
     const [loadingB, setLoadingB] = useState(false);
+    const [presets, setPresets] = useState([]);
+    const [selectedPresetId, setSelectedPresetId] = useState('');
+    const [publishCheck, setPublishCheck] = useState(null);
 
-    // Intent-scoped draft and publish workflow
-    const productionVersion = 1;
-    const productionConfig = { temperature: 0.7, maxTokens: 400 };
-    const activeConfig = { temperature, maxTokens };
-    const activeState = { draft: { config: activeConfig } };
-    const normalizeStudioConfig = c => c || {};
-    const savedDraftConfig = normalizeStudioConfig(activeState?.draft?.config || productionConfig);
-    const hasUnsavedEdits = JSON.stringify(activeConfig) !== JSON.stringify(savedDraftConfig);
-    const draftDiffersFromProduction = JSON.stringify(savedDraftConfig) !== JSON.stringify(productionConfig);
+    const activeConfig = {
+        name: `Sandbox · ${activeIntent}`,
+        sampling: { temperature, top_p: topP, max_tokens: maxTokens },
+        prompt_modules: { ...modulesA }
+    };
 
-    const presetA = typeof studioConfigToSandboxPreset === 'function' ? studioConfigToSandboxPreset(productionConfig, `Production v${productionVersion} · ${activeIntent}`) : null;
-    const presetB = typeof studioConfigToSandboxPreset === 'function' ? studioConfigToSandboxPreset(activeConfig, `Кандидат · ${activeIntent}`) : null;
+    useEffect(() => {
+        api('/api/sandbox/presets')
+            .then(res => setPresets(res.presets || []))
+            .catch(err => toast?.(err.message, 'error'));
+    }, []);
+
+    function applyPreset(preset) {
+        const config = preset?.config || {};
+        setSelectedPresetId(String(preset.id));
+        setTemperature(Number(config.sampling?.temperature ?? 0.7));
+        setTopP(Number(config.sampling?.top_p ?? 0.9));
+        setMaxTokens(Number(config.sampling?.max_tokens ?? 400));
+        setModulesA(config.prompt_modules || {});
+        toast?.(`Пресет «${preset.name}» применён к варианту A`);
+    }
+
+    async function saveDraft() {
+        await api('/api/sandbox/prompt-studio/draft', {
+            method: 'POST',
+            body: JSON.stringify({ intent: activeIntent, config: activeConfig })
+        });
+        toast?.('Черновик сохранён');
+    }
+
+    async function savePreset() {
+        const name = window.prompt('Название нового пресета', `Мой ${activeIntent}`);
+        if (!name?.trim()) return;
+        const result = await api('/api/sandbox/presets', {
+            method: 'POST',
+            body: JSON.stringify({ name: name.trim(), slot: activeIntent, config: activeConfig })
+        });
+        setPresets(prev => [result.preset, ...prev]);
+        toast?.('Пресет сохранён');
+    }
 
     async function publishIntent() {
         await api('/api/sandbox/prompt-studio/publish', {
             method: 'POST',
-            body: JSON.stringify({ intent: activeIntent })
+            body: JSON.stringify({ intent: activeIntent, config: activeConfig })
         });
+        toast?.(`Промпт ${activeIntent} опубликован`);
+        setPublishCheck(null);
+    }
+
+    async function checkBeforePublish() {
+        const errors = [];
+        if (!activeIntent) errors.push('Не выбран intent');
+        if (!inputMessage.trim()) errors.push('Добавь тестовое сообщение');
+        if (!resultA) errors.push('Сначала запусти тест варианта A');
+        if (mode === 'ab' && !resultB) errors.push('Для A/B нужен результат варианта B');
+
+        if (errors.length) {
+            setPublishCheck({ ok: false, message: errors.join('. ') });
+            toast?.(errors[0], 'error');
+            return;
+        }
+
+        try {
+            await saveDraft();
+            setPublishCheck({
+                ok: true,
+                message: `Черновик ${activeIntent} проверен: тестовый ответ есть, конфигурация сохранена.`
+            });
+            toast?.('Проверка перед публикацией пройдена');
+        } catch (err) {
+            setPublishCheck({ ok: false, message: err.message });
+            toast?.(err.message, 'error');
+        }
     }
 
     async function runSingleTest() {
@@ -141,17 +200,15 @@ export function SandboxPanel({ toast }) {
         setLoadingA(true);
         setResultA(null);
         try {
-            const res = await api('/api/sandbox/ab-test', {
+            const res = await api('/api/sandbox/generate', {
                 method: 'POST',
                 body: JSON.stringify({
-                    message: inputMessage.trim(),
-                    temperature,
-                    topP,
-                    maxTokens,
-                    promptBlocks: modulesA
+                    userText: inputMessage.trim(),
+                    routingMode: activeIntent,
+                    preset: activeConfig
                 })
             });
-            setResultA(res);
+            setResultA(res.variant || res);
             toast?.('Ответ сгенерирован');
         } catch (err) {
             setResultA({ text: `Ошибка: ${err.message}` });
@@ -168,33 +225,18 @@ export function SandboxPanel({ toast }) {
         setResultA(null);
         setResultB(null);
         try {
-            const [resA, resB] = await Promise.allSettled([
-                api('/api/admin/sandbox/test', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        message: inputMessage.trim(),
-                        temperature,
-                        topP,
-                        maxTokens,
-                        promptBlocks: modulesA
-                    })
-                }),
-                api('/api/admin/sandbox/test', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        message: inputMessage.trim(),
-                        temperature,
-                        topP,
-                        maxTokens,
-                        promptBlocks: modulesB
-                    })
+            const response = await api('/api/sandbox/ab-test', {
+                method: 'POST',
+                body: JSON.stringify({
+                    userText: inputMessage.trim(),
+                    routingMode: activeIntent,
+                    variantA: { ...activeConfig, prompt_modules: modulesA },
+                    variantB: { ...activeConfig, prompt_modules: modulesB }
                 })
-            ]);
-            if (resA.status === 'fulfilled') setResultA(resA.value);
-            else setResultA({ text: `Ошибка: ${resA.reason.message}` });
-
-            if (resB.status === 'fulfilled') setResultB(resB.value);
-            else setResultB({ text: `Ошибка: ${resB.reason.message}` });
+            });
+            const variants = response.variants || {};
+            setResultA(variants.A);
+            setResultB(variants.B);
 
             toast?.('A/B тестирование завершено');
         } finally {
@@ -281,12 +323,51 @@ export function SandboxPanel({ toast }) {
                             <Send size={15} />
                             {loadingA || loadingB ? 'Генерация…' : mode === 'single' ? 'Запустить тест' : 'Запустить A/B Сравнение'}
                         </Button>
-                        <Button variant="outline" onClick={() => toast?.('Черновик сохранён')}>
-                            Сохранить черновик · Сохранить как новый
+                        <Button variant="outline" onClick={() => saveDraft().catch(err => toast?.(err.message, 'error'))}>
+                            Сохранить черновик
                         </Button>
-                        <Button variant="outline" onClick={() => toast?.('Проверка пройдена')}>
-                            Проверка перед публикацией
+                        <Button variant="outline" onClick={() => savePreset().catch(err => toast?.(err.message, 'error'))}>
+                            Сохранить как пресет
                         </Button>
+                    </div>
+
+                    <div className="studio-publish-check" style={{ marginTop: 12, padding: 12, border: '1px solid var(--border)', borderRadius: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                            <div>
+                                <strong>Проверка перед публикацией</strong>
+                                <div style={{ marginTop: 4, fontSize: 12, color: '#94a3b8' }}>
+                                    Проверяем intent, тестовый ответ и сохраняем текущий черновик перед production.
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <Button variant="outline" onClick={() => checkBeforePublish()}>
+                                    Проверить
+                                </Button>
+                                <Button
+                                    variant="primary"
+                                    disabled={!publishCheck?.ok}
+                                    onClick={() => publishIntent().catch(err => toast?.(err.message, 'error'))}
+                                >
+                                    Опубликовать
+                                </Button>
+                            </div>
+                        </div>
+                        {publishCheck && (
+                            <div
+                                role="status"
+                                style={{ marginTop: 8, fontSize: 12, color: publishCheck.ok ? '#86efac' : '#fca5a5' }}
+                            >
+                                {publishCheck.message}
+                            </div>
+                        )}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 12, color: '#94a3b8' }}>Пресеты:</span>
+                        <select value={selectedPresetId} onChange={e => applyPreset(presets.find(item => String(item.id) === e.target.value))}>
+                            <option value="">Выбрать пресет…</option>
+                            {presets.map(preset => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+                        </select>
                     </div>
 
                     <div

@@ -38,35 +38,32 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
 
     async function loadDayData() {
         try {
-            const [snapRes, dayRes, invRes, catRes] = await Promise.allSettled([
-                api(`/api/admin/simulation/snapshot?date=${dayDate}`),
-                api(`/api/admin/simulation/day?date=${dayDate}`),
-                api('/api/admin/simulation/inventory'),
-                api('/api/admin/simulation/catalog')
+            const [snapRes, dayRes, invRes] = await Promise.allSettled([
+                api('/api/admin/radiant/overview'),
+                api(`/api/admin/radiant/day?at=${encodeURIComponent(`${dayDate}T12:00:00+03:00`)}`),
+                api('/api/admin/inventory')
             ]);
 
             if (snapRes.status === 'fulfilled') {
-                const s = snapRes.value.snapshot || snapRes.value;
+                const s = snapRes.value.overview || snapRes.value;
                 setSnapshot(s);
-                setIsPaused(Boolean(s.is_paused));
-                setInProgressTask(s.currentTask || null);
+                setIsPaused(Boolean(s.is_paused || s.state?.is_paused));
+                setInProgressTask(s.active_task || s.activeTask || null);
             }
 
             if (dayRes.status === 'fulfilled') {
                 const d = dayRes.value;
                 setTimelineEvents(d.timeline || d.events || []);
-                setPendingTasks(d.pendingTasks || d.forecast || []);
-                setCompletedTasks(d.completedTasks || []);
+                setPendingTasks(d.forecast || d.schedule?.filter(item => item.status === 'PLANNED') || []);
+                setCompletedTasks(d.timeline?.filter(item => item.type === 'TASK_COMPLETED') || []);
                 setCommitments(d.commitments || []);
-                setNpcs(d.npcs || []);
+                setNpcs(d.npcs || d.people || []);
                 setDaySummary(d.summary || null);
             }
 
             if (invRes.status === 'fulfilled') {
-                setInventory(invRes.value.inventory || invRes.value.items || []);
-            }
-            if (catRes.status === 'fulfilled') {
-                setItemCatalog(catRes.value.catalog || catRes.value.items || []);
+                setInventory(invRes.value.inventory || []);
+                setItemCatalog(invRes.value.catalog || []);
             }
         } catch (err) {
             if (toast) toast(err.message, 'error');
@@ -74,21 +71,13 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
     }
 
     async function togglePause() {
-        try {
-            const res = await api('/api/admin/simulation/pause', {
-                method: 'POST',
-                body: JSON.stringify({ pause: !isPaused })
-            });
-            setIsPaused(res.is_paused);
-            if (toast) toast(res.is_paused ? 'Симуляция поставлена на паузу' : 'Симуляция возобновлена');
-        } catch (err) {
-            if (toast) toast(err.message, 'error');
-        }
+        setIsPaused(value => !value);
+        if (toast) toast(!isPaused ? 'Автообновление расписания остановлено' : 'Автообновление расписания включено');
     }
 
     async function handleTick() {
         try {
-            await api('/api/admin/simulation/tick', { method: 'POST' });
+            await api('/api/admin/radiant/tick', { method: 'POST' });
             if (toast) toast('Шаг симуляции (+15 мин) выполнен');
             loadDayData();
         } catch (err) {
@@ -98,9 +87,9 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
 
     async function handleAddInventory(itemId, qty) {
         try {
-            await api('/api/admin/simulation/inventory', {
+            await api('/api/admin/inventory/add', {
                 method: 'POST',
-                body: JSON.stringify({ item_id: itemId, quantity: qty })
+                body: JSON.stringify({ itemId, itemType: 'misc', quantity: qty })
             });
             if (toast) toast('Предмет добавлен в рюкзак');
             loadDayData();
@@ -111,7 +100,10 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
 
     async function handleRemoveInventory(itemId) {
         try {
-            await api(`/api/admin/simulation/inventory/${itemId}`, { method: 'DELETE' });
+            await api('/api/admin/inventory/consume', {
+                method: 'POST',
+                body: JSON.stringify({ itemId, quantity: 1 })
+            });
             if (toast) toast('Предмет удален');
             loadDayData();
         } catch (err) {

@@ -81,6 +81,7 @@ import {
     getSandboxRuns,
     getSandboxRun,
     updateAiProviderSamplingCapabilities,
+    updateAiProvider,
     getAllLeraContent,
     addLeraContent,
     updateLeraContent,
@@ -1787,6 +1788,25 @@ export function createAdminApp(bot = null) {
             const activated = await setActiveAiProvider(req.params.id);
             await reloadAIClient();
             res.json({ success: true, provider: activated });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    app.patch('/api/admin/providers/:id', async (req, res) => {
+        try {
+            const body = req.body || {};
+            const samplingCapabilities = body.sampling_capabilities || {
+                vision: Boolean(body.supports_vision),
+                audio: Boolean(body.supports_audio)
+            };
+            const provider = await updateAiProvider(req.params.id, {
+                ...body,
+                sampling_capabilities: samplingCapabilities
+            });
+            if (!provider) return res.status(404).json({ error: 'Провайдер не найден' });
+            await reloadAIClient();
+            res.json({ success: true, provider });
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
