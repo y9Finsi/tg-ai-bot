@@ -139,6 +139,31 @@ describe('TGK WYSIWYG Photo Publishing & Consistency', () => {
             assert.equal(bot.sentPhotos[0].extra.caption, 'Привет из Питера!');
         });
 
+        it('T1.3b: Explicit preview wins when a stale media_content_id is also present', async () => {
+            const bot = createMockBot();
+            const draft = {
+                text: 'Публикую ровно то, что было в превью.',
+                topic: 'life',
+                media_content_id: 'stale-db-media-42',
+                preview_url: SAMPLE_WEBP_DATA_URL,
+                provenance: {
+                    content_format: 'photo_caption'
+                }
+            };
+
+            const result = await publishChannelDraft(bot, draft, {
+                channel_id: '@test_channel',
+                media_mode: 'ai_photo',
+                judge_mode: 'OFF',
+                public_profile_enabled: false
+            });
+
+            assert.equal(result.success, true);
+            assert.equal(bot.sentPhotos.length, 1);
+            assert.ok(Buffer.isBuffer(bot.sentPhotos[0].photo.source));
+            assert.equal(bot.sentPhotos[0].photo.source.toString('base64'), SAMPLE_PNG_BASE64);
+        });
+
         it('T1.4: Draft with Telegram file_id passes string identifier directly to sendPhoto', async () => {
             const bot = createMockBot();
             const fileId = 'AgACAgIAAxkBAAIBeWdABCDEF123456';

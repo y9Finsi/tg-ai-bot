@@ -72,9 +72,6 @@ export function decodeMediaPayload(mediaInput, defaultFilename = 'lera_channel.j
         if (Buffer.isBuffer(mediaInput.source)) {
             return { source: mediaInput.source, filename: mediaInput.filename || defaultFilename };
         }
-        if (mediaInput.file_id || mediaInput.fileId) {
-            return mediaInput.file_id || mediaInput.fileId;
-        }
     }
 
     const candidateStr = typeof mediaInput === 'string'
@@ -101,6 +98,10 @@ export function decodeMediaPayload(mediaInput, defaultFilename = 'lera_channel.j
         if (/^[A-Za-z0-9_-]{20,}$/.test(trimmed)) {
             return trimmed;
         }
+    }
+
+    if (typeof mediaInput === 'object' && (mediaInput.file_id || mediaInput.fileId)) {
+        return mediaInput.file_id || mediaInput.fileId;
     }
 
     return null;
@@ -477,37 +478,35 @@ export async function publishChannelDraft(bot, draft = {}, overrideSettings = nu
     }
     let photoToSend = null;
     let contentMedia = null;
+    const previewCandidates = [
+        media,
+        preview_url,
+        media_url,
+        file_id,
+        draft?.buffer,
+        draft?.source,
+        provenance.preview_url,
+        provenance.media_url,
+        provenance.file_id
+    ];
+    for (const cand of previewCandidates) {
+        if (!cand) continue;
+        const decoded = decodeMediaPayload(cand);
+        if (decoded) {
+            photoToSend = decoded;
+            break;
+        }
+    }
+
     const contentId = media_content_id || provenance.media_content_id || media?.id;
-    if (typeof contentId === 'string' && contentId.startsWith('photo:')) {
+    if (!photoToSend && typeof contentId === 'string' && contentId.startsWith('photo:')) {
         const photoDbId = contentId.replace('photo:', '');
         const dbPhoto = await getLeraPhotoById(photoDbId).catch(() => null);
         if (dbPhoto?.file_id) {
             photoToSend = dbPhoto.file_id;
         }
-    } else if (contentId) {
+    } else if (!photoToSend && contentId) {
         contentMedia = await getLeraContent(contentId).catch(() => null);
-    }
-
-    if (!photoToSend && !contentMedia) {
-        const previewCandidates = [
-            media,
-            preview_url,
-            media_url,
-            file_id,
-            draft?.buffer,
-            draft?.source,
-            provenance.preview_url,
-            provenance.media_url,
-            provenance.file_id
-        ];
-        for (const cand of previewCandidates) {
-            if (!cand) continue;
-            const decoded = decodeMediaPayload(cand);
-            if (decoded) {
-                photoToSend = decoded;
-                break;
-            }
-        }
     }
 
     const isPhotoFormat = contentFormat === 'photo_caption' || provenance.content_format === 'photo_caption';
@@ -608,7 +607,10 @@ export async function generateAndPublishChannelPost(bot, overrideSettings = null
     try {
         const draft = await generateChannelPostDraft(overrideSettings);
         const settings = overrideSettings || await getChannelPosterSettings();
-        const frequencyHours = Math.max(1, Number(settings.frequency_hours || 12));
+        const parsedFrequencyHours = Number(settings.frequency_hours);
+        const frequencyHours = Number.isFinite(parsedFrequencyHours) && parsedFrequencyHours > 0
+            ? parsedFrequencyHours
+            : 12;
         const slot = Math.floor(Date.now() / (frequencyHours * 60 * 60 * 1000));
         draft.idempotency_key = draft.idempotency_key || `channel:${String(settings.channel_id)}:${slot}`;
         return await publishChannelDraft(bot, draft, overrideSettings);
@@ -627,8 +629,14 @@ export function initChannelPoster(bot) {
             const postsToday = settings.channel_id
                 ? await countChannelPostsSince(settings.channel_id, dayStart.toISOString())
                 : 0;
-            const dailyLimit = Math.max(1, Number(settings.posts_per_day || 2));
-            const frequencyHours = Math.max(1, Number(settings.frequency_hours || 12));
+            const parsedDailyLimit = Number(settings.posts_per_day);
+            const dailyLimit = Number.isFinite(parsedDailyLimit) && parsedDailyLimit > 0
+                ? Math.max(1, Math.floor(parsedDailyLimit))
+                : 2;
+            const parsedFrequencyHours = Number(settings.frequency_hours);
+            const frequencyHours = Number.isFinite(parsedFrequencyHours) && parsedFrequencyHours > 0
+                ? parsedFrequencyHours
+                : 12;
             if (settings.is_enabled
                 && settings.channel_id
                 && postsToday < dailyLimit

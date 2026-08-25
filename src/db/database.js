@@ -1897,8 +1897,14 @@ export async function getChannelPosterSettings() {
     return {
         is_enabled: values.channel_poster_enabled !== 'false',
         channel_id: values.channel_id || values.lera_channel_id || '',
-        frequency_hours: Math.max(1, Number(values.channel_frequency_hours || 12)),
-        posts_per_day: Math.max(1, Number(values.channel_posts_per_day || 2)),
+        frequency_hours: (() => {
+            const value = Number(values.channel_frequency_hours);
+            return Number.isFinite(value) && value > 0 ? value : 12;
+        })(),
+        posts_per_day: (() => {
+            const value = Number(values.channel_posts_per_day);
+            return Number.isFinite(value) && value > 0 ? Math.max(1, Math.floor(value)) : 2;
+        })(),
         editorial_mode: normalizeChannelEditorialMode(values.channel_editorial_mode),
         format_sequence: (() => {
             try {

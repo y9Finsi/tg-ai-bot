@@ -24,7 +24,7 @@ export function NeedsPanel({ needs = {}, mood = 'Хорошее', location = 'pe
                     return (
                         <div
                             key={key}
-                            className="need-item-box"
+                            className="need-item-box need-compact-item"
                             style={{
                                 padding: 12,
                                 background: 'rgba(0,0,0,0.25)',

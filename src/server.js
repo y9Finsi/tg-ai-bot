@@ -2339,8 +2339,14 @@ export function createAdminApp(bot = null) {
                 ? [...new Set(formatSequence.filter(format => DEFAULT_REFERENCE_FORMAT_SEQUENCE.includes(format)))]
                 : [];
             const editorialSequence = safeFormatSequence.length ? safeFormatSequence : DEFAULT_REFERENCE_FORMAT_SEQUENCE;
-            const safePostsPerDay = Math.max(1, Math.min(100, Number(postsPerDay) || 2));
-            const safeFrequencyHours = Math.max(1, Math.min(168, Number(frequencyHours) || (safeEditorialMode === 'reference_short' ? 12 : 4)));
+            const parsedPostsPerDay = Number(postsPerDay);
+            const parsedFrequencyHours = Number(frequencyHours);
+            const safePostsPerDay = Number.isFinite(parsedPostsPerDay) && parsedPostsPerDay > 0
+                ? Math.max(1, Math.floor(parsedPostsPerDay))
+                : 2;
+            const safeFrequencyHours = Number.isFinite(parsedFrequencyHours) && parsedFrequencyHours > 0
+                ? parsedFrequencyHours
+                : (safeEditorialMode === 'reference_short' ? 12 : 4);
             const safeWeights = normalizeTopicDistribution(activeTopics, Object.fromEntries(
                 allowedTopics.map(topic => [topic, Math.max(0, Math.min(100, Number(topicWeights?.[topic]) || 0))])
             ));

@@ -2,8 +2,8 @@ import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/inter';
 import './index.css';
-import './design-system.css';
 import './feature-components.css';
+import './design-system.css';
 import { ErrorBoundary } from './components/ui/ErrorBoundary.jsx';
 import { App } from './App.jsx';
 

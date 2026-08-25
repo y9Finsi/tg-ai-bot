@@ -1815,3 +1815,192 @@ html.dark .diary-shell .providers-grid > * {
   min-width: 0 !important;
   max-width: 100% !important;
 }
+
+/*
+ * Model Matrix rows carry their own stacked form layout inline. The generic
+ * managed-row normalization above is for compact operational lists and must
+ * not turn these compound cards into a three-column grid with zero-width
+ * form tracks on narrow screens.
+ */
+html.dark .diary-shell .model-matrix-grid .managed-row {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  grid-template-columns: none !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  gap: var(--admin-space-3) !important;
+}
+
+html.dark .diary-shell .model-matrix-grid .managed-row > * {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+html.dark .diary-shell .model-matrix-grid .managed-row > :first-child {
+  flex-wrap: wrap !important;
+}
+
+html.dark .diary-shell .model-matrix-grid .managed-row > :first-child > :first-child {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+/*
+ * Simulation controls are a small action group, not a single unbreakable
+ * toolbar. A two-column mobile grid keeps the label readable and every
+ * action inside the card.
+ */
+@media (max-width: 760px) {
+  html.dark .diary-shell .simulation-controls {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    align-items: center !important;
+    width: 100% !important;
+    height: auto !important;
+    min-width: 0 !important;
+    gap: var(--admin-space-2) !important;
+  }
+
+  html.dark .diary-shell .simulation-controls > label {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+  }
+
+  html.dark .diary-shell .simulation-controls > .admin-button {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding-inline: 8px !important;
+  }
+
+  html.dark .diary-shell .needs-compact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-template-rows: none !important;
+    height: auto !important;
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 520px) {
+  html.dark .diary-shell .needs-compact-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/*
+ * The content uploader is a form, not a compact dashboard grid. The legacy
+ * six-column rule is useful for the desktop needs cards but makes labels
+ * collapse to single characters on narrow screens.
+ */
+@media (max-width: 760px) {
+  html.dark .diary-shell .photo-upload-form {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-auto-flow: row !important;
+  }
+
+  html.dark .diary-shell .photo-upload-form > * {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  html.dark .diary-shell .crm-filter-btn {
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+  }
+}
+
+/*
+ * Filter bars may live in a narrow CRM side panel. Keep each filter as a
+ * readable target and let the group scroll horizontally instead of breaking
+ * a label into individual words.
+ */
+html.dark .diary-shell .crm-filter-bar {
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  scrollbar-width: thin;
+}
+
+html.dark .diary-shell .crm-filter-bar .crm-filter-btn {
+  flex: 1 0 auto !important;
+  min-width: max-content !important;
+  white-space: nowrap !important;
+}
+
+/*
+ * Model Matrix field labels contain a caption and a control. The legacy
+ * inline-block input rules make them render side by side on wide screens,
+ * which destroys the form's visual hierarchy. Stack captions above controls
+ * and let each grid track own the full control width.
+ */
+html.dark .diary-shell .model-matrix-grid .managed-row > div > label {
+  display: grid !important;
+  align-content: start !important;
+  gap: var(--admin-space-1) !important;
+  min-width: 0 !important;
+  color: var(--admin-text-muted) !important;
+}
+
+html.dark .diary-shell .model-matrix-grid .managed-row > div > label > :is(input, select) {
+  width: 100% !important;
+  min-width: 0 !important;
+  margin-top: 0 !important;
+}
+
+/*
+ * NeedsPanel is a full-width overview card. Older dashboard rules can
+ * accidentally squeeze its grid into a side column, so scope the final
+ * layout to the actual panel and keep the cards readable at each breakpoint.
+ */
+html.dark .diary-shell .needs-panel-card {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  overflow: visible !important;
+}
+
+html.dark .diary-shell .needs-panel-card .needs-overview-meta {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+html.dark .diary-shell .needs-panel-card .needs-compact-grid {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  grid-template-rows: none !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: auto !important;
+  margin: 0 !important;
+  overflow: visible !important;
+}
+
+html.dark .diary-shell .needs-panel-card .need-item-box {
+  display: block !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  overflow: hidden !important;
+}
+
+@media (max-width: 1100px) {
+  html.dark .diary-shell .needs-panel-card .needs-compact-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  html.dark .diary-shell .needs-panel-card .needs-compact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 520px) {
+  html.dark .diary-shell .needs-panel-card .needs-compact-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
