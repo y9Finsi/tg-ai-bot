@@ -10,8 +10,20 @@ import {
  */
 export function buildImagePrompt({ prompt, baseStyle, hasReference = false, isChatModel = false }) {
     const defaultBaseStyle = 'Candid authentic amateur photo of Lera, a 19-year-old Russian student girl from Saint Petersburg. Appearance: fair skin with natural freckles across cheeks and nose bridge, distinct grey-green almond-shaped eyes with subtle thin winged eyeliner, soft natural brows, full natural lips. Shoulder-length messy textured dirty-blonde hair with wispy curtain bangs framing her face. Vibe & Aesthetic: cute, natural, expressive, genuine real-life iPhone camera photo, natural skin texture with subtle pores, warm ambient lighting, filmic grain, no CGI, no 3D render, no plastic AI smoothing.';
-    const style = String(baseStyle || '').trim() || defaultBaseStyle;
+    let style = String(baseStyle || '').trim() || defaultBaseStyle;
     const cleanPrompt = String(prompt || '').trim();
+
+    if (!hasReference) {
+        // Очищаем инструкции переноса референсов, если референс не передаётся (чтобы не триггерить ошибки proxy провайдеров)
+        style = style
+            .replace(/MANDATORY POSE[\s\S]*?FIRST ref\./gi, '')
+            .replace(/IDENTITY:\s*Transfer face from SECOND ref\./gi, '')
+            .replace(/OUTFIT:\s*Transfer textures from SECOND ref\./gi, '')
+            .replace(/ACTION:\s*Composite SECOND image face onto FIRST image body\./gi, '')
+            .replace(/\b(?:FIRST|SECOND)\s+ref\b/gi, '')
+            .trim();
+        if (!style) style = defaultBaseStyle;
+    }
 
     if (hasReference) {
         return [
@@ -30,7 +42,7 @@ export function buildImagePrompt({ prompt, baseStyle, hasReference = false, isCh
         ].join('\n\n');
     }
 
-    if (isChatModel || !cleanPrompt.includes('Highly detailed')) {
+    if (isChatModel) {
         return [
             `[TASK: REALISTIC PHOTO GENERATION]`,
             `[CHARACTER SPECIFICATION]:`,
