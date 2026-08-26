@@ -377,24 +377,25 @@ export async function executeImageGenerationRequest({
                     };
                 }
                 const textMsg = data?.choices?.[0]?.message?.content || raw.slice(0, 300);
-                if (isEditModel || explicitProtocol === '/chat/completions') {
+                if (isEditModel) {
                     throw new Error(textMsg || 'Модель не вернула отредактированное изображение');
                 }
+                console.warn(`⚠️ [IMAGE GEN] /chat/completions вернул текст вместо картинки, переключаюсь на /images/generations...`);
             } else {
                 const detail = data?.error?.message || data?.message || raw.slice(0, 300) || `HTTP ${res.status}`;
                 lastError = new Error(detail);
-                if (isEditModel || explicitProtocol === '/chat/completions') throw lastError;
+                if (isEditModel) throw lastError;
                 console.warn(`⚠️ [IMAGE GEN] /chat/completions вернул ошибку (${detail}), переключаюсь на /images/generations...`);
             }
         } catch (chatErr) {
             if (chatErr.name === 'AbortError') throw chatErr;
-            if (isEditModel || explicitProtocol === '/chat/completions') throw chatErr;
+            if (isEditModel) throw chatErr;
             console.warn(`⚠️ [IMAGE GEN] Сбой /chat/completions (${chatErr.message}), переключаюсь на /images/generations...`);
             lastError = chatErr;
         }
     }
 
-    if (isEditModel || explicitProtocol === '/chat/completions') {
+    if (isEditModel) {
         throw lastError || new Error(`Модель ${selectedModel} не смогла обработать изображение`);
     }
 
@@ -535,7 +536,7 @@ export async function generateLeraPhoto({
                     referenceDataUrl: effectiveReferenceUrl,
                     size,
                     stylePrompt: settings.style_prompt,
-                    protocol: effectiveProtocol,
+                    protocol: (i === 0 ? effectiveProtocol : null),
                     requireReference,
                     signal: controller.signal
                 });

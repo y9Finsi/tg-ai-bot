@@ -673,7 +673,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     };
 }
 
-async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingRecommendationPost = null, preselectedPhoto = null, contentCandidates = [], isVoiceRequest = false, recentReplies = [], toolOverrides = {}) {
+async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingRecommendationPost = null, preselectedPhoto = null, contentCandidates = [], isVoiceRequest = false, recentReplies = [], toolOverrides = {}, userText = '') {
     let workingText = rawText || '';
     let voiceText = null;
     let contentId = toolOverrides?.contentId || null;
@@ -723,6 +723,25 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
             photoSendPayload = { source: preselectedPhoto.source, filename: preselectedPhoto.filename || 'photo.jpg' };
             photoRecordId = preselectedPhoto.id || null;
             photoCaption = preselectedPhoto.caption || null;
+        }
+    }
+
+    if (!photoSendPayload && isPhotoRequest) {
+        try {
+            const photoResult = await generatePhotoForPrompt(user, userText || finalAiText, preselectedPhoto);
+            if (photoResult) {
+                if (photoResult.source) {
+                    photoSendPayload = { source: photoResult.source, filename: photoResult.filename || 'photo.jpg' };
+                    photoRecordId = photoResult.id || null;
+                    photoCaption = photoResult.caption || null;
+                } else if (photoResult.file_id) {
+                    photoSendPayload = photoResult.file_id;
+                    photoRecordId = photoResult.id || photoResult.file_id;
+                    photoCaption = photoResult.caption || null;
+                }
+            }
+        } catch (photoErr) {
+            console.warn('[AI CHAT PHOTO FALLBACK ERROR]:', photoErr.message);
         }
     }
 
@@ -1030,7 +1049,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         photoRecordId: toolPhotoRecordId,
         photoCaption: toolPhotoCaption,
         contentId: toolContentId
-    });
+    }, userText);
     const generationTrace = [{
         step: 'memory_retrieval',
         query: memoryRetrieval?.trace?.query_text || '',

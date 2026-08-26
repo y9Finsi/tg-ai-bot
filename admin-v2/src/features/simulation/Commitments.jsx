@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge.jsx';
 import { formatTime } from '@/lib/dateUtils.js';
 
 export function Commitments({ commitments = [] }) {
+    const safeCommitments = Array.isArray(commitments) ? commitments : [];
+
     return (
         <Card className="commitments-card">
             <CardHeader
@@ -13,8 +15,8 @@ export function Commitments({ commitments = [] }) {
                 description="Договорённости о встречах, дедлайны по работе и запланированные визиты."
             />
             <div className="commitments-list" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-                {commitments.length ? (
-                    commitments.map((com, idx) => (
+                {safeCommitments.length ? (
+                    safeCommitments.map((com, idx) => (
                         <div
                             key={com.id || idx}
                             className="managed-row"
@@ -46,6 +48,8 @@ export function Commitments({ commitments = [] }) {
 }
 
 export function NpcPanel({ npcs = [] }) {
+    const safeNpcs = Array.isArray(npcs) ? npcs : [];
+
     return (
         <Card className="npc-panel-card">
             <CardHeader
@@ -54,7 +58,7 @@ export function NpcPanel({ npcs = [] }) {
                 description="Настя, Макс и динамика взаимоотношений с ними."
             />
             <div className="npc-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginTop: 10 }}>
-                {npcs.map(npc => (
+                {safeNpcs.map(npc => (
                     <div
                         key={npc.id || npc.name}
                         className="managed-row"
@@ -71,7 +75,7 @@ export function NpcPanel({ npcs = [] }) {
                         </div>
                     </div>
                 ))}
-                {!npcs.length && <div className="empty-state">NPC персонажи не настроены.</div>}
+                {!safeNpcs.length && <div className="empty-state">NPC персонажи не настроены.</div>}
             </div>
         </Card>
     );

@@ -32,8 +32,9 @@ export function TimelineFilters({ activeFilter, onChangeFilter }) {
 
 export function Timeline({ events = [], onOpenTaskDetail }) {
     const [filter, setFilter] = useState('all');
+    const safeEvents = Array.isArray(events) ? events : [];
 
-    const filteredEvents = events.filter(e => {
+    const filteredEvents = safeEvents.filter(e => {
         if (filter === 'task') return e.kind === 'task' || e.type?.includes('TASK');
         if (filter === 'interrupt') return e.kind === 'interrupt' || e.type?.includes('INTERRUPT');
         if (filter === 'social') return e.type?.includes('SOCIAL') || e.type?.includes('CHAT');

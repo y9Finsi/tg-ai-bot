@@ -7,12 +7,14 @@ import { ConfirmAction } from '@/components/ui/ConfirmAction.jsx';
 import { itemMeta, itemEffects } from '@/lib/simulationUtils.js';
 
 export function InventoryWidget({ items = [], onOpenFull }) {
+    const safeItems = Array.isArray(items) ? items : [];
+
     return (
         <Card className="inventory-widget-card" style={{ padding: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Package size={16} />
-                    <strong style={{ fontSize: 13 }}>Рюкзак Леры ({items.length})</strong>
+                    <strong style={{ fontSize: 13 }}>Рюкзак Леры ({safeItems.length})</strong>
                 </div>
                 {onOpenFull && (
                     <Button size="xs" variant="outline" onClick={onOpenFull}>
@@ -21,7 +23,7 @@ export function InventoryWidget({ items = [], onOpenFull }) {
                 )}
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {items.slice(0, 6).map((it, idx) => (
+                {safeItems.slice(0, 6).map((it, idx) => (
                     <span
                         key={idx}
                         style={{
@@ -35,7 +37,7 @@ export function InventoryWidget({ items = [], onOpenFull }) {
                         {it.name || it.item_id || 'Предмет'} {it.quantity > 1 ? `x${it.quantity}` : ''}
                     </span>
                 ))}
-                {!items.length && <span style={{ fontSize: 11, color: '#64748b' }}>Рюкзак пуст.</span>}
+                {!safeItems.length && <span style={{ fontSize: 11, color: '#64748b' }}>Рюкзак пуст.</span>}
             </div>
         </Card>
     );
@@ -48,6 +50,8 @@ export function InventoryPanel({
     onUseItem,
     onRemoveItem
 }) {
+    const safeInventory = Array.isArray(inventory) ? inventory : [];
+    const safeCatalog = Array.isArray(catalog) ? catalog : [];
     const [selectedItemId, setSelectedItemId] = useState('');
     const [itemQty, setItemQty] = useState(1);
 
@@ -68,7 +72,7 @@ export function InventoryPanel({
             <div className="inline-controls" style={{ marginTop: 12 }}>
                 <select value={selectedItemId} onChange={e => setSelectedItemId(e.target.value)}>
                     <option value="">Выберите предмет для добавления...</option>
-                    {catalog.map(cat => (
+                    {safeCatalog.map(cat => (
                         <option key={cat.id} value={cat.id}>{cat.name} ({cat.id})</option>
                     ))}
                 </select>
@@ -86,7 +90,7 @@ export function InventoryPanel({
             </div>
 
             <div className="managed-grid" style={{ marginTop: 14 }}>
-                {inventory.map(rawItem => {
+                {safeInventory.map(rawItem => {
                     const item = itemMeta(rawItem, catalog);
                     const effectsText = itemEffects(item);
 

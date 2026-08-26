@@ -52,18 +52,25 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
             }
 
             if (dayRes.status === 'fulfilled') {
-                const d = dayRes.value;
-                setTimelineEvents(d.timeline || d.events || []);
-                setPendingTasks(d.forecast || d.schedule?.filter(item => item.status === 'PLANNED') || []);
-                setCompletedTasks(d.timeline?.filter(item => item.type === 'TASK_COMPLETED') || []);
-                setCommitments(d.commitments || []);
-                setNpcs(d.npcs || d.people || []);
+                const d = dayRes.value || {};
+                setTimelineEvents(Array.isArray(d.timeline) ? d.timeline : (Array.isArray(d.events) ? d.events : []));
+                const forecastNodes = Array.isArray(d.forecast)
+                    ? d.forecast
+                    : (Array.isArray(d.forecast?.nodes) ? d.forecast.nodes : []);
+                const schedulePlanned = Array.isArray(d.schedule)
+                    ? d.schedule.filter(item => item.status === 'PLANNED')
+                    : [];
+                setPendingTasks(forecastNodes.length > 0 ? forecastNodes : schedulePlanned);
+                setCompletedTasks(Array.isArray(d.timeline) ? d.timeline.filter(item => item.type === 'TASK_COMPLETED') : []);
+                setCommitments(Array.isArray(d.commitments) ? d.commitments : []);
+                setNpcs(Array.isArray(d.npcs) ? d.npcs : (Array.isArray(d.people) ? d.people : []));
                 setDaySummary(d.summary || null);
             }
 
             if (invRes.status === 'fulfilled') {
-                setInventory(invRes.value.inventory || []);
-                setItemCatalog(invRes.value.catalog || []);
+                const invVal = invRes.value || {};
+                setInventory(Array.isArray(invVal.inventory) ? invVal.inventory : (Array.isArray(invVal.items) ? invVal.items : []));
+                setItemCatalog(Array.isArray(invVal.catalog) ? invVal.catalog : []);
             }
         } catch (err) {
             if (toast) toast(err.message, 'error');

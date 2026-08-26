@@ -13,6 +13,9 @@ export function KanbanBoard({
     scheduleChanges = []
 }) {
     const [selectedTask, setSelectedTask] = useState(null);
+    const safePending = Array.isArray(pendingTasks) ? pendingTasks : [];
+    const safeCompleted = Array.isArray(completedTasks) ? completedTasks : [];
+    const safeCancelled = Array.isArray(cancelledTasks) ? cancelledTasks : [];
 
     return (
         <Card className="kanban-board-card">
@@ -25,10 +28,10 @@ export function KanbanBoard({
                 {/* Column 1: Предстоит */}
                 <div className="kanban-column planned-column" style={{ background: 'rgba(0,0,0,0.2)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
                     <div className="kanban-column-header" style={{ marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <strong style={{ fontSize: 13 }}>📋 Предстоит ({pendingTasks.length})</strong>
+                        <strong style={{ fontSize: 13 }}>📋 Предстоит ({safePending.length})</strong>
                     </div>
                     <div className="kanban-column-list" style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 380, overflowY: 'auto' }}>
-                        {pendingTasks.map((t, idx) => (
+                        {safePending.map((t, idx) => (
                             <div key={t.id || idx} className="planned-task-item">
                                 <TaskCard task={t} onClick={setSelectedTask} />
                                 {t.remaining_minutes !== undefined && (
@@ -38,7 +41,7 @@ export function KanbanBoard({
                                 )}
                             </div>
                         ))}
-                        {!pendingTasks.length && <div className="empty-state" style={{ padding: 12, fontSize: 12 }}>Нет предстоящих задач.</div>}
+                        {!safePending.length && <div className="empty-state" style={{ padding: 12, fontSize: 12 }}>Нет предстоящих задач.</div>}
                     </div>
                 </div>
 
@@ -64,23 +67,23 @@ export function KanbanBoard({
                 {/* Column 3: Сделано */}
                 <div className="kanban-column done-column" style={{ background: 'rgba(34, 197, 94, 0.06)', padding: 12, borderRadius: 8, border: '1px solid rgba(34, 197, 94, 0.25)' }}>
                     <div className="kanban-column-header" style={{ marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <strong style={{ fontSize: 13, color: '#4ade80' }}>✅ Сделано ({completedTasks.length})</strong>
+                        <strong style={{ fontSize: 13, color: '#4ade80' }}>✅ Сделано ({safeCompleted.length})</strong>
                     </div>
                     <div className="kanban-column-list" style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 380, overflowY: 'auto' }}>
-                        {completedTasks.map((t, idx) => (
+                        {safeCompleted.map((t, idx) => (
                             <TaskCard key={t.id || idx} task={t} onClick={setSelectedTask} />
                         ))}
-                        {!completedTasks.length && <div className="empty-state" style={{ padding: 12, fontSize: 12 }}>Ещё нет завершённых задач.</div>}
+                        {!safeCompleted.length && <div className="empty-state" style={{ padding: 12, fontSize: 12 }}>Ещё нет завершённых задач.</div>}
                     </div>
                 </div>
 
                 {/* Column 4: Отменено */}
                 <div className="kanban-column cancelled-column" style={{ background: 'rgba(239, 68, 68, 0.06)', padding: 12, borderRadius: 8, border: '1px solid rgba(239, 68, 68, 0.25)' }}>
                     <div className="kanban-column-header" style={{ marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <strong style={{ fontSize: 13, color: '#f87171' }}>🚫 Отменено ({cancelledTasks.length})</strong>
+                        <strong style={{ fontSize: 13, color: '#f87171' }}>🚫 Отменено ({safeCancelled.length})</strong>
                     </div>
                     <div className="kanban-column-list" style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 380, overflowY: 'auto' }}>
-                        {cancelledTasks.map((row, idx) => (
+                        {safeCancelled.map((row, idx) => (
                             <div key={row.id || idx} className="managed-row" style={{ padding: 8, background: 'rgba(0,0,0,0.3)', borderRadius: 6 }}>
                                 <strong>{taskName(row.taskType || row.type)}</strong>
                                 <span style={{ fontSize: 11, color: '#fca5a5' }}>
@@ -89,7 +92,7 @@ export function KanbanBoard({
                                 {row.inviter && <Badge variant="muted">Приглашение: {row.inviter}</Badge>}
                             </div>
                         ))}
-                        {!cancelledTasks.length && <div className="empty-state" style={{ padding: 12, fontSize: 12 }}>Отменённых задач нет.</div>}
+                        {!safeCancelled.length && <div className="empty-state" style={{ padding: 12, fontSize: 12 }}>Отменённых задач нет.</div>}
                     </div>
                 </div>
             </div>
