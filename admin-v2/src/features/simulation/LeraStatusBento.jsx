@@ -61,24 +61,22 @@ export function LeraStatusBento({
 
     return (
         <Card className="lera-bento-status-card" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, height: '100%', justifyContent: 'space-between' }}>
-            {/* 1. Header: Big Title and Activity Subtitle */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
-                <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>
-                        Жизнь Леры в реальном времени · Физиология и Состояние
-                    </div>
-                    <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>
-                        Сейчас: {activityName} ({locName})
-                    </h2>
-                    <p style={{ margin: '3px 0 0', fontSize: 12, color: '#94a3b8' }}>
-                        {isResting
-                            ? 'Лера дома на Петроградке. Потребности стабильны, в ожидании следующего шага симуляции.'
-                            : `Выполняет запланированное действие в локации ${locName}.`}
-                    </p>
+            {/* 1. Header: Big Title and Subtitle */}
+            <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>
+                    Жизнь Леры в реальном времени · Физиология и Состояние
                 </div>
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>
+                    Сейчас: {activityName} ({locName})
+                </h2>
+                <p style={{ margin: '3px 0 0', fontSize: 12, color: '#94a3b8' }}>
+                    {isResting
+                        ? 'Лера дома на Петроградке. Потребности стабильны, в ожидании следующего шага симуляции.'
+                        : `Выполняет запланированное действие в локации ${locName}.`}
+                </p>
             </div>
 
-            {/* 2. Top 4 Environment & State Cards (Grid Cards just like Needs!) */}
+            {/* 2. Top 4 Environment & State Cards (Grid Cards) */}
             <div
                 style={{
                     display: 'grid',
@@ -182,7 +180,64 @@ export function LeraStatusBento({
                 </div>
             </div>
 
-            {/* 3. Rich Telegram Context & Memory Box */}
+            {/* 3. 6 Needs Cards in 2 Rows (3 cards per row) - Placed IMMEDIATELY after status cards! */}
+            <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1' }}>
+                        Потребности Леры (кликните для просмотра влияния на диалог и редактирования):
+                    </span>
+                </div>
+                <div
+                    style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                        gap: 8,
+                        width: '100%'
+                    }}
+                >
+                    {Object.entries(NEED_LABELS).map(([key, [title, desc, shortName, Icon]]) => {
+                        const value = needs[key] !== undefined ? needs[key] : (needs[key.toLowerCase()] ?? 0);
+                        const status = needStatus(key, value);
+
+                        return (
+                            <div
+                                key={key}
+                                onClick={() => setSelectedNeed(key)}
+                                style={{
+                                    padding: '8px 10px',
+                                    background: 'rgba(0,0,0,0.3)',
+                                    borderRadius: 8,
+                                    border: '1px solid var(--border)',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 4,
+                                    minWidth: 0,
+                                    transition: 'all 0.15s ease'
+                                }}
+                                title="Кликните для настройки потребности"
+                            >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                                        <Icon size={13} style={{ flexShrink: 0 }} />
+                                        <strong style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {title}
+                                        </strong>
+                                    </div>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#f1f5f9' }}>{value}%</span>
+                                </div>
+                                <ProgressBar value={value} tone={status.tone} style={{ height: 4 }} />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#94a3b8', marginTop: 2 }}>
+                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{status.label}</span>
+                                    <span style={{ color: '#38bdf8', flexShrink: 0 }}>ред. ⚙️</span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* 4. Rich Telegram Context & Memory Box (Placed below the 2-row needs!) */}
             <div
                 style={{
                     background: 'linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(15,23,42,0.6) 100%)',
@@ -245,63 +300,6 @@ export function LeraStatusBento({
                         ))}
                     </div>
                 )}
-            </div>
-
-            {/* 4. 6 Needs Cards strictly in 1 Row */}
-            <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#cbd5e1' }}>
-                        Потребности Леры (нажмите на карточку для просмотра влияния и редактирования):
-                    </span>
-                </div>
-                <div
-                    style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
-                        gap: 8,
-                        width: '100%'
-                    }}
-                >
-                    {Object.entries(NEED_LABELS).map(([key, [title, desc, shortName, Icon]]) => {
-                        const value = needs[key] !== undefined ? needs[key] : (needs[key.toLowerCase()] ?? 0);
-                        const status = needStatus(key, value);
-
-                        return (
-                            <div
-                                key={key}
-                                onClick={() => setSelectedNeed(key)}
-                                style={{
-                                    padding: '8px 10px',
-                                    background: 'rgba(0,0,0,0.3)',
-                                    borderRadius: 8,
-                                    border: '1px solid var(--border)',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: 4,
-                                    minWidth: 0,
-                                    transition: 'all 0.15s ease'
-                                }}
-                                title="Кликните для настройки потребности"
-                            >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-                                        <Icon size={12} style={{ flexShrink: 0 }} />
-                                        <strong style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {title}
-                                        </strong>
-                                    </div>
-                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#f1f5f9' }}>{value}%</span>
-                                </div>
-                                <ProgressBar value={value} tone={status.tone} style={{ height: 4 }} />
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, color: '#94a3b8', marginTop: 2 }}>
-                                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{status.label}</span>
-                                    <span style={{ color: '#38bdf8', flexShrink: 0 }}>ред. ⚙️</span>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
             </div>
 
             {selectedNeed && (
