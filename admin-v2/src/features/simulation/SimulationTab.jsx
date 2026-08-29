@@ -217,7 +217,7 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                 {subTab === 'diary' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                         {/* ========================================================= */}
-                        {/* БЛОК 1: ЖИВОЙ СТАТУС + КАРТА СПБ + ИНТЕРАКТИВНЫЕ ПОТРЕБНОСТИ */}
+                        {/* БЛОК 1: ЖИВОЙ СТАТУС (TELEGRAM КОНТЕКСТ) */}
                         {/* ========================================================= */}
                         <LiveStatusCard
                             snapshot={snapshot}
@@ -230,22 +230,29 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                             recentFacts={snapshot?.facts || timelineEvents}
                         />
 
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
-                            <SpbMapWidget
-                                currentLocation={locId}
-                                isTransit={Boolean(snapshot?.transit || inProgressTask?.task_type === 'TRAVEL')}
-                                onLocationChanged={loadDayData}
-                                toast={toast}
-                            />
-                            <NeedsPanel
-                                needs={snapshot?.state?.needs || snapshot?.needs || {}}
-                                mood={snapshot?.state?.mood || snapshot?.mood || 6}
-                                location={snapshot?.state?.location_name || snapshot?.location_name || 'Квартира на Петроградке'}
-                                money={`${rubles} ₽`}
-                                onRefresh={loadDayData}
-                                toast={toast}
-                            />
-                        </div>
+                        {/* ========================================================= */}
+                        {/* БЛОК 2: ПОТРЕБНОСТИ ЛЕРЫ (ЧИПЫ СТАТУСА + 6 ШКАЛ В ОДИН РЯД) */}
+                        {/* ========================================================= */}
+                        <NeedsPanel
+                            needs={snapshot?.state?.needs || snapshot?.needs || {}}
+                            location={locId}
+                            weather={snapshot?.weather || snapshot?.state?.weather}
+                            cycleDay={cycleDay}
+                            moneyRubles={rubles}
+                            moneyStars={stars}
+                            onRefresh={loadDayData}
+                            toast={toast}
+                        />
+
+                        {/* ========================================================= */}
+                        {/* БЛОК 3: ИНТЕРАКТИВНАЯ КАРТА СПБ (LEAFLET) */}
+                        {/* ========================================================= */}
+                        <SpbMapWidget
+                            currentLocation={locId}
+                            isTransit={Boolean(snapshot?.transit || inProgressTask?.task_type === 'TRAVEL')}
+                            onLocationChanged={loadDayData}
+                            toast={toast}
+                        />
 
                         {/* ========================================================= */}
                         {/* БЛОК 2: ПОЛНОРАЗМЕРНЫЙ KANBAN РАСПИСАНИЯ ДНЯ (4 КОЛОНКИ В РЯД) */}
