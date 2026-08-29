@@ -4,6 +4,10 @@ import { ProgressBar } from '@/components/ui/ProgressBar.jsx';
 import { NEED_LABELS, needStatus, formatLocation } from '@/lib/simulationUtils.js';
 
 export function NeedsPanel({ needs = {}, mood = 'Хорошее', location = 'petrogradka_home', money = '1 500 ₽' }) {
+    const formattedMood = typeof mood === 'number'
+        ? `${mood}/10 (${mood >= 7 ? 'Отличное' : mood >= 5 ? 'Хорошее' : mood >= 3 ? 'Нормальное' : 'Подавленное'})`
+        : (mood || 'Хорошее');
+
     return (
         <Card className="needs-panel-card needs-overview">
             <CardHeader
@@ -12,13 +16,13 @@ export function NeedsPanel({ needs = {}, mood = 'Хорошее', location = 'pe
                 description="Текущие уровни насыщения, усталости, свежести и эмоционального тонуса."
             />
             <div className="needs-overview-meta" style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12, fontSize: 13, color: '#cbd5e1' }}>
-                <div><strong>Настроение:</strong> <span>{mood}</span></div>
+                <div><strong>Настроение:</strong> <span>{formattedMood}</span></div>
                 <div><strong>Текущее местоположение:</strong> <span>{formatLocation(location)}</span></div>
                 <div><strong>Деньги:</strong> <span>{money}</span></div>
             </div>
             <div className="needs-grid needs-compact-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
                 {Object.entries(NEED_LABELS).map(([key, [title, desc, shortName, Icon]]) => {
-                    const value = needs[key] ?? 0;
+                    const value = needs[key] !== undefined ? needs[key] : (needs[key.toLowerCase()] ?? 0);
                     const status = needStatus(key, value);
 
                     return (

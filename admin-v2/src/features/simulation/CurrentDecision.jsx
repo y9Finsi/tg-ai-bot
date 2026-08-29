@@ -7,7 +7,7 @@ import { taskName, formatLocation, formatDecisionReason } from '@/lib/simulation
 export function CurrentDecision({ currentTask, currentDecision, location, matchedFact }) {
     const activeTask = currentTask || currentDecision?.task;
     const taskType = activeTask?.taskType || activeTask?.type || 'IDLE_HOME_REST';
-    const reasonText = formatDecisionReason(currentDecision, taskType);
+    const reasonText = formatDecisionReason(currentDecision, taskType) || (taskType === 'IDLE_HOME_REST' ? 'Лера отдыхает дома на Петроградке. Потребности стабильны, симуляция находится в ожидании следующего триггера.' : 'Выполняется по текущему фокусу дня.');
 
     return (
         <Card className="current-decision-card">

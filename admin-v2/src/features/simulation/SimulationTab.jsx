@@ -216,10 +216,10 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                             <InventoryWidget items={inventory} onOpenFull={() => setSubTab('inventory')} />
                         </div>
                         <NeedsPanel
-                            needs={snapshot?.needs || snapshot?.state?.physiology || {}}
-                            mood={snapshot?.mood || snapshot?.state?.mood || 'Хорошее'}
-                            location={snapshot?.location || snapshot?.location_name || snapshot?.state?.location_id || 'petrogradka_home'}
-                            money={snapshot?.money !== undefined ? `${snapshot.money} ₽` : (snapshot?.state?.money !== undefined ? `${snapshot.state.money} ₽` : '1 500 ₽')}
+                            needs={snapshot?.state?.needs || snapshot?.needs || {}}
+                            mood={snapshot?.state?.mood || snapshot?.mood || 'Хорошее'}
+                            location={snapshot?.state?.location_name || snapshot?.location_name || snapshot?.state?.location_id || 'petrogradka_home'}
+                            money={snapshot?.state?.wallet_rubles !== undefined ? `${snapshot.state.wallet_rubles} ₽` : (snapshot?.state?.wallet?.rubles !== undefined ? `${snapshot.state.wallet.rubles} ₽` : (snapshot?.money !== undefined ? `${snapshot.money} ₽` : '70 ₽'))}
                         />
                         <CurrentDecision
                             currentTask={inProgressTask}

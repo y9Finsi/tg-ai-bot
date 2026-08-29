@@ -7,6 +7,10 @@ export function TaskCard({ task, onClick }) {
     if (!task) return null;
     const name = taskName(task);
     const source = taskSource(task);
+    const startTime = task.startTime || task.planned_start || task.start || task.at || task.occurred_at || task.created_at;
+    const endTime = task.endTime || task.end;
+    const explanation = task.explanation || task.reason || task.metadata?.reason;
+    const duration = task.durationMinutes || task.duration_minutes || task.planned_duration_minutes;
 
     return (
         <div
@@ -27,14 +31,14 @@ export function TaskCard({ task, onClick }) {
                 <strong style={{ fontSize: 13, color: '#f1f5f9' }}>{name}</strong>
                 <Badge variant="muted" style={{ fontSize: 10 }}>{source}</Badge>
             </div>
-            {task.startTime && (
+            {startTime && (
                 <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                    ⏰ {formatTime(task.startTime)} {task.endTime ? `— ${formatTime(task.endTime)}` : ''}
+                    ⏰ {formatTime(startTime)} {endTime ? `— ${formatTime(endTime)}` : (duration ? `(${duration} мин)` : '')}
                 </div>
             )}
-            {task.explanation && (
+            {explanation && (
                 <p style={{ margin: 0, fontSize: 11, color: '#cbd5e1', lineHeight: 1.3, opacity: 0.85 }}>
-                    {task.explanation}
+                    {explanation}
                 </p>
             )}
         </div>
