@@ -1,6 +1,6 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge.jsx';
-import { taskName, taskSource } from '@/lib/simulationUtils.js';
+import { taskName, taskSource, formatReason } from '@/lib/simulationUtils.js';
 import { formatTime } from '@/lib/dateUtils.js';
 
 export function TaskCard({ task, onClick }) {
