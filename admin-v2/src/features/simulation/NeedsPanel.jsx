@@ -3,9 +3,9 @@ import { Card, CardHeader } from '@/components/ui/card.jsx';
 import { Button } from '@/components/ui/button.jsx';
 import { Badge } from '@/components/ui/badge.jsx';
 import { ProgressBar } from '@/components/ui/ProgressBar.jsx';
-import { NEED_LABELS, needStatus, formatLocation, getCycleMeta } from '@/lib/simulationUtils.js';
+import { NEED_LABELS, needStatus, formatLocation } from '@/lib/simulationUtils.js';
 import { api } from '@/lib/api.js';
-import { WandSparkles, X, MapPin, CloudRain, Sun, Moon, Wallet, Heart } from 'lucide-react';
+import { WandSparkles, X } from 'lucide-react';
 
 export const NEED_DESCRIPTIONS = {
     hunger: {
@@ -165,50 +165,17 @@ export function NeedModal({ needKey, currentValue, onClose, onSave, toast }) {
     );
 }
 
-export function NeedsPanel({
-    needs = {},
-    location = 'petrogradka_home',
-    weather,
-    cycleDay = 25,
-    moneyRubles = 70,
-    moneyStars = 150,
-    onRefresh,
-    toast
-}) {
+export function NeedsPanel({ needs = {}, mood = 'Хорошее', location = 'petrogradka_home', money = '70 ₽', onRefresh, toast }) {
     const [selectedNeed, setSelectedNeed] = useState(null);
-    const locName = formatLocation(location);
-    const cycle = getCycleMeta(cycleDay);
-
-    const temp = weather?.temperatureC !== undefined ? `${weather.temperatureC > 0 ? `+${weather.temperatureC}` : weather.temperatureC}°C` : '+14°C';
-    const weatherText = weather?.is_raining || weather?.rain ? '⛅ Облачно с прояснениями' : '⛅ Облачно с прояснениями';
 
     return (
-        <Card className="needs-panel-card needs-overview" style={{ width: '100%' }}>
+        <Card className="needs-panel-card needs-overview">
             <CardHeader
                 eyebrow="Физиология и Состояние"
                 title="Потребности Леры"
                 description="Нажмите на любую шкалу, чтобы узнать влияние на чат или изменить значение."
-                action={
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <Badge variant="blue" style={{ fontSize: 11 }}>📍 {locName}</Badge>
-                        <Badge variant="muted" style={{ fontSize: 11 }}>{temp} · {weatherText}</Badge>
-                        <Badge variant={cycle.tone} style={{ fontSize: 11 }}>🌸 {cycle.phase} ({cycle.day}/28)</Badge>
-                        <Badge variant="green" style={{ fontSize: 11 }}>💰 {moneyRubles} ₽ / {moneyStars} ⭐️</Badge>
-                    </div>
-                }
             />
-
-            {/* 6 Needs in ONE Horizontal Row */}
-            <div
-                className="needs-grid needs-one-row"
-                style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
-                    gap: 8,
-                    marginTop: 12,
-                    width: '100%'
-                }}
-            >
+            <div className="needs-grid needs-compact-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, marginTop: 10 }}>
                 {Object.entries(NEED_LABELS).map(([key, [title, desc, shortName, Icon]]) => {
                     const value = needs[key] !== undefined ? needs[key] : (needs[key.toLowerCase()] ?? 0);
                     const status = needStatus(key, value);
@@ -219,27 +186,26 @@ export function NeedsPanel({
                             className="need-item-box need-compact-item"
                             onClick={() => setSelectedNeed(key)}
                             style={{
-                                padding: '8px 10px',
+                                padding: 10,
                                 background: 'rgba(0,0,0,0.25)',
                                 borderRadius: 8,
                                 border: '1px solid var(--border)',
                                 cursor: 'pointer',
-                                transition: 'all 0.15s ease',
-                                minWidth: 0
+                                transition: 'all 0.15s ease'
                             }}
                             title="Кликните для просмотра влияния и редактирования"
                         >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, overflow: 'hidden' }}>
-                                    <Icon size={13} style={{ flexShrink: 0 }} />
-                                    <strong style={{ fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</strong>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <Icon size={14} />
+                                    <strong style={{ fontSize: 12 }}>{title}</strong>
                                 </div>
-                                <span style={{ fontSize: 11, fontWeight: 600, flexShrink: 0, marginLeft: 2 }}>{value}%</span>
+                                <span style={{ fontSize: 11, fontWeight: 600 }}>{value}%</span>
                             </div>
                             <ProgressBar value={value} tone={status.tone} />
-                            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{status.label}</span>
-                                <span style={{ color: '#38bdf8', fontSize: 9, flexShrink: 0 }}>⚙️</span>
+                            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
+                                <span>{status.label}</span>
+                                <span style={{ color: '#38bdf8' }}>ред. ⚙️</span>
                             </div>
                         </div>
                     );

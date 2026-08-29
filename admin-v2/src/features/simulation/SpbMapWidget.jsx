@@ -95,6 +95,21 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
             document.head.appendChild(link);
         }
 
+        // Add Custom Dark Theme Style for OpenStreetMap Tiles
+        if (!document.getElementById('leaflet-dark-style')) {
+            const style = document.createElement('style');
+            style.id = 'leaflet-dark-style';
+            style.innerHTML = `
+                .osm-dark-tiles {
+                    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%) !important;
+                }
+                .leaflet-container {
+                    background: #090d16 !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
         // Add Leaflet JS
         if (!document.getElementById('leaflet-js')) {
             const script = document.createElement('script');
@@ -125,10 +140,10 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
             attributionControl: false
         });
 
-        // CartoDB Dark Matter tile layer
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        // 100% Free OpenStreetMap tile layer with dark CSS filter (no watermarks or API keys)
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
-            subdomains: 'abcd'
+            className: 'osm-dark-tiles'
         }).addTo(map);
 
         L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -160,11 +175,11 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
                         display: flex;
                         align-items: center;
                         gap: 4px;
-                        background: ${isCurrent ? '#3b82f6' : 'rgba(15,23,42,0.9)'};
-                        border: ${isCurrent ? '2px solid #60a5fa' : '1px solid rgba(255,255,255,0.2)'};
-                        box-shadow: ${isCurrent ? '0 0 16px rgba(59,130,246,0.8)' : '0 4px 10px rgba(0,0,0,0.5)'};
+                        background: ${isCurrent ? '#3b82f6' : 'rgba(15,23,42,0.92)'};
+                        border: ${isCurrent ? '2px solid #60a5fa' : '1px solid rgba(255,255,255,0.25)'};
+                        box-shadow: ${isCurrent ? '0 0 16px rgba(59,130,246,0.9)' : '0 4px 10px rgba(0,0,0,0.6)'};
                         color: #ffffff;
-                        padding: 3px 8px;
+                        padding: 4px 8px;
                         border-radius: 20px;
                         font-size: 11px;
                         font-weight: 600;
@@ -229,7 +244,7 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
                 ref={mapContainerRef}
                 style={{
                     width: '100%',
-                    height: 260,
+                    height: 250,
                     borderRadius: 8,
                     border: '1px solid var(--border)',
                     overflow: 'hidden',

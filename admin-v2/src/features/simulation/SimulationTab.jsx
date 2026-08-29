@@ -4,9 +4,8 @@ import { Button } from '@/components/ui/button.jsx';
 import { api } from '@/lib/api.js';
 import { isoDate } from '@/lib/dateUtils.js';
 import { DiaryHeader } from './DiaryHeader.jsx';
-import { LiveStatusCard } from './LiveStatusCard.jsx';
+import { LeraStatusBento } from './LeraStatusBento.jsx';
 import { SpbMapWidget } from './SpbMapWidget.jsx';
-import { NeedsPanel } from './NeedsPanel.jsx';
 import { KanbanBoard } from './KanbanBoard.jsx';
 import { DaySummary } from './DaySummary.jsx';
 import { Timeline } from './Timeline.jsx';
@@ -217,9 +216,9 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                 {subTab === 'diary' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                         {/* ========================================================= */}
-                        {/* БЛОК 1: ЖИВОЙ СТАТУС (TELEGRAM КОНТЕКСТ) */}
+                        {/* БЛОК 1: ЕДИНЫЙ BENTO ЖИЗНИ, СТАТУСА И ПОТРЕБНОСТЕЙ (БЕЗ ДУБЛЕЙ) */}
                         {/* ========================================================= */}
-                        <LiveStatusCard
+                        <LeraStatusBento
                             snapshot={snapshot}
                             activeTask={inProgressTask}
                             currentLocation={locId}
@@ -228,24 +227,12 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                             moneyRubles={rubles}
                             moneyStars={stars}
                             recentFacts={snapshot?.facts || timelineEvents}
-                        />
-
-                        {/* ========================================================= */}
-                        {/* БЛОК 2: ПОТРЕБНОСТИ ЛЕРЫ (ЧИПЫ СТАТУСА + 6 ШКАЛ В ОДИН РЯД) */}
-                        {/* ========================================================= */}
-                        <NeedsPanel
-                            needs={snapshot?.state?.needs || snapshot?.needs || {}}
-                            location={locId}
-                            weather={snapshot?.weather || snapshot?.state?.weather}
-                            cycleDay={cycleDay}
-                            moneyRubles={rubles}
-                            moneyStars={stars}
                             onRefresh={loadDayData}
                             toast={toast}
                         />
 
                         {/* ========================================================= */}
-                        {/* БЛОК 3: ИНТЕРАКТИВНАЯ КАРТА СПБ (LEAFLET) */}
+                        {/* БЛОК 2: ИНТЕРАКТИВНАЯ КАРТА САНКТ-ПЕТЕРБУРГА (LEAFLET OSM) */}
                         {/* ========================================================= */}
                         <SpbMapWidget
                             currentLocation={locId}
@@ -255,7 +242,7 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                         />
 
                         {/* ========================================================= */}
-                        {/* БЛОК 2: ПОЛНОРАЗМЕРНЫЙ KANBAN РАСПИСАНИЯ ДНЯ (4 КОЛОНКИ В РЯД) */}
+                        {/* БЛОК 3: ПОЛНОРАЗМЕРНЫЙ KANBAN (4 КОЛОНКИ В ОДНУ СТРОКУ) */}
                         {/* ========================================================= */}
                         <KanbanBoard
                             pendingTasks={pendingTasks}
