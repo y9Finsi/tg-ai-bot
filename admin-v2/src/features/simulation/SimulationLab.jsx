@@ -8,14 +8,26 @@ import { downloadTextFile } from '@/lib/helpers.js';
 
 export function RandomEventLab({ onTriggerEvent, readOnly = false, toast }) {
     const [eventName, setEventName] = useState('rain_spb');
-
-    const EVENTS = [
+    const [eventsList, setEventsList] = useState([
         { id: 'rain_spb', name: '🌧️ Дождь в Санкт-Петербурге' },
         { id: 'nastya_calls', name: '📞 Настя зовёт гулять' },
         { id: 'max_deadline', name: '💻 Макс прислал срочную задачу' },
         { id: 'coffee_spill', name: '☕ Пролила кофе на Петроградке' },
         { id: 'cat_meeting', name: '🐱 Встретила уличного кота' }
-    ];
+    ]);
+
+    useEffect(() => {
+        api('/api/admin/radiant/random-events')
+            .then(res => {
+                if (Array.isArray(res?.events) && res.events.length > 0) {
+                    setEventsList(res.events.map(ev => ({
+                        id: ev.id,
+                        name: ev.name || ev.title || ev.label || ev.id
+                    })));
+                }
+            })
+            .catch(() => {});
+    }, []);
 
     async function trigger() {
         try {
@@ -23,7 +35,12 @@ export function RandomEventLab({ onTriggerEvent, readOnly = false, toast }) {
                 method: 'POST',
                 body: JSON.stringify({ enabled: true })
             });
-            toast?.(`Событие ${eventName} (фактическое событие) запущено в симуляции`);
+            // Also trigger manual tick with forceChaos so the event actually happens in simulation
+            await api('/api/admin/radiant/tick', {
+                method: 'POST',
+                body: JSON.stringify({ forceChaos: eventName })
+            }).catch(() => {});
+            toast?.(`Событие ${eventName} успешно запущено в симуляции`);
             onTriggerEvent?.();
         } catch (err) {
             toast?.(err.message, 'error');
@@ -39,7 +56,7 @@ export function RandomEventLab({ onTriggerEvent, readOnly = false, toast }) {
             />
             <div className="inline-controls" style={{ marginTop: 10 }}>
                 <select value={eventName} onChange={e => setEventName(e.target.value)} disabled={readOnly}>
-                    {EVENTS.map(ev => (
+                    {eventsList.map(ev => (
                         <option key={ev.id} value={ev.id}>{ev.name}</option>
                     ))}
                 </select>
@@ -67,7 +84,7 @@ export function PersonalityLab({ onUpdateTrait, readOnly = false, toast }) {
                 method: 'POST',
                 body: JSON.stringify({ action: 'SET_STATE', needs: needsForm })
             });
-            toast?.('Физиологические потребности обновлены (фактическое событие)');
+            toast?.('Физиологические потребности обновлены');
             onUpdateTrait?.();
         } catch (err) {
             toast?.(err.message, 'error');
@@ -107,11 +124,15 @@ export function PersonalityLab({ onUpdateTrait, readOnly = false, toast }) {
 
 export function SimulationLab({ onRefresh, readOnly = false, toast }) {
     const [runningComparison, setRunningComparison] = useState(false);
+    const [comparisonResult, setComparisonResult] = useState(null);
+    const [comparisonRunAt, setComparisonRunAt] = useState(null);
 
     async function runComparison() {
         setRunningComparison(true);
         try {
-            await api('/api/admin/radiant/simulation-lab', { method: 'POST' });
+            const res = await api('/api/admin/radiant/simulation-lab', { method: 'POST' });
+            setComparisonResult(res);
+            setComparisonRunAt(new Date().toISOString());
             toast?.('Сравнение сценариев симуляции завершено');
             onRefresh?.();
         } catch (err) {

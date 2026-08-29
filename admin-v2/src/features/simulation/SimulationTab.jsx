@@ -29,6 +29,7 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
     const [timelineEvents, setTimelineEvents] = useState([]);
     const [pendingTasks, setPendingTasks] = useState([]);
     const [completedTasks, setCompletedTasks] = useState([]);
+    const [cancelledTasks, setCancelledTasks] = useState([]);
     const [inProgressTask, setInProgressTask] = useState(null);
     const [inventory, setInventory] = useState([]);
     const [itemCatalog, setItemCatalog] = useState([]);
@@ -62,6 +63,10 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                     : [];
                 setPendingTasks(forecastNodes.length > 0 ? forecastNodes : schedulePlanned);
                 setCompletedTasks(Array.isArray(d.timeline) ? d.timeline.filter(item => item.type === 'TASK_COMPLETED') : []);
+                const cancelled = Array.isArray(d.schedule)
+                    ? d.schedule.filter(item => ['CANCELLED', 'MISSED', 'OVERDUE'].includes(item.status) || item.overdue)
+                    : [];
+                setCancelledTasks(cancelled);
                 setCommitments(Array.isArray(d.commitments) ? d.commitments : []);
                 setNpcs(Array.isArray(d.npcs) ? d.npcs : (Array.isArray(d.people) ? d.people : []));
                 setDaySummary(d.summary || null);
@@ -78,8 +83,17 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
     }
 
     async function togglePause() {
-        setIsPaused(value => !value);
-        if (toast) toast(!isPaused ? 'Автообновление расписания остановлено' : 'Автообновление расписания включено');
+        const nextPaused = !isPaused;
+        setIsPaused(nextPaused);
+        try {
+            await api('/api/admin/radiant/god-mode', {
+                method: 'POST',
+                body: JSON.stringify({ action: 'SET_STATE', is_paused: nextPaused })
+            });
+        } catch (e) {
+            // fallback
+        }
+        if (toast) toast(nextPaused ? 'Симуляция поставлена на паузу' : 'Симуляция возобновлена');
     }
 
     async function handleTick() {
@@ -99,6 +113,27 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                 body: JSON.stringify({ itemId, itemType: 'misc', quantity: qty })
             });
             if (toast) toast('Предмет добавлен в рюкзак');
+            loadDayData();
+        } catch (err) {
+            if (toast) toast(err.message, 'error');
+        }
+    }
+
+    async function handleUseInventory(item) {
+        try {
+            if (item.item_type === 'clothing' || item.type === 'clothing') {
+                await api('/api/admin/inventory/equip', {
+                    method: 'POST',
+                    body: JSON.stringify({ itemId: item.item_id || item.id })
+                });
+                if (toast) toast(`Одежда «${item.name || item.item_id}» надета`);
+            } else {
+                await api('/api/admin/inventory/consume', {
+                    method: 'POST',
+                    body: JSON.stringify({ itemId: item.item_id || item.id, quantity: 1 })
+                });
+                if (toast) toast(`Предмет «${item.name || item.item_id}» использован`);
+            }
             loadDayData();
         } catch (err) {
             if (toast) toast(err.message, 'error');
@@ -162,7 +197,7 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                     size="sm"
                     onClick={() => setSubTab('lab')}
                 >
-                    <Sparkles size={14} /> ⚡ God Mode & Случайности
+                    <Sparkles size={14} /> 🧪 Simulation Lab & God Mode
                 </Button>
                 <Button
                     variant={subTab === 'system' ? 'primary' : 'outline'}
@@ -196,6 +231,7 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                             pendingTasks={pendingTasks}
                             inProgressTask={inProgressTask}
                             completedTasks={completedTasks}
+                            cancelledTasks={cancelledTasks}
                         />
                         <DaySummary summary={daySummary} dayDate={dayDate} />
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
@@ -211,6 +247,7 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                         inventory={inventory}
                         catalog={itemCatalog}
                         onAddItem={handleAddInventory}
+                        onUseItem={handleUseInventory}
                         onRemoveItem={handleRemoveInventory}
                     />
                 )}

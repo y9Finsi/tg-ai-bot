@@ -36,8 +36,9 @@ export function Timeline({ events = [], onOpenTaskDetail }) {
 
     const filteredEvents = safeEvents.filter(e => {
         if (filter === 'task') return e.kind === 'task' || e.type?.includes('TASK');
+        if (filter === 'event') return e.kind === 'event' || e.type === 'RANDOM_EVENT' || e.type?.includes('EVENT') || e.type?.includes('PROPOSED') || e.type?.includes('CREATED') || e.type?.includes('MISSED');
         if (filter === 'interrupt') return e.kind === 'interrupt' || e.type?.includes('INTERRUPT');
-        if (filter === 'social') return e.type?.includes('SOCIAL') || e.type?.includes('CHAT');
+        if (filter === 'social') return e.type?.includes('SOCIAL') || e.type?.includes('CHAT') || e.type?.includes('MEETING');
         return true;
     });
 

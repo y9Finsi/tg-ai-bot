@@ -59,8 +59,8 @@ export function SimulationRationaleTab({ toast }) {
                         >
                             <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', flexWrap: 'wrap' }}>
                                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                    <Badge variant="blue">{dec.task_type || dec.chosen_action || 'Решение'}</Badge>
-                                    <Badge variant="muted">{dec.engine || 'GOAP'}</Badge>
+                                    <Badge variant="blue">{dec.title || dec.category || dec.task_type || 'Решение'}</Badge>
+                                    <Badge variant="muted">{dec.category || dec.engine || 'GOAP'}</Badge>
                                 </div>
                                 <span style={{ fontSize: 11, opacity: 0.7 }}>{formatTime(dec.timestamp || dec.created_at)}</span>
                             </div>

@@ -95,7 +95,10 @@ export function SimulationPanel({ toast }) {
                         variant="outline"
                         onClick={async () => {
                             try {
-                                await api('/api/admin/diagnostics/prune', { method: 'POST', body: JSON.stringify({ days: 14 }) });
+                                await api('/api/admin/diagnostics/prune', {
+                                    method: 'POST',
+                                    body: JSON.stringify({ promptDays: 14, rationaleDays: 14, diaryDays: 30 })
+                                });
                                 toast?.('Логи старше 14 дней очищены');
                             } catch (e) {
                                 toast?.(e.message, 'error');
