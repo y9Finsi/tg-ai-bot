@@ -9,36 +9,38 @@ export function TaskCard({ task, onClick }) {
     const source = taskSource(task);
     const startTime = task.startTime || task.planned_start || task.start || task.at || task.occurred_at || task.created_at;
     const endTime = task.endTime || task.end;
-    const explanation = task.explanation || task.reason || task.metadata?.reason;
+    const rawReason = task.explanation || task.reason || task.metadata?.reason;
+    const formattedReason = formatReason(rawReason);
     const duration = task.durationMinutes || task.duration_minutes || task.planned_duration_minutes;
+    const isRedundantReason = !formattedReason || formattedReason === name.toLowerCase() || formattedReason === 'факт';
 
     return (
         <div
             className="kanban-task-card"
             onClick={() => onClick?.(task)}
             style={{
-                padding: '10px 12px',
+                padding: '8px 10px',
                 background: 'rgba(0,0,0,0.3)',
                 borderRadius: 6,
                 border: '1px solid var(--border)',
                 cursor: 'pointer',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 6
+                gap: 4
             }}
         >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong style={{ fontSize: 13, color: '#f1f5f9' }}>{name}</strong>
-                <Badge variant="muted" style={{ fontSize: 10 }}>{source}</Badge>
+                <strong style={{ fontSize: 12, color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</strong>
+                <Badge variant="muted" style={{ fontSize: 9.5 }}>{source}</Badge>
             </div>
             {startTime && (
-                <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                <div style={{ fontSize: 10.5, color: '#94a3b8' }}>
                     ⏰ {formatTime(startTime)} {endTime ? `— ${formatTime(endTime)}` : (duration ? `(${duration} мин)` : '')}
                 </div>
             )}
-            {explanation && (
-                <p style={{ margin: 0, fontSize: 11, color: '#cbd5e1', lineHeight: 1.3, opacity: 0.85 }}>
-                    {explanation}
+            {!isRedundantReason && (
+                <p style={{ margin: 0, fontSize: 10.5, color: '#93c5fd', lineHeight: 1.2, opacity: 0.9 }}>
+                    {formattedReason}
                 </p>
             )}
         </div>
