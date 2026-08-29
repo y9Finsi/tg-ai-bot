@@ -230,16 +230,11 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
     }
 
     return (
-        <Card className="spb-map-card" style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
+        <Card className="spb-map-card" style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%', padding: 14 }}>
             <CardHeader
-                eyebrow="Интерактивная карта СПб"
+                eyebrow="Интерактивная карта Санкт-Петербурга"
                 title="Локация Леры"
-                description={`Точка: ${activeLoc.name}`}
-                action={
-                    <Badge variant={isTransit ? 'yellow' : 'green'} style={{ fontSize: 10 }}>
-                        {isTransit ? '🚶 В пути...' : `📍 ${activeLoc.shortName}`}
-                    </Badge>
-                }
+                description={`Текущая точка: ${activeLoc.name} · ${activeLoc.district}`}
             />
 
             {/* Real Interactive Leaflet Map Container */}
@@ -248,45 +243,13 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
                 style={{
                     width: '100%',
                     flex: 1,
-                    minHeight: 180,
+                    minHeight: 260,
                     borderRadius: 8,
                     border: '1px solid var(--border)',
                     overflow: 'hidden',
                     background: '#090d16'
                 }}
             />
-
-            {/* Selected Location Details & 1-Click Move Button */}
-            <div
-                style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '6px 10px',
-                    background: 'rgba(0,0,0,0.25)',
-                    borderRadius: 6,
-                    border: '1px solid var(--border)',
-                    fontSize: 11
-                }}
-            >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 15 }}>{previewLoc.icon}</span>
-                    <strong style={{ color: '#f1f5f9' }}>{previewLoc.name}</strong>
-                </div>
-
-                {previewLoc.id !== currentLocation ? (
-                    <Button
-                        size="xs"
-                        variant="primary"
-                        disabled={moving}
-                        onClick={() => moveTo(previewLoc.id)}
-                    >
-                        <Navigation size={11} /> {moving ? '...' : 'Отправить'}
-                    </Button>
-                ) : (
-                    <Badge variant="blue" style={{ fontSize: 9 }}>Здесь</Badge>
-                )}
-            </div>
         </Card>
     );
 }
