@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Package, Sparkles, Cpu } from 'lucide-react';
+import { Calendar, Package, Sparkles, Cpu, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button.jsx';
 import { api } from '@/lib/api.js';
 import { isoDate } from '@/lib/dateUtils.js';
 import { DiaryHeader } from './DiaryHeader.jsx';
-import { ProfileCard } from './ProfileCard.jsx';
+import { LiveStatusCard } from './LiveStatusCard.jsx';
+import { SpbMapWidget } from './SpbMapWidget.jsx';
 import { NeedsPanel } from './NeedsPanel.jsx';
-import { CurrentDecision } from './CurrentDecision.jsx';
 import { KanbanBoard } from './KanbanBoard.jsx';
 import { DaySummary } from './DaySummary.jsx';
 import { Timeline } from './Timeline.jsx';
@@ -59,7 +59,7 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                     ? d.forecast
                     : (Array.isArray(d.forecast?.nodes) ? d.forecast.nodes : []);
                 const schedulePlanned = Array.isArray(d.schedule)
-                    ? d.schedule.filter(item => item.status === 'PLANNED')
+                    ? d.schedule.filter(item => item.status === 'PLANNED' || item.status === 'FORECAST' || item.status === 'ROUTINE')
                     : [];
                 setPendingTasks(forecastNodes.length > 0 ? forecastNodes : schedulePlanned);
                 setCompletedTasks(Array.isArray(d.timeline) ? d.timeline.filter(item => item.type === 'TASK_COMPLETED') : []);
@@ -163,8 +163,13 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
         return () => clearInterval(interval);
     }, [autoRefresh, dayDate]);
 
+    const locId = snapshot?.state?.location_id || snapshot?.location_id || 'petrogradka_home';
+    const rubles = snapshot?.state?.wallet_rubles ?? snapshot?.state?.wallet?.rubles ?? 70;
+    const stars = snapshot?.state?.wallet_stars ?? snapshot?.state?.wallet?.stars ?? 150;
+    const cycleDay = snapshot?.state?.physiology?.cycle_day || snapshot?.cycle_day || 25;
+
     return (
-        <div className="simulation-super-container admin-domain-page">
+        <div className="simulation-super-container admin-domain-page" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <DiaryHeader
                 dayDate={dayDate}
                 setDayDate={setDayDate}
@@ -177,13 +182,13 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                 onOpenGodMode={() => setSubTab('lab')}
             />
 
-            <div className="crm-subnav" style={{ marginTop: 12 }}>
+            <div className="crm-subnav">
                 <Button
                     variant={subTab === 'diary' ? 'primary' : 'outline'}
                     size="sm"
                     onClick={() => setSubTab('diary')}
                 >
-                    <Calendar size={14} /> 📖 Дневник и Расписание
+                    <Calendar size={14} /> 📖 Пульт жизни и Расписание
                 </Button>
                 <Button
                     variant={subTab === 'inventory' ? 'primary' : 'outline'}
@@ -208,37 +213,79 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                 </Button>
             </div>
 
-            <div style={{ marginTop: 14 }}>
+            <div style={{ marginTop: 2 }}>
                 {subTab === 'diary' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-                            <ProfileCard snapshot={snapshot} cycleDay={snapshot?.cycle_day || snapshot?.state?.physiology?.cycle_day || 3} />
-                            <InventoryWidget items={inventory} onOpenFull={() => setSubTab('inventory')} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {/* ========================================================= */}
+                        {/* БЛОК 1: ЖИВОЙ СТАТУС + КАРТА СПБ + ИНТЕРАКТИВНЫЕ ПОТРЕБНОСТИ */}
+                        {/* ========================================================= */}
+                        <LiveStatusCard
+                            snapshot={snapshot}
+                            activeTask={inProgressTask}
+                            currentLocation={locId}
+                            weather={snapshot?.weather || snapshot?.state?.weather}
+                            cycleDay={cycleDay}
+                            moneyRubles={rubles}
+                            moneyStars={stars}
+                            recentFacts={snapshot?.facts || timelineEvents}
+                        />
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+                            <SpbMapWidget
+                                currentLocation={locId}
+                                isTransit={Boolean(snapshot?.transit || inProgressTask?.task_type === 'TRAVEL')}
+                                onLocationChanged={loadDayData}
+                                toast={toast}
+                            />
+                            <NeedsPanel
+                                needs={snapshot?.state?.needs || snapshot?.needs || {}}
+                                mood={snapshot?.state?.mood || snapshot?.mood || 6}
+                                location={snapshot?.state?.location_name || snapshot?.location_name || 'Квартира на Петроградке'}
+                                money={`${rubles} ₽`}
+                                onRefresh={loadDayData}
+                                toast={toast}
+                            />
                         </div>
-                        <NeedsPanel
-                            needs={snapshot?.state?.needs || snapshot?.needs || {}}
-                            mood={snapshot?.state?.mood || snapshot?.mood || 'Хорошее'}
-                            location={snapshot?.state?.location_name || snapshot?.location_name || snapshot?.state?.location_id || 'petrogradka_home'}
-                            money={snapshot?.state?.wallet_rubles !== undefined ? `${snapshot.state.wallet_rubles} ₽` : (snapshot?.state?.wallet?.rubles !== undefined ? `${snapshot.state.wallet.rubles} ₽` : (snapshot?.money !== undefined ? `${snapshot.money} ₽` : '70 ₽'))}
-                        />
-                        <CurrentDecision
-                            currentTask={inProgressTask}
-                            currentDecision={snapshot?.currentDecision}
-                            location={snapshot?.location || snapshot?.location_name || snapshot?.state?.location_id}
-                            matchedFact={snapshot?.matchedFact || snapshot?.active_task?.matched_fact || (snapshot?.facts && snapshot.facts[0])}
-                        />
-                        <KanbanBoard
-                            pendingTasks={pendingTasks}
-                            inProgressTask={inProgressTask}
-                            completedTasks={completedTasks}
-                            cancelledTasks={cancelledTasks}
-                        />
+
+                        {/* ========================================================= */}
+                        {/* БЛОК 2: АДАПТИВНЫЙ РЯД (СЛЕВА: NPC + ОБЯЗАТЕЛЬСТВА, СПРАВА: KANBAN) */}
+                        {/* ========================================================= */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                <NpcPanel
+                                    npcs={npcs}
+                                    onActionTriggered={loadDayData}
+                                    toast={toast}
+                                />
+                                <Commitments
+                                    commitments={commitments}
+                                />
+                            </div>
+
+                            <div>
+                                <KanbanBoard
+                                    pendingTasks={pendingTasks}
+                                    inProgressTask={inProgressTask}
+                                    completedTasks={completedTasks}
+                                    cancelledTasks={cancelledTasks}
+                                />
+                            </div>
+                        </div>
+
+                        {/* ========================================================= */}
+                        {/* БЛОК 3: ИТОГ ДНЯ + ХРОНИКА ВРЕМЕНИ + РЮКЗАК */}
+                        {/* ========================================================= */}
                         <DaySummary summary={daySummary} dayDate={dayDate} />
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-                            <Commitments commitments={commitments} />
-                            <NpcPanel npcs={npcs} />
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
+                            <div style={{ gridColumn: '1 / -1' }}>
+                                <Timeline events={timelineEvents} />
+                            </div>
+                            <InventoryWidget
+                                items={inventory}
+                                onOpenFull={() => setSubTab('inventory')}
+                            />
                         </div>
-                        <Timeline events={timelineEvents} />
                     </div>
                 )}
 
