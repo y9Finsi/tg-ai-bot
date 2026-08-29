@@ -10,22 +10,18 @@ import {
 const available = { initiatives: 0, content: 0 };
 const latestText = { event_type: 'MESSAGE' };
 
-test('initiative scheduler respects the 5–60 minute OPEN window and one stage per anchor', () => {
+test('initiative scheduler respects the 15m ignore reminder window', () => {
     assert.equal(chooseInitiativeKind({
-        ageSeconds: 299, state: 'OPEN', latestEvent: latestText,
-        counts: available, contentAvailable: true
+        ageSeconds: 899, state: 'IGNORED', latestEvent: latestText,
+        counts: available
     }), null);
     assert.equal(chooseInitiativeKind({
-        ageSeconds: 300, state: 'OPEN', latestEvent: latestText,
-        counts: available, contentAvailable: true
-    }), 'open');
+        ageSeconds: 900, state: 'IGNORED', latestEvent: latestText,
+        counts: available
+    }), 'ignore_1');
     assert.equal(chooseInitiativeKind({
-        ageSeconds: 3601, state: 'OPEN', latestEvent: latestText,
-        counts: available, contentAvailable: true
-    }), null);
-    assert.equal(chooseInitiativeKind({
-        ageSeconds: 600, state: 'OPEN', latestEvent: latestText,
-        counts: available, contentAvailable: true, stageKinds: ['open']
+        ageSeconds: 7201, state: 'IGNORED', latestEvent: latestText,
+        counts: available
     }), null);
 });
 
@@ -72,49 +68,41 @@ test('toLocalDateString formats Date objects and date strings correctly', async 
     assert.equal(toLocalDateString(null), '');
 });
 
-test('ignore chain follows the original anchor and closes after three hours', () => {
+test('ignore chain follows 15m reminder, 4-day block and ignore_4d', () => {
+    // Меньше 15 минут (900s) — ждём
     assert.equal(chooseInitiativeKind({
-        ageSeconds: 300, state: 'IGNORED', latestEvent: latestText,
+        ageSeconds: 800, state: 'IGNORED', latestEvent: latestText,
+        counts: available
+    }), null);
+
+    // 15 минут (900s) — напоминание ignore_1
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 900, state: 'IGNORED', latestEvent: latestText,
         counts: available
     }), 'ignore_1');
-    assert.equal(chooseInitiativeKind({
-        ageSeconds: 7200, state: 'IGNORED', latestEvent: latestText,
-        counts: available, stageKinds: ['ignore_1']
-    }), 'ignore_2');
-    assert.equal(chooseInitiativeKind({
-        ageSeconds: 10800, state: 'IGNORED', latestEvent: latestText,
-        counts: available, stageKinds: ['ignore_1']
-    }), null);
-});
 
-test('four-hour hybrid initiative falls back to text idle_4h when content is missing or full', () => {
+    // После отправки ignore_1 — блокировка на 4 дня (например через 1 день, 2 дня)
     assert.equal(chooseInitiativeKind({
-        ageSeconds: 14400, state: 'CLOSED', latestEvent: latestText,
-        counts: available, contentAvailable: true
-    }), 'content_4h');
-    assert.equal(chooseInitiativeKind({
-        ageSeconds: 14400, state: 'CLOSED', latestEvent: latestText,
-        counts: available, contentAvailable: false
-    }), 'idle_4h');
-    assert.equal(chooseInitiativeKind({
-        ageSeconds: 14400, state: 'CLOSED', latestEvent: latestText,
-        counts: { initiatives: 0, content: 3 }, contentAvailable: true
-    }), 'idle_4h');
-    assert.equal(chooseInitiativeKind({
-        ageSeconds: 14400, state: 'CLOSED', latestEvent: latestText,
-        counts: { initiatives: 3, content: 0 }, contentAvailable: true
+        ageSeconds: 86400, state: 'IGNORED', latestEvent: latestText,
+        counts: available, stageKinds: ['ignore_1']
     }), null);
+
+    // В новый день во время 4-дневного блока — тоже ничего не шлём
     assert.equal(chooseInitiativeKind({
-        ageSeconds: 14400, state: 'CLOSED', latestEvent: latestText,
-        counts: available, contentAvailable: true, stageKinds: ['content_4h']
+        ageSeconds: 2 * 86400, state: 'IGNORED', latestEvent: latestText,
+        counts: available, stageKinds: ['ignore_1'], newMoscowDay: true
     }), null);
+
+    // Через 4 дня (345600s) — дерзкий пинг ignore_4d
     assert.equal(chooseInitiativeKind({
-        ageSeconds: 14400, state: 'CLOSED', latestEvent: latestText,
-        counts: available, contentAvailable: false, stageKinds: ['idle_4h']
-    }), null);
+        ageSeconds: 345600, state: 'IGNORED', latestEvent: latestText,
+        counts: available, stageKinds: ['ignore_1']
+    }), 'ignore_4d');
+
+    // После отправки ignore_4d — полная остановка
     assert.equal(chooseInitiativeKind({
-        ageSeconds: 14400, state: 'CLOSED', latestEvent: { event_type: 'CONTENT' },
-        counts: available, contentAvailable: true
+        ageSeconds: 5 * 86400, state: 'IGNORED', latestEvent: latestText,
+        counts: available, stageKinds: ['ignore_1', 'ignore_4d']
     }), null);
 });
 

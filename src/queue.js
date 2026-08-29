@@ -221,18 +221,18 @@ async function processInitiativeJob(bot, job) {
     if (initiativeKind === 'new_day' && (latestLocalDate >= todayMsk || hourMsk < 9)) return;
     const anchorAgeSeconds = anchor ? (Date.now() - new Date(anchor.occurred_at).getTime()) / 1000 : 0;
     if (initiativeKind === 'open' && (anchorAgeSeconds < 300 || anchorAgeSeconds > 3600)) return;
-    if (initiativeKind === 'ignore_1' && (anchorAgeSeconds < 300 || anchorAgeSeconds > 3600)) return;
-    if (initiativeKind === 'ignore_2' && (anchorAgeSeconds < 7200 || anchorAgeSeconds >= 10800)) return;
+    if (initiativeKind === 'ignore_1' && (anchorAgeSeconds < 900 || anchorAgeSeconds > 7200)) return;
+    if (initiativeKind === 'ignore_4d') {
+        if (anchorAgeSeconds < 345600) return;
+        if (hourMsk < 11 || hourMsk >= 21) return;
+    }
     if (['content_4h', 'idle_4h'].includes(initiativeKind)) {
         if (anchorAgeSeconds < 14400) return;
         if (hourMsk < 11 || hourMsk >= 21) return;
     }
-    if (['ignore_1', 'ignore_2'].includes(initiativeKind)) {
-        if (anchorAgeSeconds >= 10800) return;
-    }
 
     let candidates = [];
-    if (!['ignore_1', 'ignore_2', 'new_day', 'idle_4h', 'cold_start'].includes(initiativeKind) && counts.content < 3) {
+    if (!['ignore_1', 'ignore_2', 'ignore_4d', 'new_day', 'idle_4h', 'cold_start'].includes(initiativeKind) && counts.content < 3) {
         const rows = await Promise.all(contentCandidateIds.map(id => getLeraContent(id)));
         candidates = rows.filter(item => item?.enabled && item.allow_initiative);
         const sentFlags = await Promise.all(candidates.map(item => wasContentSent(userId, item.id)));

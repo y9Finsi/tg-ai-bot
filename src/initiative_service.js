@@ -46,32 +46,52 @@ export function getEffectiveInitiativeLimit(user, settings = {}) {
         : INITIATIVE_LIMIT;
 }
 
-export function chooseInitiativeKind({ ageSeconds, state, latestEvent, counts, dialogueHasContent, contentAvailable, stageKinds = [], newMoscowDay = false, initiativeLimit = INITIATIVE_LIMIT, isColdStart = false }) {
+export function chooseInitiativeKind({
+    ageSeconds,
+    state,
+    latestEvent,
+    counts,
+    stageKinds = [],
+    newMoscowDay = false,
+    initiativeLimit = INITIATIVE_LIMIT,
+    isColdStart = false
+}) {
     const initiativesAvailable = counts.initiatives < initiativeLimit;
     if (!initiativesAvailable) return null;
+
     if (isColdStart) {
         if (stageKinds.includes('cold_start')) return null;
         return 'cold_start';
     }
-    if (newMoscowDay) return 'new_day';
-    if (state === 'IGNORED') {
-        if (ageSeconds >= 10800) return null;
-        if (ageSeconds >= 7200 && !stageKinds.includes('ignore_2')) return 'ignore_2';
-        if (ageSeconds >= 300 && ageSeconds <= 3600 && !stageKinds.includes('ignore_1')) return 'ignore_1';
+
+    // Если 4-дневный пинг уже был отправлен — больше не пишем пока юзер сам не напишет
+    if (stageKinds.includes('ignore_4d')) {
         return null;
     }
-    if (state === 'OPEN' && ageSeconds >= 300 && ageSeconds <= 3600 && !stageKinds.includes('open')) {
-        return 'open';
-    }
-    if (ageSeconds >= 14400
-        && latestEvent?.event_type !== 'CONTENT'
-        && !stageKinds.includes('content_4h')
-        && !stageKinds.includes('idle_4h')) {
-        if (counts.content < CONTENT_LIMIT && contentAvailable) {
-            return 'content_4h';
+
+    // Если было отправлено напоминание ignore_1 (или open):
+    // Включается блокировка инициатив на 4 дня (345600 сек)
+    if (stageKinds.includes('ignore_1') || stageKinds.includes('open')) {
+        // Если прошло 4+ дня (345600 сек) с момента игнора — отправляем дерзкий пинг ignore_4d
+        if (ageSeconds >= 345600 && !stageKinds.includes('ignore_4d')) {
+            return 'ignore_4d';
         }
-        return 'idle_4h';
+        // В противном случае блокировка на 4 дня (не шлем new_day, не шлем спам)
+        return null;
     }
+
+    // Шаг 1: Новый день — если сегодня ещё не здоровались и юзер не в блоке 4 дней
+    if (newMoscowDay && !stageKinds.includes('new_day')) {
+        return 'new_day';
+    }
+
+    // Шаг 2: Напоминание через 15 минут (900 сек), если юзер проигнорил реплику Леры или утренний new_day
+    if ((state === 'IGNORED' || stageKinds.includes('new_day')) && !stageKinds.includes('ignore_1')) {
+        if (ageSeconds >= 900 && ageSeconds <= 7200) {
+            return 'ignore_1';
+        }
+    }
+
     return null;
 }
 
@@ -145,7 +165,7 @@ export async function enqueuePersonalInitiatives(queue) {
             }
 
             if (newMoscowDay && Number(clock.hour) < NEW_DAY_START_HOUR_MSK) continue;
-            const ignoredAnchorId = ['ignore_1', 'ignore_2'].includes(latestMeta.kind)
+            const ignoredAnchorId = ['ignore_1', 'ignore_2', 'ignore_4d'].includes(latestMeta.kind)
                 ? Number(latestMeta.anchor_event_id)
                 : null;
             const anchor = ignoredAnchorId
