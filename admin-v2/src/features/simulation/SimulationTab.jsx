@@ -248,7 +248,17 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                         </div>
 
                         {/* ========================================================= */}
-                        {/* БЛОК 2: АДАПТИВНЫЙ РЯД (СЛЕВА: NPC + ОБЯЗАТЕЛЬСТВА, СПРАВА: KANBAN) */}
+                        {/* БЛОК 2: ПОЛНОРАЗМЕРНЫЙ KANBAN РАСПИСАНИЯ ДНЯ (4 КОЛОНКИ В РЯД) */}
+                        {/* ========================================================= */}
+                        <KanbanBoard
+                            pendingTasks={pendingTasks}
+                            inProgressTask={inProgressTask}
+                            completedTasks={completedTasks}
+                            cancelledTasks={cancelledTasks}
+                        />
+
+                        {/* ========================================================= */}
+                        {/* БЛОК 3: СОЦИАЛЬНЫЙ КРУГ, ПЛАНЫ И РЮКЗАК */}
                         {/* ========================================================= */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -262,30 +272,19 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                                 />
                             </div>
 
-                            <div>
-                                <KanbanBoard
-                                    pendingTasks={pendingTasks}
-                                    inProgressTask={inProgressTask}
-                                    completedTasks={completedTasks}
-                                    cancelledTasks={cancelledTasks}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                <DaySummary summary={daySummary} dayDate={dayDate} />
+                                <InventoryWidget
+                                    items={inventory}
+                                    onOpenFull={() => setSubTab('inventory')}
                                 />
                             </div>
                         </div>
 
                         {/* ========================================================= */}
-                        {/* БЛОК 3: ИТОГ ДНЯ + ХРОНИКА ВРЕМЕНИ + РЮКЗАК */}
+                        {/* БЛОК 4: ХРОНИКА ВРЕМЕНИ (TIMELINE) */}
                         {/* ========================================================= */}
-                        <DaySummary summary={daySummary} dayDate={dayDate} />
-
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
-                            <div style={{ gridColumn: '1 / -1' }}>
-                                <Timeline events={timelineEvents} />
-                            </div>
-                            <InventoryWidget
-                                items={inventory}
-                                onOpenFull={() => setSubTab('inventory')}
-                            />
-                        </div>
+                        <Timeline events={timelineEvents} />
                     </div>
                 )}
 
