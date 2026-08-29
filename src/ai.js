@@ -600,6 +600,8 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
             initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ДНЕВНАЯ ПАУЗА (ПРОШЛО БОЛЬШЕ 4 ЧАСОВ)!
 Задача Леры: с момента прошлого разговора прошло много времени.
 - Смени тему и поделись своим текущим моментом/вайбом из дня в Питере (кофейня на Петроградке, работа над постом, трек, погода) и ненавязчиво спроси как его день («ты как там?», «как день ваще?», «че делаешь?»).
+- Если хочешь отправить трек/мем/видео — сделай естественную подводку и вызови инструмент send_content. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать в тексте псевдо-теги вроде [ТЕГ: ...] или [ТИП: ...].
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: спрашивать собеседника про задачи Макса/шоурума («ты подумал над постом?», «как там правки?»), как будто это его работа. Собеседник — твой парень, он не решает твои задачи по СММ!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: выдумывать, что собеседник что-то скидывал, присылал ссылку или обещал, если этого нет прямо в тексте последних сообщений!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: продолжать старый конфликт или оправдываться за старые фразы.`;
         } else if (initiativeKind === 'cold_start') {
@@ -611,10 +613,11 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
             initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ВОЗВРАТ К НЕЗАВЕРШЕННОЙ ТЕМЕ / ЮЗЕР ЗАМОЛЧАЛ!
 Задача Леры: диалог прервался недавно на вопросе/просьбе или на полуслове, а собеседник завис.
 - Докинь мысль по теме вопроса или подколи за игнор/молчание: «ты че игноришь?», «алоо ты куда пропал?», «че молчишь?», «ты тут ваще?», «слился что ли?»
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: перекладывать на собеседника задачи Макса/шоурума («ты подумал над постом?») или требовать от него решений по твоей работе!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: использовать кринжовые фразы вроде «ну ты и залип», «я залипла», «да я чет залипла»!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: выдумывать новые прошлые разговоры, обещания, видео/ссылки или сериалы («ты рассказывал про сериал», «ты скинул ссылку»), которых нет в памяти и истории переписки!`;
         } else {
-            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ${initiativeReason || 'естественное продолжение разговора'}\nКАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдумывать прошлые реплики или ссылки пользователя, которых нет в истории переписки.`;
+            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ${initiativeReason || 'естественное продолжение разговора'}\nКАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдумывать прошлые реплики собеседника или спрашивать его про чужие рабочие задачи (Макс, шоурум).`;
         }
 
         messages.push({ role: 'system', content: initiativeDirective });
@@ -839,23 +842,21 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
 
     // 1.5. Формирование динамических схем инструментов для Native Tool Calling
     let formattedTools = [];
-    if (!isInitiative) {
-        try {
-            const activeSchemas = actionRegistry.getSchemas({ userId });
-            formattedTools = activeSchemas.map(s => ({
-                type: 'function',
-                function: {
-                    name: s.name,
-                    description: `${s.title ? s.title + ': ' : ''}${s.description}`,
-                    parameters: s.inputSchema || { type: 'object', properties: {} }
-                }
-            }));
-            if (formattedTools.length > 0) {
-                generationParams.tools = formattedTools;
+    try {
+        const activeSchemas = actionRegistry.getSchemas({ userId });
+        formattedTools = activeSchemas.map(s => ({
+            type: 'function',
+            function: {
+                name: s.name,
+                description: `${s.title ? s.title + ': ' : ''}${s.description}`,
+                parameters: s.inputSchema || { type: 'object', properties: {} }
             }
-        } catch (e) {
-            console.warn('[TOOLS REGISTRY ERROR]:', e.message);
+        }));
+        if (formattedTools.length > 0) {
+            generationParams.tools = formattedTools;
         }
+    } catch (e) {
+        console.warn('[TOOLS REGISTRY ERROR]:', e.message);
     }
 
     // 2. Вызов нейросети через модуль llm_client

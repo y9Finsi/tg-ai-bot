@@ -33,6 +33,8 @@ export function cleanResponseText(rawText) {
     text = text.replace(/\[Лера отправила[\s\S]*?\]/gi, '').trim();
     text = text.replace(/\[Лера переслала[\s\S]*?\]/gi, '').trim();
     text = text.replace(/\[D:[^\]]+\]|\[(?:M|R|PHOTO|VOICE|VIDEO|STICKER|INITIATIVE|REMEMBER|FORGET|MUTE|SYSTEM)[^\]]*\]/gi, '').trim();
+    text = text.replace(/\[?(?:ТЕГ|ТИП|НАЗВАНИЕ|ССЫЛКА|TAG|TYPE|TITLE|LINK|ТРЕК|АУДИО|ВИДЕО|МАТЕРИАЛ):\s*[^\]\n]+\]?/gi, '').trim();
+    text = text.replace(/^(?:ТЕГ|ТИП|НАЗВАНИЕ|ССЫЛКА|TAG|TYPE|TITLE|LINK|ТРЕК|АУДИО|ВИДЕО|МАТЕРИАЛ):\s*.*$/gim, '').trim();
     text = text.replace(/Лера отправила личное фото:?[\s\S]*/gi, '').trim();
     text = text.replace(/Лера переслала пост:?[\s\S]*/gi, '').trim();
     text = text.replace(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fa5\uac00-\ud7af]+/g, '');
