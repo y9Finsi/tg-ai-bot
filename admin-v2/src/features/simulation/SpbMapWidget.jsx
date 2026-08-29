@@ -140,7 +140,6 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
             attributionControl: false
         });
 
-        // 100% Free OpenStreetMap tile layer with dark CSS filter (no watermarks or API keys)
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             className: 'osm-dark-tiles'
@@ -149,6 +148,11 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
         mapInstanceRef.current = map;
+
+        // invalidateSize when rendered inside grid
+        setTimeout(() => {
+            map.invalidateSize();
+        }, 200);
 
         return () => {
             map.remove();
@@ -162,7 +166,6 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
         const L = window.L;
         const map = mapInstanceRef.current;
 
-        // Clear existing markers
         Object.values(markersRef.current).forEach(m => m.remove());
         markersRef.current = {};
 
@@ -179,9 +182,9 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
                         border: ${isCurrent ? '2px solid #60a5fa' : '1px solid rgba(255,255,255,0.25)'};
                         box-shadow: ${isCurrent ? '0 0 16px rgba(59,130,246,0.9)' : '0 4px 10px rgba(0,0,0,0.6)'};
                         color: #ffffff;
-                        padding: 4px 8px;
+                        padding: 3px 7px;
                         border-radius: 20px;
-                        font-size: 11px;
+                        font-size: 10px;
                         font-weight: 600;
                         cursor: pointer;
                         white-space: nowrap;
@@ -189,7 +192,7 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
                     ">
                         <span>${loc.icon}</span>
                         <span>${loc.shortName}</span>
-                        ${isCurrent ? '<span style="width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block;animation:pulse 1.5s infinite;"></span>' : ''}
+                        ${isCurrent ? '<span style="width:5px;height:5px;border-radius:50%;background:#4ade80;display:inline-block;"></span>' : ''}
                     </div>
                 `,
                 iconSize: [0, 0]
@@ -227,13 +230,13 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
     }
 
     return (
-        <Card className="spb-map-card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <Card className="spb-map-card" style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
             <CardHeader
-                eyebrow="Интерактивная карта Санкт-Петербурга"
-                title="Локация и маршрут Леры"
-                description={`Текущая точка: ${activeLoc.name} · ${activeLoc.district}`}
+                eyebrow="Интерактивная карта СПб"
+                title="Локация Леры"
+                description={`Точка: ${activeLoc.name}`}
                 action={
-                    <Badge variant={isTransit ? 'yellow' : 'green'}>
+                    <Badge variant={isTransit ? 'yellow' : 'green'} style={{ fontSize: 10 }}>
                         {isTransit ? '🚶 В пути...' : `📍 ${activeLoc.shortName}`}
                     </Badge>
                 }
@@ -244,7 +247,8 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
                 ref={mapContainerRef}
                 style={{
                     width: '100%',
-                    height: 250,
+                    flex: 1,
+                    minHeight: 180,
                     borderRadius: 8,
                     border: '1px solid var(--border)',
                     overflow: 'hidden',
@@ -258,21 +262,16 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    padding: '8px 12px',
+                    padding: '6px 10px',
                     background: 'rgba(0,0,0,0.25)',
                     borderRadius: 6,
                     border: '1px solid var(--border)',
-                    fontSize: 12
+                    fontSize: 11
                 }}
             >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 18 }}>{previewLoc.icon}</span>
-                    <div>
-                        <strong style={{ color: '#f1f5f9' }}>{previewLoc.name}</strong>
-                        <span style={{ display: 'block', fontSize: 11, color: '#94a3b8' }}>
-                            {previewLoc.description}
-                        </span>
-                    </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 15 }}>{previewLoc.icon}</span>
+                    <strong style={{ color: '#f1f5f9' }}>{previewLoc.name}</strong>
                 </div>
 
                 {previewLoc.id !== currentLocation ? (
@@ -282,10 +281,10 @@ export function SpbMapWidget({ currentLocation = 'petrogradka_home', isTransit =
                         disabled={moving}
                         onClick={() => moveTo(previewLoc.id)}
                     >
-                        <Navigation size={12} /> {moving ? 'Перемещаем...' : 'Отправить сюда'}
+                        <Navigation size={11} /> {moving ? '...' : 'Отправить'}
                     </Button>
                 ) : (
-                    <Badge variant="blue">Лера уже здесь</Badge>
+                    <Badge variant="blue" style={{ fontSize: 9 }}>Здесь</Badge>
                 )}
             </div>
         </Card>

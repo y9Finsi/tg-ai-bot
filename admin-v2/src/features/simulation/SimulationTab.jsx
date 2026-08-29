@@ -216,33 +216,31 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                 {subTab === 'diary' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                         {/* ========================================================= */}
-                        {/* БЛОК 1: ЕДИНЫЙ BENTO ЖИЗНИ, СТАТУСА И ПОТРЕБНОСТЕЙ (БЕЗ ДУБЛЕЙ) */}
+                        {/* БЛОК 1: ГОРИЗОНТАЛЬНЫЙ BENTO (СТАТУС + ПОТРЕБНОСТИ СЛЕВА, КАРТА СПБ СПРАВА) */}
                         {/* ========================================================= */}
-                        <LeraStatusBento
-                            snapshot={snapshot}
-                            activeTask={inProgressTask}
-                            currentLocation={locId}
-                            weather={snapshot?.weather || snapshot?.state?.weather}
-                            cycleDay={cycleDay}
-                            moneyRubles={rubles}
-                            moneyStars={stars}
-                            recentFacts={snapshot?.facts || timelineEvents}
-                            onRefresh={loadDayData}
-                            toast={toast}
-                        />
+                        <div className="bento-top-row" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.45fr) minmax(0, 1fr)', gap: 14, alignItems: 'stretch' }}>
+                            <LeraStatusBento
+                                snapshot={snapshot}
+                                activeTask={inProgressTask}
+                                currentLocation={locId}
+                                weather={snapshot?.weather || snapshot?.state?.weather}
+                                cycleDay={cycleDay}
+                                moneyRubles={rubles}
+                                moneyStars={stars}
+                                recentFacts={snapshot?.facts || timelineEvents}
+                                onRefresh={loadDayData}
+                                toast={toast}
+                            />
+                            <SpbMapWidget
+                                currentLocation={locId}
+                                isTransit={Boolean(snapshot?.transit || inProgressTask?.task_type === 'TRAVEL')}
+                                onLocationChanged={loadDayData}
+                                toast={toast}
+                            />
+                        </div>
 
                         {/* ========================================================= */}
-                        {/* БЛОК 2: ИНТЕРАКТИВНАЯ КАРТА САНКТ-ПЕТЕРБУРГА (LEAFLET OSM) */}
-                        {/* ========================================================= */}
-                        <SpbMapWidget
-                            currentLocation={locId}
-                            isTransit={Boolean(snapshot?.transit || inProgressTask?.task_type === 'TRAVEL')}
-                            onLocationChanged={loadDayData}
-                            toast={toast}
-                        />
-
-                        {/* ========================================================= */}
-                        {/* БЛОК 3: ПОЛНОРАЗМЕРНЫЙ KANBAN (4 КОЛОНКИ В ОДНУ СТРОКУ) */}
+                        {/* БЛОК 2: ПОЛНОРАЗМЕРНЫЙ KANBAN (4 КОЛОНКИ В ОДНУ СТРОКУ) */}
                         {/* ========================================================= */}
                         <KanbanBoard
                             pendingTasks={pendingTasks}
