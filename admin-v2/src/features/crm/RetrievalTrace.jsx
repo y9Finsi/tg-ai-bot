@@ -63,10 +63,17 @@ export function RetrievalTrace({ retrievals = [], loading, error, onRetry }) {
                         </div>
                     )}
 
-                    {item.metadata && (
-                        <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                            <strong>Метаданные:</strong> {JSON.stringify(item.metadata)}
-                        </div>
+                    {item.metadata && Object.keys(item.metadata).length > 0 && (
+                        <details style={{ fontSize: 11, color: '#94a3b8', width: '100%' }}>
+                            <summary style={{ cursor: 'pointer', userSelect: 'none' }}>Технические метаданные ({Object.keys(item.metadata).length} параметров)</summary>
+                            <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                {Object.entries(item.metadata).map(([k, v]) => (
+                                    <span key={k} style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: 4 }}>
+                                        <code>{k}</code>: {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                                    </span>
+                                ))}
+                            </div>
+                        </details>
                     )}
 
                     {item.traces && item.traces.length > 0 && (

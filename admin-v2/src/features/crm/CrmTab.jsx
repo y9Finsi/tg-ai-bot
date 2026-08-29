@@ -8,6 +8,8 @@ import { PromocodesManager } from './PromocodesManager.jsx';
 import { BusinessMetrics } from './BusinessMetrics.jsx';
 import { memoryGraphData } from './MemoryGraph.jsx';
 
+import { BroadcastManager } from './BroadcastManager.jsx';
+
 export function CrmTab({ toast }) {
     const [crmTab, setCrmTab] = useState('clients');
     const [userFilter, setUserFilter] = useState('all');
@@ -237,6 +239,9 @@ export function CrmTab({ toast }) {
                 <Button variant={crmTab === 'metrics' ? 'primary' : 'outline'} size="sm" onClick={() => setCrmTab('metrics')}>
                     <BarChart3 size={14} /> 📊 Метрики бизнеса
                 </Button>
+                <Button variant={crmTab === 'broadcast' ? 'primary' : 'outline'} size="sm" onClick={() => setCrmTab('broadcast')}>
+                    <Users size={14} /> 📡 Рассылка в Telegram
+                </Button>
             </div>
 
             {crmTab === 'clients' && (
@@ -302,6 +307,10 @@ export function CrmTab({ toast }) {
                     onToggleFreeMode={toggleFreeModeGlobal}
                     onResetLimitsAll={resetLimitsAll}
                 />
+            )}
+
+            {crmTab === 'broadcast' && (
+                <BroadcastManager toast={toast} />
             )}
         </div>
     );

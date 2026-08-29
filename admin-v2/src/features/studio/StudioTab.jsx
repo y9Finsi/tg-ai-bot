@@ -6,7 +6,6 @@ import { SandboxPanel } from './SandboxPanel.jsx';
 import { ProductionPromptModules } from './ProductionPromptModules.jsx';
 import { LeraProfileEditor } from './LeraProfileEditor.jsx';
 import { LeraJudgeSettings, DEFAULT_JUDGE_PROMPT } from './LeraJudgeSettings.jsx';
-import { CommentsPromptStudio } from './CommentsPromptStudio.jsx';
 import { ActionsManager } from './ActionsManager.jsx';
 import { LlmPanel } from './LlmPanel.jsx';
 
@@ -15,6 +14,7 @@ export function StudioTab({ toast }) {
 
     const [profilePromptBlocks, setProfilePromptBlocks] = useState({});
     const [profileForm, setProfileForm] = useState({});
+    const [profileVersions, setProfileVersions] = useState([]);
     const [judgeForm, setJudgeForm] = useState({
         mode: 'ENFORCE',
         model: '',
@@ -22,7 +22,6 @@ export function StudioTab({ toast }) {
         maxTokens: 150,
         prompt: DEFAULT_JUDGE_PROMPT
     });
-    const [commentsPrompt, setCommentsPrompt] = useState('');
 
     async function loadStudioData() {
         try {
@@ -32,9 +31,18 @@ export function StudioTab({ toast }) {
             ]);
             if (profileRes.status === 'fulfilled') {
                 setProfileForm(profileRes.value.profile?.profile || {});
+                setProfileVersions(profileRes.value.versions || []);
             }
             if (settingsRes.status === 'fulfilled') {
                 setProfilePromptBlocks(settingsRes.value.routingModules || {});
+                const routing = settingsRes.value.routingSettings || {};
+                setJudgeForm({
+                    mode: routing.judgeMode || 'ENFORCE',
+                    model: routing.judgeModel || '',
+                    timeoutMs: routing.judgeTimeoutMs || 5000,
+                    maxTokens: routing.judgeMaxTokens || 150,
+                    prompt: routing.judgePrompt || DEFAULT_JUDGE_PROMPT
+                });
             }
         } catch (err) {
             if (toast) toast(err.message, 'error');
@@ -68,6 +76,17 @@ export function StudioTab({ toast }) {
                 body: JSON.stringify({ profile: profileForm })
             });
             if (toast) toast('Профиль Леры успешно сохранён');
+            loadStudioData();
+        } catch (err) {
+            if (toast) toast(err.message, 'error');
+        }
+    }
+
+    async function rollbackProfile(versionId) {
+        try {
+            await api(`/api/admin/lera-profile/rollback/${versionId}`, { method: 'POST' });
+            if (toast) toast(`Откат к версии #${versionId} выполнен`);
+            loadStudioData();
         } catch (err) {
             if (toast) toast(err.message, 'error');
         }
@@ -75,15 +94,19 @@ export function StudioTab({ toast }) {
 
     async function saveJudgeSettings() {
         try {
-            if (toast) toast('AI Judge настраивается через Model Matrix');
-        } catch (err) {
-            if (toast) toast(err.message, 'error');
-        }
-    }
-
-    async function saveCommentsPrompt() {
-        try {
-            if (toast) toast('Отдельное хранилище промпта комментариев не подключено');
+            await api('/api/admin/llm-settings', {
+                method: 'POST',
+                body: JSON.stringify({
+                    routingSettings: {
+                        judgeMode: judgeForm.mode,
+                        judgeModel: judgeForm.model,
+                        judgeTimeoutMs: Number(judgeForm.timeoutMs),
+                        judgeMaxTokens: Number(judgeForm.maxTokens),
+                        judgePrompt: judgeForm.prompt
+                    }
+                })
+            });
+            if (toast) toast('Настройки AI Judge успешно сохранены');
         } catch (err) {
             if (toast) toast(err.message, 'error');
         }
@@ -125,13 +148,6 @@ export function StudioTab({ toast }) {
                     <ShieldAlert size={14} /> ⚖️ AI Judge
                 </Button>
                 <Button
-                    variant={activeStudioTab === 'comments-studio' ? 'primary' : 'outline'}
-                    size="sm"
-                    onClick={() => setActiveStudioTab('comments-studio')}
-                >
-                    <MessageSquare size={14} /> 💬 Студия Комментариев
-                </Button>
-                <Button
                     variant={activeStudioTab === 'actions' ? 'primary' : 'outline'}
                     size="sm"
                     onClick={() => setActiveStudioTab('actions')}
@@ -161,7 +177,10 @@ export function StudioTab({ toast }) {
                     <LeraProfileEditor
                         profileForm={profileForm}
                         setProfileForm={setProfileForm}
+                        versions={profileVersions}
+                        onRollback={rollbackProfile}
                         onSave={saveProfile}
+                        toast={toast}
                     />
                 )}
                 {activeStudioTab === 'judge' && (
@@ -170,13 +189,6 @@ export function StudioTab({ toast }) {
                         setJudgeForm={setJudgeForm}
                         onSave={saveJudgeSettings}
                         onResetJudgePrompt={() => setJudgeForm(prev => ({ ...prev, prompt: DEFAULT_JUDGE_PROMPT }))}
-                    />
-                )}
-                {activeStudioTab === 'comments-studio' && (
-                    <CommentsPromptStudio
-                        commentsPrompt={commentsPrompt}
-                        setCommentsPrompt={setCommentsPrompt}
-                        onSave={saveCommentsPrompt}
                     />
                 )}
                 {activeStudioTab === 'actions' && <ActionsManager toast={toast} />}

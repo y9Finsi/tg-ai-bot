@@ -39,63 +39,44 @@ export function MemoryGraph({ graph, loading, error, onRetry }) {
     const [isPanning, setIsPanning] = useState(false);
     const panStartRef = useRef({ x: 0, y: 0 });
 
-    const width = 720;
-    const height = 460;
+    const width = 800;
+    const height = 480;
 
-    // Initialize node positions when input graph changes
+    // Pre-calculate node layout iteratively when graph changes
     useEffect(() => {
         if (!graph?.nodes?.length) {
             setPhysicsNodes([]);
             return;
         }
-        const initialized = initNodePositions(graph.nodes, width, height);
-        setPhysicsNodes(initialized);
-    }, [graph]);
-
-    // Physics animation loop using requestAnimationFrame
-    useEffect(() => {
-        if (!physicsNodes.length) return;
-
-        let animId;
-        let active = true;
-
-        function tick() {
-            if (!active) return;
-            setPhysicsNodes(current => {
-                const { nodes: next, maxMovement } = stepSimulation(current, graph.edges || [], {
-                    width,
-                    height,
-                    repulsion: 4200,
-                    springLength: 100,
-                    springStrength: 0.04,
-                    gravity: 0.02,
-                    damping: 0.82
-                });
-                // Continue simulation if movement is still above 0.05px or a node is being dragged
-                if (maxMovement > 0.05 || draggingNodeId !== null) {
-                    animId = requestAnimationFrame(tick);
-                }
-                return next;
+        let nodes = initNodePositions(graph.nodes, width, height);
+        const edges = graph.edges || [];
+        for (let i = 0; i < 75; i++) {
+            const step = stepSimulation(nodes, edges, {
+                width,
+                height,
+                repulsion: 3800,
+                springLength: 110,
+                springStrength: 0.04,
+                gravity: 0.02,
+                damping: 0.85
             });
+            nodes = step.nodes;
+            if (step.maxMovement < 0.05) break;
         }
-
-        animId = requestAnimationFrame(tick);
-        return () => {
-            active = false;
-            cancelAnimationFrame(animId);
-        };
-    }, [physicsNodes.length, graph?.edges, draggingNodeId]);
+        setPhysicsNodes(nodes);
+    }, [graph]);
 
     // Dragging handlers
     const handleNodeMouseDown = (e, nodeId) => {
         e.stopPropagation();
         setDraggingNodeId(nodeId);
-        const rect = svgRef.current.getBoundingClientRect();
+        const rect = svgRef.current?.getBoundingClientRect();
+        if (!rect) return;
         const clientX = (e.clientX - rect.left - transform.x) / transform.scale;
         const clientY = (e.clientY - rect.top - transform.y) / transform.scale;
 
         setPhysicsNodes(current =>
-            current.map(n => n.id === nodeId ? { ...n, fx: clientX, fy: clientY } : n)
+            current.map(n => n.id === nodeId ? { ...n, fx: clientX, fy: clientY, x: clientX, y: clientY } : n)
         );
     };
 
@@ -120,9 +101,24 @@ export function MemoryGraph({ graph, loading, error, onRetry }) {
 
     const handleMouseUp = () => {
         if (draggingNodeId) {
-            setPhysicsNodes(current =>
-                current.map(n => n.id === draggingNodeId ? { ...n, fx: null, fy: null } : n)
-            );
+            setPhysicsNodes(current => {
+                let nodes = current.map(n => n.id === draggingNodeId ? { ...n, fx: null, fy: null } : n);
+                const edges = graph?.edges || [];
+                for (let i = 0; i < 20; i++) {
+                    const step = stepSimulation(nodes, edges, {
+                        width,
+                        height,
+                        repulsion: 3800,
+                        springLength: 110,
+                        springStrength: 0.04,
+                        gravity: 0.02,
+                        damping: 0.85
+                    });
+                    nodes = step.nodes;
+                    if (step.maxMovement < 0.05) break;
+                }
+                return nodes;
+            });
             setDraggingNodeId(null);
         }
         setIsPanning(false);

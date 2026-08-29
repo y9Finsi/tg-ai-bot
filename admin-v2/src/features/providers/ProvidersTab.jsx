@@ -125,6 +125,23 @@ export function ProvidersTab({ toast }) {
         }
     }
 
+    async function movePriority(providerId, direction) {
+        const idx = providers.findIndex(p => p.id === providerId);
+        if (idx === -1) return;
+        const currentPriority = providers[idx].priority || (idx + 1);
+        const newPriority = Math.max(1, currentPriority + direction);
+        try {
+            await api(`/api/admin/providers/${providerId}/priority`, {
+                method: 'PATCH',
+                body: JSON.stringify({ priority: newPriority })
+            });
+            if (toast) toast('Приоритет провайдера обновлён');
+            loadData();
+        } catch (err) {
+            if (toast) toast(err.message, 'error');
+        }
+    }
+
     async function saveImageSettings() {
         try {
             await api('/api/admin/image-settings', {
@@ -180,7 +197,7 @@ export function ProvidersTab({ toast }) {
                     size="sm"
                     onClick={() => setSubTab('providers')}
                 >
-                    <Layers size={14} /> 🔗 API Провайдеры ({providers.length})
+                    <Layers size={14} /> 🔌 Провайдеры ({providers.length})
                 </Button>
                 <Button
                     variant={subTab === 'image-gen' ? 'primary' : 'outline'}
@@ -215,6 +232,7 @@ export function ProvidersTab({ toast }) {
                         onAddProvider={addProvider}
                         onUpdateProvider={updateProvider}
                         onDeleteProvider={deleteProvider}
+                        onMovePriority={movePriority}
                     />
                 )}
 

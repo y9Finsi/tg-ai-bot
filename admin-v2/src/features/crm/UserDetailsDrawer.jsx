@@ -176,11 +176,74 @@ export function UserDetailsDrawer({
 
                 {dossierTab === 'chat' && (
                     <div className="crm-section chat-section">
-                        <h3>История сообщений (Визуальный Мессенджер)</h3>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                            <h3 style={{ margin: 0 }}>История сообщений (Визуальный Мессенджер)</h3>
+                            <ConfirmAction
+                                title="Сбросить историю диалога?"
+                                description="Контекст переписки пользователя будет очищен, бот начнет диалог с чистого листа."
+                                confirmText="Очистить"
+                                variant="danger"
+                                onConfirm={async () => {
+                                    try {
+                                        await api('/api/admin/chat-history/clear', {
+                                            method: 'POST',
+                                            body: JSON.stringify({ userId: user.id || user.telegram_id })
+                                        });
+                                        onReloadMemoryInsights?.();
+                                    } catch (e) {
+                                        console.error(e);
+                                    }
+                                }}
+                            >
+                                Сбросить чат
+                            </ConfirmAction>
+                        </div>
                         <VirtualizedChatList
                             conversations={conversations}
                             userName={user.first_name || 'Пользователь'}
                         />
+                        <div className="admin-chat-reply-box" style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                            <input
+                                id="admin-direct-msg-input"
+                                placeholder={`Написать ${user.first_name || 'пользователю'} от лица бота...`}
+                                onKeyDown={async (e) => {
+                                    if (e.key === 'Enter' && e.target.value.trim()) {
+                                        const text = e.target.value.trim();
+                                        e.target.value = '';
+                                        try {
+                                            await api('/api/admin/users/send-message', {
+                                                method: 'POST',
+                                                body: JSON.stringify({ userId: user.id || user.telegram_id, text })
+                                            });
+                                            onReloadMemoryInsights?.();
+                                        } catch (err) {
+                                            console.error(err);
+                                        }
+                                    }
+                                }}
+                            />
+                            <Button
+                                size="sm"
+                                onClick={async () => {
+                                    const input = document.getElementById('admin-direct-msg-input');
+                                    if (input && input.value.trim()) {
+                                        const text = input.value.trim();
+                                        input.value = '';
+                                        try {
+                                            await api('/api/admin/users/send-message', {
+                                                method: 'POST',
+                                                body: JSON.stringify({ userId: user.id || user.telegram_id, text })
+                                            });
+                                            onReloadMemoryInsights?.();
+                                        } catch (err) {
+                                            console.error(err);
+                                        }
+                                    }
+                                }}
+                            >
+                                Отправить
+                            </Button>
+                        </div>
                     </div>
                 )}
 

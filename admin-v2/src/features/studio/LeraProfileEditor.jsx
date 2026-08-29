@@ -1,18 +1,51 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardHeader } from '@/components/ui/card.jsx';
 import { Button } from '@/components/ui/button.jsx';
+import { api } from '@/lib/api.js';
 
 export function LeraProfileEditor({
     profileForm,
     setProfileForm,
-    onSave
+    versions = [],
+    onRollback,
+    onSave,
+    toast
 }) {
+    const [selectedVersionId, setSelectedVersionId] = useState('');
+    const [previewPrompt, setPreviewPrompt] = useState(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
+
+    async function handlePreview() {
+        setPreviewLoading(true);
+        try {
+            const res = await api('/api/admin/lera-profile/preview', {
+                method: 'POST',
+                body: JSON.stringify({ profile: profileForm })
+            });
+            setPreviewPrompt(res.rendered_prompt || res.preview || 'Превью сформировано');
+        } catch (err) {
+            toast?.(err.message, 'error');
+        } finally {
+            setPreviewLoading(false);
+        }
+    }
+
     return (
         <Card>
             <CardHeader
                 eyebrow="Паспорт персонажа"
                 title="Профиль и Биография Леры"
                 description="Базовые константы личности: возраст, город, учёба, интересы и характер."
+                action={
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <Button size="sm" variant="outline" onClick={handlePreview} disabled={previewLoading}>
+                            Предпросмотр промпта
+                        </Button>
+                        <Button size="sm" onClick={onSave}>
+                            Сохранить профиль
+                        </Button>
+                    </div>
+                }
             />
             <div className="channel-settings-grid">
                 <label>
@@ -69,18 +102,54 @@ export function LeraProfileEditor({
                         onChange={e => setProfileForm({ ...profileForm, facts: e.target.value })}
                     />
                 </label>
-                <label className="classifier-prompt-editor">
-                    Канонический профиль
-                    <textarea
-                        value="Изменения сохраняются новой версией профиля и используются в chat-промпте."
-                        readOnly
-                        rows={3}
-                    />
-                </label>
             </div>
 
+            {previewPrompt && (
+                <div style={{ marginTop: 14, padding: 12, background: 'rgba(0,0,0,0.3)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <strong style={{ fontSize: 13, color: '#60a5fa' }}>Итоговый собранный системный промпт Леры:</strong>
+                        <Button size="xs" variant="outline" onClick={() => setPreviewPrompt(null)}>Скрыть</Button>
+                    </div>
+                    <pre style={{ fontSize: 11, background: 'rgba(0,0,0,0.4)', padding: 10, borderRadius: 6, whiteSpace: 'pre-wrap', maxHeight: 250, overflowY: 'auto', color: '#cbd5e1' }}>
+                        {previewPrompt}
+                    </pre>
+                </div>
+            )}
+
+            {versions.length > 0 && (
+                <div style={{ marginTop: 16, padding: 12, background: 'rgba(0,0,0,0.2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 8 }}>
+                        История версий биографии ({versions.length} изменений):
+                    </span>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <select
+                            value={selectedVersionId}
+                            onChange={e => setSelectedVersionId(e.target.value)}
+                            style={{ flex: 1, minWidth: 200 }}
+                        >
+                            <option value="">Выберите версию для отката...</option>
+                            {versions.map(v => (
+                                <option key={v.id} value={v.id}>
+                                    Версия #{v.id} · {new Date(v.created_at).toLocaleString('ru-RU')}
+                                </option>
+                            ))}
+                        </select>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!selectedVersionId}
+                            onClick={() => {
+                                if (selectedVersionId) onRollback?.(selectedVersionId);
+                            }}
+                        >
+                            Откатить к выбранной версии
+                        </Button>
+                    </div>
+                </div>
+            )}
+
             <div className="channel-action-bar" style={{ marginTop: 16 }}>
-                <span>Сохраняется в профиль персонажа и используется при сборке промптов.</span>
+                <span>Все правки версионируются в базе данных и автоматически применяются в системный промпт Леры.</span>
                 <Button onClick={onSave}>Сохранить профиль</Button>
             </div>
         </Card>

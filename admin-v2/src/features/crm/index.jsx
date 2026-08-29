@@ -9,5 +9,6 @@ export * from './RelationshipEditor.jsx';
 export * from './VirtualizedChatList.jsx';
 export * from './PromocodesManager.jsx';
 export * from './BusinessMetrics.jsx';
+export * from './BroadcastManager.jsx';
 
 export { CrmTab as default } from './CrmTab.jsx';

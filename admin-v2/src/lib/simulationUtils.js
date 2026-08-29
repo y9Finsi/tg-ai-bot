@@ -9,23 +9,38 @@ export const TASK_NAMES = {
     EMERGENCY_EAT: 'Аварийная еда',
     EAT_FOOD_HOME: 'Еда дома',
     BUY_FOOD_STORE: 'Покупка еды',
-    WORK_LAPTOP: 'Работа',
-    TRAVEL: 'Дорога',
+    BUY_GROCERIES: 'Покупка продуктов',
+    WORK_LAPTOP: 'Работа за ноутбуком',
+    WORK_SHOWROOM: 'Работа в шоуруме',
+    STUDY_SPBGIK: 'Учеба в СПбГИК',
+    TRAVEL: 'Дорога / Транзит',
+    TRANSIT: 'В пути',
     SOCIAL_NASTYA: 'Встреча с Настей',
     LEISURE_HOME: 'Отдых дома',
     IDLE_HOME_REST: 'Пауза дома',
     GO_TO_BATHROOM: 'Туалет',
     SHOWER_HOME: 'Душ',
-    PREPARE_FOR_OUTING: 'Сборы'
+    PREPARE_FOR_OUTING: 'Сборы',
+    WALK_PETROGRADKA: 'Прогулка по Петроградке',
+    COFFEE_PAUSE: 'Кофе-брейк',
+    READ_BOOK: 'Чтение книги',
+    CHAT_PHONE: 'Разговор по телефону',
+    SHOPPING_SHOWROOM: 'Шопинг',
+    MEETING_FRIENDS: 'Встреча с друзьями',
+    DINNER_OUT: 'Ужин в кафе',
+    BAR_EVENING: 'Вечер в баре',
+    EVENING_REST: 'Вечерний отдых',
+    WAKE_UP: 'Подъём',
+    MORNING_ROUTINE: 'Утренние сборы'
 };
 
 export const EVENT_NAMES = {
-    TASK_COMPLETED: 'Задача завершена',
+    TASK_COMPLETED: 'Завершение задачи',
     ROOT_TASK_COMPLETED: 'Цепочка завершена',
     INTERRUPT_ACCEPTED: 'Прерывание',
-    RANDOM_EVENT: 'Случайное событие',
-    WORK_REQUEST_CREATED: 'Макс прислал работу',
-    SOCIAL_MEETING_PROPOSED: 'Настя предложила встречу',
+    RANDOM_EVENT: 'Событие дня',
+    WORK_REQUEST_CREATED: 'Заказ от Макса',
+    SOCIAL_MEETING_PROPOSED: 'Настя зовёт на встречу',
     COMMITMENT_MISSED: 'План пропущен'
 };
 
@@ -57,11 +72,29 @@ export const NEED_LABELS = {
 };
 
 export function taskName(value) {
-    return TASK_NAMES[value] || String(value || 'Событие').replaceAll('_', ' ').toLowerCase();
+    if (!value) return 'Активность';
+    if (typeof value === 'object') {
+        value = value.taskType || value.task_type || value.payload?.taskType || value.type || value.label;
+    }
+    const clean = String(value).replace(/^Завершено:\s*/, '').trim();
+    if (TASK_NAMES[clean]) return TASK_NAMES[clean];
+    const words = clean.replaceAll('_', ' ').toLowerCase();
+    return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-export function eventName(value) {
-    return EVENT_NAMES[value] || String(value || 'Событие').replaceAll('_', ' ').toLowerCase();
+export function eventName(event) {
+    if (!event) return 'Событие';
+    if (typeof event === 'object') {
+        const taskType = event.taskType || event.task_type || event.payload?.taskType;
+        if (taskType) return taskName(taskType);
+        if (event.label) return String(event.label).replace(/^Завершено:\s*/, '');
+        if (event.type && EVENT_NAMES[event.type]) return EVENT_NAMES[event.type];
+        return taskName(event.type || event.event || 'Событие');
+    }
+    if (EVENT_NAMES[event]) return EVENT_NAMES[event];
+    if (TASK_NAMES[event]) return TASK_NAMES[event];
+    const words = String(event).replaceAll('_', ' ').toLowerCase();
+    return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 export function formatLocation(loc) {

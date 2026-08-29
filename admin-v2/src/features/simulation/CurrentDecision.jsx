@@ -28,9 +28,20 @@ export function CurrentDecision({ currentTask, currentDecision, location, matche
                     </div>
                 }
             />
-            {currentDecision?.effects && (
-                <div style={{ marginTop: 8, fontSize: 12, color: '#94a3b8' }}>
-                    <strong>Ожидаемый эффект:</strong> {JSON.stringify(currentDecision.effects)}
+            {matchedFact && (
+                <div style={{ marginTop: 10, padding: '6px 10px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: 6, border: '1px solid rgba(59, 130, 246, 0.25)', fontSize: 12, color: '#cbd5e1' }}>
+                    <span style={{ color: 'var(--blue)', fontWeight: 600 }}>💡 Подтверждённый факт: </span>
+                    {typeof matchedFact === 'object' ? matchedFact.text || matchedFact.fact || JSON.stringify(matchedFact) : matchedFact}
+                </div>
+            )}
+            {currentDecision?.effects && typeof currentDecision.effects === 'object' && (
+                <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, color: '#94a3b8' }}>Ожидаемый эффект:</span>
+                    {Object.entries(currentDecision.effects).map(([k, v]) => (
+                        <Badge key={k} variant={Number(v) < 0 ? 'green' : 'yellow'} style={{ fontSize: 11 }}>
+                            {k}: {Number(v) > 0 ? `+${v}` : v}
+                        </Badge>
+                    ))}
                 </div>
             )}
         </Card>

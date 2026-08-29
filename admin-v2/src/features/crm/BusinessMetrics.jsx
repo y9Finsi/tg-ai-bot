@@ -22,19 +22,22 @@ export function BusinessMetrics({
                 <div className="crm-metrics-grid">
                     <div className="crm-metric-card">
                         <span>👥 Всего пользователей</span>
-                        <strong>{adminStats?.stats?.totalUsers ?? usersCount}</strong>
+                        <strong>{adminStats?.stats?.total_users ?? adminStats?.stats?.totalUsers ?? usersCount}</strong>
                     </div>
                     <div className="crm-metric-card">
-                        <span>⚡ Активные сегодня</span>
-                        <strong>{adminStats?.stats?.activeToday ?? '—'}</strong>
+                        <span>⚡ Активные (24ч)</span>
+                        <strong>{adminStats?.stats?.active_24h ?? adminStats?.stats?.activeToday ?? '0'}</strong>
                     </div>
                     <div className="crm-metric-card">
                         <span>💎 Premium подписчики</span>
-                        <strong>{premiumCount}</strong>
+                        <strong>{adminStats?.stats?.premium_users ?? premiumCount}</strong>
                     </div>
                     <div className="crm-metric-card">
-                        <span>💰 Доход Stars & Рубли</span>
-                        <strong>{adminStats?.stats?.totalRevenue ?? '⭐ / ₽'}</strong>
+                        <span>💰 Доход (Рубли / Stars)</span>
+                        <strong>
+                            {adminStats?.stats?.total_revenue_rub ? `${Number(adminStats.stats.total_revenue_rub).toLocaleString('ru-RU')} ₽` : '0 ₽'}
+                            {adminStats?.stats?.total_revenue_stars ? ` · ${adminStats.stats.total_revenue_stars} ⭐` : ''}
+                        </strong>
                     </div>
                 </div>
             </Card>

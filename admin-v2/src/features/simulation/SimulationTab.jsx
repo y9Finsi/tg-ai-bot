@@ -177,14 +177,20 @@ export function SimulationTab({ dayDate: externalDayDate, setDayDate: externalSe
                 {subTab === 'diary' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-                            <ProfileCard snapshot={snapshot} cycleDay={snapshot?.cycle_day || 3} />
+                            <ProfileCard snapshot={snapshot} cycleDay={snapshot?.cycle_day || snapshot?.state?.physiology?.cycle_day || 3} />
                             <InventoryWidget items={inventory} onOpenFull={() => setSubTab('inventory')} />
                         </div>
-                        <NeedsPanel needs={snapshot?.needs || {}} />
+                        <NeedsPanel
+                            needs={snapshot?.needs || snapshot?.state?.physiology || {}}
+                            mood={snapshot?.mood || snapshot?.state?.mood || 'Хорошее'}
+                            location={snapshot?.location || snapshot?.location_name || snapshot?.state?.location_id || 'petrogradka_home'}
+                            money={snapshot?.money !== undefined ? `${snapshot.money} ₽` : (snapshot?.state?.money !== undefined ? `${snapshot.state.money} ₽` : '1 500 ₽')}
+                        />
                         <CurrentDecision
                             currentTask={inProgressTask}
                             currentDecision={snapshot?.currentDecision}
-                            location={snapshot?.location}
+                            location={snapshot?.location || snapshot?.location_name || snapshot?.state?.location_id}
+                            matchedFact={snapshot?.matchedFact || snapshot?.active_task?.matched_fact || (snapshot?.facts && snapshot.facts[0])}
                         />
                         <KanbanBoard
                             pendingTasks={pendingTasks}

@@ -2,7 +2,6 @@ export * from './StudioTab.jsx';
 export * from './ProductionPromptModules.jsx';
 export * from './LeraProfileEditor.jsx';
 export * from './LeraJudgeSettings.jsx';
-export * from './CommentsPromptStudio.jsx';
 export * from './ActionsManager.jsx';
 export * from './SandboxPanel.jsx';
 export * from './LlmPanel.jsx';

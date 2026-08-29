@@ -5,7 +5,7 @@ import { formatTime } from '@/lib/dateUtils.js';
 
 export function TaskCard({ task, onClick }) {
     if (!task) return null;
-    const name = taskName(task.taskType || task.type);
+    const name = taskName(task);
     const source = taskSource(task);
 
     return (
@@ -48,7 +48,7 @@ export function TaskDetailModal({ task, onClose }) {
         <div className="dialog-overlay" onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div className="dialog-content" onClick={e => e.stopPropagation()} style={{ background: '#0f172a', padding: 20, borderRadius: 8, maxWidth: 450, width: '90%', border: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <h3 style={{ margin: 0, fontSize: 16 }}>{taskName(task.taskType || task.type)}</h3>
+                    <h3 style={{ margin: 0, fontSize: 16 }}>{taskName(task)}</h3>
                     <Badge variant="blue">{taskSource(task)}</Badge>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, color: '#cbd5e1' }}>
@@ -56,7 +56,16 @@ export function TaskDetailModal({ task, onClose }) {
                     <div><strong>Статус:</strong> {task.status || 'ACTIVE'}</div>
                     {task.startTime && <div><strong>Время:</strong> {formatTime(task.startTime)} — {formatTime(task.endTime)}</div>}
                     {task.explanation && <div><strong>Причина:</strong> {task.explanation}</div>}
-                    {task.effects && <div><strong>Эффекты:</strong> {JSON.stringify(task.effects)}</div>}
+                    {task.effects && typeof task.effects === 'object' && (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
+                            <strong>Эффекты:</strong>
+                            {Object.entries(task.effects).map(([k, v]) => (
+                                <Badge key={k} variant={Number(v) < 0 ? 'green' : 'yellow'} style={{ fontSize: 11 }}>
+                                    {k}: {Number(v) > 0 ? `+${v}` : v}
+                                </Badge>
+                            ))}
+                        </div>
+                    )}
                 </div>
                 <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
                     <button className="ui-button ui-button-primary" onClick={onClose}>Закрыть</button>

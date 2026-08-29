@@ -5,38 +5,14 @@ import { calculateVirtualWindow } from '@/lib/virtualizer.js';
 import { cn } from '@/lib/utils.js';
 
 export function VirtualizedChatList({ conversations = [], userName = 'Пользователь' }) {
+    const messagesEndRef = useRef(null);
     const containerRef = useRef(null);
-    const [scrollTop, setScrollTop] = useState(0);
-    const [viewportHeight, setViewportHeight] = useState(480);
-
-    const itemHeight = 90; // Average message bubble height in px
 
     useEffect(() => {
-        if (containerRef.current) {
-            setViewportHeight(containerRef.current.clientHeight || 480);
-            // Scroll to bottom on initial load
-            containerRef.current.scrollTop = containerRef.current.scrollHeight;
+        if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
     }, [conversations.length]);
-
-    const handleScroll = (e) => {
-        setScrollTop(e.currentTarget.scrollTop);
-    };
-
-    const {
-        startIndex,
-        endIndex,
-        topSpacerHeight,
-        bottomSpacerHeight
-    } = calculateVirtualWindow({
-        totalCount: conversations.length,
-        itemHeight,
-        viewportHeight,
-        scrollTop,
-        overscan: 6
-    });
-
-    const visibleItems = conversations.slice(startIndex, endIndex);
 
     if (!conversations.length) {
         return <div className="empty-state">История переписки пуста.</div>;
@@ -46,37 +22,42 @@ export function VirtualizedChatList({ conversations = [], userName = 'Польз
         <div
             ref={containerRef}
             className="crm-chat-window virtualized-chat-window"
-            onScroll={handleScroll}
-            style={{ overflowY: 'auto', maxHeight: 520, position: 'relative', padding: 12 }}
+            style={{ overflowY: 'auto', maxHeight: 520, position: 'relative', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}
         >
-            {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
-
-            {visibleItems.map((conv, idx) => {
+            {conversations.map((conv, idx) => {
                 const isUser = conv.role === 'user' || conv.kind === 'user_text';
-                const key = conv.id ?? `msg-${startIndex + idx}`;
+                const key = conv.id ?? `msg-${idx}`;
+                const text = conv.text || conv.user_text || conv.parsed_response || conv.raw_response || '—';
 
                 return (
                     <div
                         className={cn('chat-bubble-row', isUser ? 'user-side' : 'lera-side')}
                         key={key}
                     >
-                        <div className="chat-bubble">
-                            <div className="chat-bubble-header">
-                                <strong>{isUser ? (userName || 'Пользователь') : 'Лера (Бот)'}</strong>
-                                <span>{formatTime(conv.created_at)}</span>
+                        <div className="chat-bubble" style={{ maxWidth: '85%', wordBreak: 'break-word' }}>
+                            <div className="chat-bubble-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 8 }}>
+                                <strong style={{ fontSize: 12 }}>{isUser ? (userName || 'Пользователь') : 'Лера (Бот)'}</strong>
+                                <span style={{ fontSize: 10, opacity: 0.7 }}>{formatTime(conv.created_at)}</span>
                             </div>
-                            <p>{conv.text || conv.user_text || conv.parsed_response || '—'}</p>
-                            {conv.model && (
-                                <Badge variant="muted" className="chat-model-badge">
-                                    {conv.model}
-                                </Badge>
-                            )}
+                            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{text}</p>
+                            <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                {conv.model && (
+                                    <Badge variant="muted" className="chat-model-badge" style={{ fontSize: 10 }}>
+                                        {conv.model}
+                                    </Badge>
+                                )}
+                                {conv.latency_ms && (
+                                    <span style={{ fontSize: 10, opacity: 0.6 }}>{conv.latency_ms} мс</span>
+                                )}
+                                {conv.event_type && conv.event_type !== 'MESSAGE' && (
+                                    <Badge variant="blue" style={{ fontSize: 10 }}>{conv.event_type}</Badge>
+                                )}
+                            </div>
                         </div>
                     </div>
                 );
             })}
-
-            {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
+            <div ref={messagesEndRef} style={{ height: 1 }} />
         </div>
     );
 }

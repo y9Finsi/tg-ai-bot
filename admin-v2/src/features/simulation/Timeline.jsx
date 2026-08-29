@@ -70,8 +70,12 @@ export function Timeline({ events = [], onOpenTaskDetail }) {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                     {isInterrupt ? <AlertTriangle size={15} style={{ color: '#f87171' }} /> : <Clock size={15} />}
                                     <div>
-                                        <strong>{eventName(evt.type || evt.event) || taskName(evt.taskType)}</strong>
-                                        <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <strong style={{ fontSize: 13 }}>{eventName(evt)}</strong>
+                                            {isInterrupt && <Badge variant="red">Прерывание</Badge>}
+                                            {evt.type === 'TASK_COMPLETED' && <Badge variant="green">Завершено</Badge>}
+                                        </div>
+                                        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
                                             {evt.description || evt.explanation || evt.payload?.text || '—'}
                                         </div>
                                     </div>

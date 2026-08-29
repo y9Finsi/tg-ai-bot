@@ -77,57 +77,79 @@ export function MediaCatalog({
                 <CardHeader
                     eyebrow="Музыка, TikTok и ссылки"
                     title="Добавить материал"
-                    description="Посты из выбранного канала появляются здесь автоматически."
+                    description="Посты из выбранного канала появляются здесь автоматически, либо добавьте их вручную."
                 />
-                <div className="photo-upload-form">
-                    <label>
-                        Тип
-                        <select
-                            value={contentForm.telegram_type}
-                            onChange={event => setContentForm({ ...contentForm, telegram_type: event.target.value })}
-                        >
-                            {['link', 'audio', 'video', 'animation', 'document', 'photo'].map(type => (
-                                <option key={type} value={type}>{type}</option>
-                            ))}
-                        </select>
-                    </label>
-                    <input
-                        value={contentForm.telegram_file_id}
-                        placeholder="Telegram file_id для нативного медиа"
-                        onChange={event => setContentForm({ ...contentForm, telegram_file_id: event.target.value })}
-                    />
-                    <input
-                        value={contentForm.url}
-                        placeholder="URL для link"
-                        onChange={event => setContentForm({ ...contentForm, url: event.target.value })}
-                    />
-                    <input
-                        value={contentForm.description}
-                        placeholder="Короткое описание для Леры"
-                        onChange={event => setContentForm({ ...contentForm, description: event.target.value })}
-                    />
-                    <label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                        <label style={{ fontSize: 12 }}>
+                            Тип контента
+                            <select
+                                value={contentForm.telegram_type}
+                                onChange={event => setContentForm({ ...contentForm, telegram_type: event.target.value })}
+                                style={{ marginTop: 4 }}
+                            >
+                                {['link', 'audio', 'video', 'animation', 'document', 'photo'].map(type => (
+                                    <option key={type} value={type}>{type}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <label style={{ fontSize: 12 }}>
+                            Ссылка (URL)
+                            <input
+                                value={contentForm.url}
+                                placeholder="https://..."
+                                onChange={event => setContentForm({ ...contentForm, url: event.target.value })}
+                                style={{ marginTop: 4 }}
+                            />
+                        </label>
+                        <label style={{ fontSize: 12 }}>
+                            Telegram file_id (для медиа)
+                            <input
+                                value={contentForm.telegram_file_id}
+                                placeholder="BAACAgIAAxkBAAI..."
+                                onChange={event => setContentForm({ ...contentForm, telegram_file_id: event.target.value })}
+                                style={{ marginTop: 4 }}
+                            />
+                        </label>
+                    </div>
+
+                    <label style={{ fontSize: 12 }}>
+                        Описание контекста для Леры (О чем этот материал)
                         <input
-                            type="checkbox"
-                            checked={contentForm.allow_in_dialogue}
-                            onChange={event => setContentForm({ ...contentForm, allow_in_dialogue: event.target.checked })}
-                        /> В диалоге
+                            value={contentForm.description}
+                            placeholder="Например: Любимый трек для прогулок под дождем / смешной тир-лист"
+                            onChange={event => setContentForm({ ...contentForm, description: event.target.value })}
+                            style={{ marginTop: 4 }}
+                        />
                     </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={contentForm.allow_initiative}
-                            onChange={event => setContentForm({ ...contentForm, allow_initiative: event.target.checked })}
-                        /> В инициативе
-                    </label>
-                    <label>
-                        <input
-                            type="checkbox"
-                            checked={contentForm.allow_channel}
-                            onChange={event => setContentForm({ ...contentForm, allow_channel: event.target.checked })}
-                        /> В канале ТГК (#тгк)
-                    </label>
-                    <Button onClick={handleAdd}>Добавить</Button>
+
+                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                            <input
+                                type="checkbox"
+                                checked={contentForm.allow_in_dialogue}
+                                onChange={event => setContentForm({ ...contentForm, allow_in_dialogue: event.target.checked })}
+                            /> Разрешить в диалоге
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                            <input
+                                type="checkbox"
+                                checked={contentForm.allow_initiative}
+                                onChange={event => setContentForm({ ...contentForm, allow_initiative: event.target.checked })}
+                            /> В инициативе Леры
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                            <input
+                                type="checkbox"
+                                checked={contentForm.allow_channel}
+                                onChange={event => setContentForm({ ...contentForm, allow_channel: event.target.checked })}
+                            /> В канале ТГК (#тгк)
+                        </label>
+                    </div>
+
+                    <div style={{ marginTop: 6 }}>
+                        <Button onClick={handleAdd}>Добавить материал</Button>
+                    </div>
                 </div>
             </Card>
 

@@ -36,7 +36,7 @@ export const NAV_ITEMS = [
         hash: '#content',
         title: 'Контент и Медиа',
         icon: Image,
-        description: 'Фото, CosyVoice 3, каталог'
+        description: 'Фото Леры, мастер-реф, каталог'
     },
     {
         route: 'simulation',

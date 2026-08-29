@@ -9,13 +9,18 @@ import { formatTime } from '@/lib/dateUtils.js';
 
 export function ErrorsAuditTab({ toast }) {
     const [errors, setErrors] = useState([]);
+    const [diagnostics, setDiagnostics] = useState(null);
     const [loading, setLoading] = useState(false);
 
     async function loadErrors() {
         setLoading(true);
         try {
-            const res = await api('/api/admin/errors?limit=50');
-            setErrors(res.errors || res.items || []);
+            const [logsRes, diagRes] = await Promise.all([
+                api('/api/admin/logs?level=ERROR'),
+                api('/api/admin/diagnostics').catch(() => null)
+            ]);
+            setErrors(logsRes.logs || []);
+            if (diagRes) setDiagnostics(diagRes);
         } catch (err) {
             setErrors([]);
             if (toast) toast(err.message, 'error');
@@ -24,11 +29,11 @@ export function ErrorsAuditTab({ toast }) {
         }
     }
 
-    async function clearAllErrors() {
+    async function pruneLogs() {
         try {
-            await api('/api/admin/errors/clear', { method: 'POST' });
-            setErrors([]);
-            toast?.('Журнал ошибок очищен');
+            await api('/api/admin/diagnostics/prune', { method: 'POST', body: JSON.stringify({ days: 14 }) });
+            toast?.('Журнал логов старше 14 дней очищен');
+            loadErrors();
         } catch (err) {
             toast?.(err.message, 'error');
         }
@@ -50,17 +55,26 @@ export function ErrorsAuditTab({ toast }) {
                             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Обновить
                         </Button>
                         <ConfirmAction
-                            title="Очистить журнал ошибок?"
-                            description="Все накопленные записи об ошибках будут безвозвратно удалены."
+                            title="Очистить устаревшие логи?"
+                            description="Удалить логи старше 14 дней для освобождения места в базе данных."
                             confirmText="Очистить"
                             variant="danger"
-                            onConfirm={clearAllErrors}
+                            onConfirm={pruneLogs}
                         >
-                            <Trash2 size={13} /> Очистить все
+                            <Trash2 size={13} /> Ротация логов
                         </ConfirmAction>
                     </div>
                 }
             />
+
+            {diagnostics && (
+                <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap', fontSize: 12, padding: '8px 12px', background: 'rgba(0,0,0,0.3)', borderRadius: 6, border: '1px solid var(--border)' }}>
+                    <span>БД: <strong>{diagnostics.db?.ok ? `OK (${diagnostics.db.latencyMs} мс)` : 'Сбой'}</strong></span>
+                    <span>Redis: <strong>{diagnostics.redis?.ok ? 'OK' : 'Отключен'}</strong></span>
+                    <span>Записей в prompt_logs: <strong>{diagnostics.rows?.prompt_logs ?? 0}</strong></span>
+                    <span>Uptime: <strong>{Math.floor((diagnostics.uptimeSeconds || 0) / 3600)} ч</strong></span>
+                </div>
+            )}
 
             <div className="errors-list" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
                 {errors.length ? (

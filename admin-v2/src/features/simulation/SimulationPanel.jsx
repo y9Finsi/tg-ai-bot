@@ -59,6 +59,52 @@ export function SimulationPanel({ toast }) {
                         </strong>
                     </div>
                 </div>
+
+                <div className="channel-action-bar" style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                            try {
+                                const res = await api('/api/admin/radiant/queue/repair', { method: 'POST' });
+                                toast?.(`Очередь восстановлена: исправлено ${res.repaired || 0} задач`);
+                                loadStatus();
+                            } catch (e) {
+                                toast?.(e.message, 'error');
+                            }
+                        }}
+                    >
+                        🛠️ Починить очередь задач
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                            try {
+                                const res = await api('/api/admin/radiant/telegram-day-smoke', { method: 'POST' });
+                                toast?.(`Smoke-тест завершён: ${res.success ? 'Успешно' : 'Сбой'}`);
+                            } catch (e) {
+                                toast?.(e.message, 'error');
+                            }
+                        }}
+                    >
+                        🧪 Smoke-тест диалогов (24ч)
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                            try {
+                                await api('/api/admin/diagnostics/prune', { method: 'POST', body: JSON.stringify({ days: 14 }) });
+                                toast?.('Логи старше 14 дней очищены');
+                            } catch (e) {
+                                toast?.(e.message, 'error');
+                            }
+                        }}
+                    >
+                        🧹 Ротация старых логов
+                    </Button>
+                </div>
             </Card>
         </div>
     );

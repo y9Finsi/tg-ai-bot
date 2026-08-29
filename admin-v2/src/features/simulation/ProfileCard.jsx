@@ -1,7 +1,7 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge.jsx';
 import { Card } from '@/components/ui/card.jsx';
-import { getCycleMeta, formatLocation } from '@/lib/simulationUtils.js';
+import { getCycleMeta, formatLocation, taskName } from '@/lib/simulationUtils.js';
 
 export function StatCard({ label, value, hint, tone = 'blue' }) {
     return (
@@ -16,7 +16,8 @@ export function StatCard({ label, value, hint, tone = 'blue' }) {
 export function ProfileCard({ snapshot, cycleDay = 3 }) {
     const cycle = getCycleMeta(cycleDay);
     const loc = snapshot?.location || snapshot?.currentLocation || 'petrogradka_home';
-    const activity = snapshot?.currentTask?.taskType || snapshot?.current_activity || 'Отдых дома';
+    const rawActivity = snapshot?.currentTask?.taskType || snapshot?.current_activity || snapshot?.state?.current_activity || 'IDLE_HOME_REST';
+    const activity = taskName(rawActivity);
 
     return (
         <Card className="profile-widget-card" style={{ padding: 14 }}>

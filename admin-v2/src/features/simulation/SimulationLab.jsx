@@ -143,7 +143,16 @@ export function SimulationLab({ onRefresh, readOnly = false, toast }) {
                             <Button size="sm" onClick={runComparison} disabled={runningComparison || readOnly}>
                                 <Sparkles size={13} /> Запустить сравнение
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => downloadTextFile('simulation-export.json', JSON.stringify({ exported_at: new Date().toISOString() }, null, 2))}>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => downloadTextFile('simulation-export.json', JSON.stringify({
+                                    exported_at: new Date().toISOString(),
+                                    comparisonResult,
+                                    comparisonRunAt,
+                                    system: 'Radiant Simulation Engine v2'
+                                }, null, 2))}
+                            >
                                 <Download size={13} /> Экспорт
                             </Button>
                             <ConfirmAction
