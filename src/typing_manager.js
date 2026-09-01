@@ -5,25 +5,26 @@ function getTypingErrorMessage(error) {
     return error?.response?.description || error?.description || error?.message || String(error);
 }
 
-export async function sendTypingAction(bot, chatId) {
+export async function sendTypingAction(bot, chatId, action = 'typing') {
     try {
-        await bot.telegram.sendChatAction(chatId, 'typing');
+        await bot.telegram.sendChatAction(chatId, action);
         return true;
     } catch (error) {
-        console.warn(`[TYPING ACTION ERROR] chat ${chatId}: ${getTypingErrorMessage(error)}`);
+        console.warn(`[TYPING ACTION ERROR] chat ${chatId} (${action}): ${getTypingErrorMessage(error)}`);
         return false;
     }
 }
 
 async function refreshTypingAction(state, chatId) {
-    const sent = await sendTypingAction(state.bot, chatId);
+    const action = state.action || 'typing';
+    const sent = await sendTypingAction(state.bot, chatId, action);
     if (sent && !state.successLogged) {
         state.successLogged = true;
-        console.info(`[TYPING ACTION OK] chat ${chatId}`);
+        console.info(`[TYPING ACTION OK] chat ${chatId} (${action})`);
     }
 }
 
-export function startTyping(bot, chatId, requestId) {
+export function startTyping(bot, chatId, requestId, action = 'typing') {
     if (chatId == null || !requestId) return;
 
     const key = String(chatId);
@@ -31,6 +32,7 @@ export function startTyping(bot, chatId, requestId) {
     if (!state) {
         state = {
             bot,
+            action,
             requestIds: new Set(),
             interval: null,
             successLogged: false
@@ -40,6 +42,8 @@ export function startTyping(bot, chatId, requestId) {
             void refreshTypingAction(state, chatId);
         }, TYPING_REFRESH_MS);
         state.interval.unref?.();
+    } else {
+        state.action = action;
     }
 
     state.requestIds.add(String(requestId));

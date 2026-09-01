@@ -23,7 +23,7 @@ function getMoscowHour() {
     return parseInt(formatter.format(new Date()), 10);
 }
 
-async function findLocalPhoto(user, userText = '') {
+async function findLocalPhoto(user, { prompt = '', outfit = '', currentContext = null } = {}) {
     try {
         const hour = getMoscowHour();
         let currentTimeOfDay = 'any';
@@ -35,38 +35,91 @@ async function findLocalPhoto(user, userText = '') {
         const accessLevel = user?.is_premium ? 'vip' : 'free';
         const sentPhotoIds = user ? await getSentPhotos(user) : [];
 
-        let candidates = await getLeraPhotoCandidates({ access_level: accessLevel, time_of_day: currentTimeOfDay });
-        let available = [];
+        // Получаем всех кандидатов галереи
+        const candidates = await getLeraPhotoCandidates({ access_level: accessLevel, time_of_day: null });
+        if (!candidates || candidates.length === 0) return null;
 
-        if (candidates && candidates.length > 0) {
-            available = candidates.filter(c => isUsableTelegramPhotoId(c.file_id)
-                && !sentPhotoIds.includes(String(c.id)) && !sentPhotoIds.includes(String(c.file_id)));
+        // Исключаем уже отправленные фото (строгий запрет повторов)
+        const unspent = candidates.filter(c => isUsableTelegramPhotoId(c.file_id)
+            && !sentPhotoIds.includes(String(c.id)) && !sentPhotoIds.includes(String(c.file_id)));
+
+        if (unspent.length === 0) {
+            return null; // Нет уникальных несмотренных фото в базе
         }
 
-        if (available.length === 0) {
-            const allCandidates = await getLeraPhotoCandidates({ access_level: accessLevel, time_of_day: null });
-            if (allCandidates && allCandidates.length > 0) {
-                available = allCandidates.filter(c => isUsableTelegramPhotoId(c.file_id)
-                    && !sentPhotoIds.includes(String(c.id)) && !sentPhotoIds.includes(String(c.file_id)));
-            }
-            if (available.length === 0 && allCandidates && allCandidates.length > 0) {
-                available = allCandidates.filter(c => isUsableTelegramPhotoId(c.file_id));
-            }
-        }
+        const queryText = [
+            prompt,
+            outfit,
+            currentContext?.location?.name,
+            currentContext?.status?.text,
+            currentContext?.action?.text
+        ].filter(Boolean).join(' ').toLowerCase();
 
-        if (available && available.length > 0) {
-            const selected = available[Math.floor(Math.random() * available.length)];
+        const isHomeBedRequest = /кроват|спат|сон|сонн|дома|квартир|петроградк|пижам|плед|одеял|ночь|перед сном/iu.test(queryText);
+        const isStreetRequest = /улиц|гуля|прогулк|город|парк|кафе|кофе|магаз|шоурум/iu.test(queryText);
+        const isHotRequest = /секси|голая|нюдс|вирт|грудь|попа|постель|hot|эротик/iu.test(queryText);
+
+        // Скорим каждого несмотренного кандидата
+        const scored = unspent.map(c => {
+            let score = 0;
+            const photoText = [
+                c.caption || '',
+                Array.isArray(c.tags) ? c.tags.join(' ') : '',
+                c.prompt || ''
+            ].join(' ').toLowerCase();
+
+            // 1. Время суток
+            const photoTod = String(c.time_of_day || 'any').toLowerCase();
+            if (photoTod === currentTimeOfDay) {
+                score += 3;
+            } else if (photoTod === 'any') {
+                score += 1;
+            } else {
+                score -= 2;
+            }
+
+            // 2. Локация и обстановка
+            const photoIsHome = /кроват|дом|квартир|пижам|мешок|сон/iu.test(photoText);
+            const photoIsStreet = /гуля|улиц|город|парк|набережн/iu.test(photoText);
+            const photoIsHotOrAhegao = /hot|ахегао|язык|эротик/iu.test(photoText);
+
+            if (isHomeBedRequest) {
+                if (photoIsHome) score += 4;
+                if (photoIsStreet) score -= 10;
+                if (photoIsHotOrAhegao && !isHotRequest) score -= 8;
+            } else if (isStreetRequest) {
+                if (photoIsStreet) score += 4;
+                if (photoIsHome) score -= 6;
+            }
+
+            if (isHotRequest) {
+                if (photoIsHotOrAhegao) score += 5;
+            } else {
+                if (photoIsHotOrAhegao && (c.explicitness > 20 || /ахегао|язык/iu.test(photoText))) score -= 5;
+            }
+
+            return { candidate: c, score };
+        });
+
+        // Сортируем по убыванию очков
+        scored.sort((a, b) => b.score - a.score);
+        const best = scored[0];
+
+        // Если лучший кандидат имеет надежный скор (>= 2)
+        if (best && best.score >= 2) {
             return {
-                id: selected.id,
-                file_id: selected.file_id,
-                caption: selected.caption,
+                id: best.candidate.id,
+                file_id: best.candidate.file_id,
+                caption: best.candidate.caption,
                 isGenerated: false
             };
         }
+
+        return null;
     } catch (err) {
         console.error('[SEND_PHOTO ACTION] Ошибка поиска локального фото:', err.message);
+        return null;
     }
-    return null;
 }
 
 export const sendPhotoAction = {
@@ -154,7 +207,6 @@ export const sendPhotoAction = {
                 console.warn('[SEND_PHOTO ACTION] Сбой нейрогенератора:', genErr.message);
             }
 
-            // Если просили конкретный лук (например пальто), а генератор упал — честно возвращаем статус сбоя
             if (isSpecificOutfit) {
                 return {
                     status: 'error',
@@ -163,14 +215,14 @@ export const sendPhotoAction = {
                     },
                     error: {
                         code: 'PHOTO_NOT_AVAILABLE',
-                        message: `Не удалось сделать фото в "${outfit}". Честно ответь собеседнику своими словами (например: "ща фоткаться лень / не хочу / на мне ща просто футболка, могу другую скинуть"), но НЕ ври, что прислала фото в ${outfit}.`
+                        message: `Не удалось сделать фото в "${outfit}". Честно ответь собеседнику своими словами от лица Леры (например: "ща фоткаться лень / не хочу / на мне ща просто футболка, могу другую скинуть"), но НЕ ври, что прислала фото в ${outfit}.`
                     }
                 };
             }
         }
 
-        // 4. Берём подходящее готовое селфи из базы под текущее время суток
-        const local = await findLocalPhoto(user, prompt);
+        // 4. Ищем подходящее готовое селфи из базы под текущий контекст
+        const local = allowFallback ? await findLocalPhoto(user, { prompt, outfit, currentContext: context.currentContext }) : null;
         if (local && isUsableTelegramPhotoId(local.file_id)) {
             return {
                 status: 'success',
@@ -184,11 +236,43 @@ export const sendPhotoAction = {
             };
         }
 
+        // 5. Если в базе нет подходящего по смыслу фото — пробуем динамическую AI генерацию под текущую ситуацию
+        try {
+            const locationText = context.currentContext?.location?.name || context.currentContext?.location || '';
+            const locationPrompt = locationText ? `локация: ${locationText}` : '';
+            const fullGenPrompt = `${prompt} ${outfit ? 'одежда: ' + outfit : ''} ${locationPrompt}`.trim() || 'селфи Леры';
+
+            const generated = await generateLeraPhoto({
+                prompt: fullGenPrompt,
+                timeOfDay,
+                user,
+                bot: null,
+                saveToDb: true,
+                source: 'chat'
+            });
+
+            if (generated && (generated.buffer || generated.file_id)) {
+                return {
+                    status: 'success',
+                    data: {
+                        photo: generated.buffer ? { source: generated.buffer, filename: generated.filename || 'photo.jpg' } : generated.file_id,
+                        photoRecordId: generated.savedPhoto?.id || null,
+                        photoCaption: generated.caption || null,
+                        isGenerated: true,
+                        text: `Фото успешно создано (лук: ${outfit || 'по контексту'}, время: ${timeOfDay}). Прикреплено к сообщению.`
+                    }
+                };
+            }
+        } catch (genErr) {
+            console.warn('[SEND_PHOTO ACTION] Сбой нейрогенератора при фоллбэке:', genErr.message);
+        }
+
+        // 6. Если и в базе нет подходящего, и генератор недоступен — возвращаем честный статус отказа
         return {
             status: 'error',
             error: {
                 code: 'NO_PHOTO',
-                message: 'Сейчас нет доступных фото. Скажи собеседнику, что сфоткаешься позже или сейчас лень.'
+                message: 'Сейчас нет подходящего фото Леры под эту обстановку. Честно ответь собеседнику своими словами от лица Леры (например: темно в комнате / свет уже выключен / лень сейчас фоткаться / сфоткаешься позже / нет под рукой фотика), не притворяясь, что фото отправлено.'
             }
         };
     }

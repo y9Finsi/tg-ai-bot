@@ -149,19 +149,10 @@ async function flushUserBuffer(userId) {
     }
 
     try {
-        // Для текста показываем нативный статус печати, для фото оставляем заглушку.
-        let tempMsgId = null;
-        if (isPhoto) {
-            stopBufferedTyping();
-            const tempMsg = await ctx.reply("📸 _Делаю фоточку, подожди секунду..._", { parse_mode: 'Markdown' });
-            tempMsgId = tempMsg.message_id;
-        } else if (isVoice) {
-            stopBufferedTyping();
-            const tempMsg = await ctx.reply("🎙️ _Записываю голосовое, секунду..._", { parse_mode: 'Markdown' });
-            tempMsgId = tempMsg.message_id;
-        }
+        const chatAction = isPhoto ? 'upload_photo' : (isVoice ? 'record_voice' : 'typing');
+        startTyping(bot, ctx.chat.id, requestId, chatAction);
+        const tempMsgId = null;
 
-        // Передаем ID фото-заглушки в очередь, чтобы потом её отредактировать.
         await aiQueue.add('ask-ai', {
             userId,
             text: combinedText,
