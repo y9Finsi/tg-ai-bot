@@ -130,7 +130,7 @@ test('production media instruction forbids tag-only or unrelated image responses
     const engine = fs.readFileSync(path.join(root, 'src', 'ai.js'), 'utf8');
 
     assert.match(engine, /Не присылай несвязанное фото сама по себе/);
-    assert.match(engine, /никогда не отвечай одним тегом \[IMAGE/);
+    assert.match(engine, /служебные логи отправленных медиафайлов/);
 });
 
 test('every routed prompt requires continuity after short acknowledgements and clarifications', () => {

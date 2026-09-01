@@ -1823,7 +1823,7 @@ async function safeStartBot() {
             }
 
             await bot.launch({
-            allowedUpdates: ['message', 'message_reaction', 'callback_query', 'pre_checkout_query', 'channel_post', 'edited_channel_post'],
+                allowedUpdates: ['message', 'message_reaction', 'callback_query', 'pre_checkout_query', 'channel_post', 'edited_channel_post', 'guest_query', 'inline_query'],
                 dropPendingUpdates: true
             });
             console.log('🚀 Бот успешно запущен и подключен к Telegram!');

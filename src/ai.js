@@ -356,7 +356,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         getRecentConversationEvents(userId, 10).catch(() => [])
     ]);
 
-    const mediaLogInstruction = "\n\nПометки вида [Лера отправила личное фото: ...] в истории диалога — это служебные логи отправленных медиафайлов. Никогда не повторяй текст этих пометок в своих ответах! Не присылай несвязанное фото сама по себе и никогда не отвечай одним тегом [IMAGE.";
+    const mediaLogInstruction = "\n\nПометки вида [Лера отправила личное фото: ...] в истории диалога — это служебные логи отправленных медиафайлов. Никогда не повторяй текст этих пометок в своих ответах! Не присылай несвязанное фото сама по себе.";
 
     let isPhotoRequest = false;
     let preselectedPhoto = null;
@@ -719,9 +719,9 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
     }
 
     // Защита от утечек системных мета-мыслей модели в пользовательский чат
-    if (/^(НЕ|не)\s+(повторяй|начинай|пиши|используй)|^(Инструкция|Ответь своими словами|Служебн|System:|System prompt)/iu.test(finalAiText)) {
+    if (/^(НЕ|не)\s+(повторяй|начинай|пиши|используй)|^(Инструкция|Ответь своими словами|Служебн|System:|System prompt)|(Если уместно|добавь одну короткую фразу|Не пиши\s+[«"]?вот фото[»"]?|не отвечай одним тегом|\[IMAGE\]|\[IMAGE)/iu.test(finalAiText)) {
         console.warn('[AI SYSTEM LEAK SANITIZED]:', finalAiText);
-        finalAiText = voicePayload ? '' : 'ой, чёт зависла на секунду ахах ||| что говоришь?';
+        finalAiText = (voicePayload || photoSendPayload) ? '' : 'ой, чёт зависла на секунду ахах ||| что говоришь?';
     }
 
     if (!photoSendPayload && preselectedPhoto && !photoAttempted) {
@@ -1001,12 +1001,13 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                     if (execRes?.status === 'success') {
                         messages.push({
                             role: 'system',
-                            content: '[ФОТО ПРИКРЕПЛЕНО]: Фото успешно отправлено собеседнику в чат. Напиши короткую живую реплику к фото от лица Леры (например: «держи», «лови», «вот, как просил», «ну как тебе?», «зацени»), без технических деталей и без описания процесса генерации.'
+                            content: '[ФОТО ПРИКРЕПЛЕНО]: Фото успешно отправлено собеседнику в чат. Напиши только очень короткую живую подводку («держи», «лови», «зацени», «ну как?») либо оставь пустой ответ, не рассуждая об инструкциях.'
                         });
                     } else {
+                        const errMsg = execRes?.error?.message || 'Фото сейчас сделать не получилось.';
                         messages.push({
                             role: 'system',
-                            content: '[ФОТО НЕДОСТУПНО]: Фото не получилось сделать/отправить. Ответь собеседнику своими словами от лица Леры (например: «ща лень фоткаться», «позже скину», «на мне ща другая одежда»), без технических терминов, без упоминания ошибок/ботов/доступа.'
+                            content: `[ОТВЕТ ПО ФОТО]: ${errMsg}`
                         });
                     }
                 } else if (name === 'send_voice') {

@@ -410,10 +410,19 @@ export async function handleGroupMention(bot, ctx) {
 
         if (decision?.reply) {
             const replyText = cleanResponseText(decision.reply).replace(/\|\|\|/g, '\n\n');
+            const guestQueryId = msg.guest_query_id || ctx.update?.guest_query?.id;
+            if (guestQueryId && bot.telegram?.callApi) {
+                await bot.telegram.callApi('answerGuestQuery', {
+                    guest_query_id: guestQueryId,
+                    text: replyText
+                }).catch(gqErr => {
+                    console.warn('[ANSWER GUEST QUERY WARNING]:', gqErr.message);
+                });
+            }
             await ctx.reply(replyText, {
                 reply_parameters: { message_id: msg.message_id }
             }).catch(async () => {
-                await ctx.reply(replyText, { reply_to_message_id: msg.message_id });
+                await ctx.reply(replyText, { reply_to_message_id: msg.message_id }).catch(() => {});
             });
             return true;
         }
