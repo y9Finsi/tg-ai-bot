@@ -10,14 +10,14 @@ import {
     getLeraContent
 } from './database.js';
 import { getRoutedSystemPrompt } from './prompts.js';
-import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX, IMAGE_STYLES } from './constants/intents.js';
+import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX } from './constants/intents.js';
 import { requestLlmCompletion } from './ai/llm_client.js';
 import { extractFactsInBackground } from './ai/memory_extractor.js';
 import { ContextBuilder } from './ai/context_builder.js';
 import { validateUserCommand } from './ai/command_gate.js';
 import { evaluateLeraReply, getQualityFallback, requiresReplyRetry } from './ai/response_quality.js';
 import { classifyIntent, getModeGenerationParams, getModeIntentConfig, getRoutingSettings } from './ai/intent_router.js';
-import { computeClimaxState, getClimaxPromptInstruction, CLIMAX_STAGES } from './ai/climax_engine.js';
+import { computeClimaxState, getClimaxPromptInstruction } from './ai/climax_engine.js';
 import { judgeLeraReply } from './ai/response_judge.js';
 import { cleanResponseText } from './utils/response_text.js';
 import { generateLeraPhoto } from './services/image_generator.js';
@@ -356,7 +356,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         getRecentConversationEvents(userId, 10).catch(() => [])
     ]);
 
-    const mediaLogInstruction = "\n\nПометки вида [Лера отправила личное фото: ...] в истории диалога — это служебные логи отправленных медиафайлов. Никогда не повторяй текст этих пометок в своих ответах!";
+    const mediaLogInstruction = "\n\nПометки вида [Лера отправила личное фото: ...] в истории диалога — это служебные логи отправленных медиафайлов. Никогда не повторяй текст этих пометок в своих ответах! Не присылай несвязанное фото сама по себе и никогда не отвечай одним тегом [IMAGE.";
 
     let isPhotoRequest = false;
     let preselectedPhoto = null;
@@ -688,6 +688,8 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
     let photoSendPayload = toolOverrides?.photo || null;
     let photoRecordId = toolOverrides?.photoRecordId || null;
     let photoCaption = toolOverrides?.photoCaption || null;
+    let voicePayload = toolOverrides?.voice || null;
+    const photoAttempted = toolOverrides?.photoAttempted || false;
 
     const fullVoiceMatch = workingText.match(/\[VOICE:([\s\S]*?)\]/i);
     if (fullVoiceMatch) {
@@ -701,7 +703,6 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         }
     }
 
-    let voicePayload = null;
     let showBuyButton = false;
     let finalAiText = cleanResponseText(workingText);
 
@@ -720,7 +721,7 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         }
     }
 
-    if (!photoSendPayload && preselectedPhoto) {
+    if (!photoSendPayload && preselectedPhoto && !photoAttempted) {
         if (typeof preselectedPhoto === 'string') {
             photoSendPayload = preselectedPhoto;
         } else if (preselectedPhoto.file_id) {
@@ -734,7 +735,7 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         }
     }
 
-    if (!photoSendPayload && isPhotoRequest) {
+    if (!photoSendPayload && isPhotoRequest && !photoAttempted) {
         try {
             const photoResult = await generatePhotoForPrompt(user, userText || finalAiText, preselectedPhoto);
             if (photoResult) {
@@ -753,10 +754,13 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         }
     }
 
-    // Озвучка: если есть тег [VOICE] или прямой запрос на голосовое
-    const targetVoiceText = voiceText || (isVoiceRequest ? finalAiText : null);
-    if (targetVoiceText) {
-        voicePayload = await generateVoiceForText(user, targetVoiceText);
+    // Озвучка: если есть тег [VOICE] или прямой запрос на голосовое (и войс не был получен из тула)
+    let targetVoiceText = null;
+    if (!voicePayload) {
+        targetVoiceText = voiceText || (isVoiceRequest ? finalAiText : null);
+        if (targetVoiceText) {
+            voicePayload = await generateVoiceForText(user, targetVoiceText);
+        }
     }
 
     let finalRecommendationPost = existingRecommendationPost;
@@ -893,6 +897,10 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     let toolPhotoRecordId = null;
     let toolPhotoCaption = null;
     let toolContentId = null;
+    let toolVoicePayload = null;
+    let toolReactionEmoji = null;
+    let toolReactionRequested = false;
+    let toolPhotoAttempted = false;
     const toolsExecuted = [];
 
     if (Array.isArray(llmResult?.tool_calls) && llmResult.tool_calls.length > 0) {
@@ -956,10 +964,20 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                     status: execRes?.status || 'error',
                     summary: execRes?.data?.text || execRes?.data?.summary || content || 'ok'
                 });
-                if (name === 'send_photo' && execRes?.status === 'success' && execRes?.data?.photo) {
-                    toolPhotoPayload = execRes.data.photo;
-                    toolPhotoRecordId = execRes.data.photoRecordId || null;
-                    toolPhotoCaption = execRes.data.photoCaption || null;
+                if (name === 'send_photo') {
+                    toolPhotoAttempted = true;
+                    if (execRes?.status === 'success' && execRes?.data?.photo) {
+                        toolPhotoPayload = execRes.data.photo;
+                        toolPhotoRecordId = execRes.data.photoRecordId || null;
+                        toolPhotoCaption = execRes.data.photoCaption || null;
+                    }
+                }
+                if (name === 'send_voice' && execRes?.status === 'success' && execRes?.data?.voice) {
+                    toolVoicePayload = execRes.data.voice;
+                }
+                if (name === 'set_reaction' && execRes?.status === 'success' && execRes?.data?.emoji) {
+                    toolReactionEmoji = execRes.data.emoji;
+                    toolReactionRequested = true;
                 }
                 if (name === 'send_content' && execRes?.status === 'success' && execRes?.data?.content_id) {
                     toolContentId = Number(execRes.data.content_id);
@@ -1054,7 +1072,9 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         photo: toolPhotoPayload,
         photoRecordId: toolPhotoRecordId,
         photoCaption: toolPhotoCaption,
-        contentId: toolContentId
+        contentId: toolContentId,
+        voice: toolVoicePayload,
+        photoAttempted: toolPhotoAttempted
     }, userText);
     const generationTrace = [{
         step: 'memory_retrieval',
@@ -1098,6 +1118,18 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         : { skipped: true, verdict: 'SKIPPED', passed: true, code: null };
     const relationshipEvent = judgeResult.relationshipEvent || null;
     const arousalEvent = judgeResult.arousalEvent || null;
+    if (arousalEvent && routingMode === 'EROTIC') {
+        try {
+            climaxState = computeClimaxState({
+                recentEvents: priorEvents,
+                userText: userText || text,
+                arousalEvent,
+                isEroticMode: true
+            });
+        } catch (climaxErr) {
+            console.warn('[CLIMAX RECOMPUTE ERROR]:', climaxErr.message);
+        }
+    }
     generationTrace.push({
         step: 'judge',
         phase: 'first',
@@ -1136,11 +1168,9 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         const retryInstruction = qualityIssues.includes('format')
             ? 'СТОП: в предыдущем ответе склеились две отдельные фразы. Перепиши ответ заново. Между каждой отдельной короткой репликой поставь буквальный разделитель ||| с пробелами по краям: первая реплика ||| вторая реплика. Не склеивай слова, не используй переносы строк и не добавляй пояснений.'
             : judgeNeedsRetry
-            ? judgeResult.code === 'INVENTED_FACT'
-                ? 'СТОП: проверка качества отклонила предыдущий ответ (INVENTED_FACT). КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО соглашаться с вымышленными темами разговоров, покупками (пальто/куртка) или обещаниями собеседника, которых нет в памяти и истории! Перепиши ответ, прямо скажи что вы этого не обсуждали, либо говори только о своих реальных делах.'
-                : judgeResult.code === 'BROKEN_LOGIC'
-                ? 'СТОП: проверка качества отклонила предыдущий ответ (BROKEN_LOGIC). Не подыгрывай вымышленному совместному проживанию/быту (холодильник, совместная комната). Опирайся на свою реальную обстановку из контекста дня и дистанционный формат переписки. Перепиши ответ реалистично.'
-                : `Проверка качества отклонила предыдущий ответ: ${judgeResult.code || 'REJECTED'}. Перепиши его по последней реплике пользователя, сохрани характер Леры и не повторяй предыдущий вариант.`
+            ? judgeResult.reason
+                ? `СТОП: проверка качества отклонила предыдущий ответ. Причина: ${judgeResult.reason}. Перепиши реплику живо, естественно и в характере Леры, исправив эту ошибку.`
+                : `СТОП: проверка качества отклонила предыдущий ответ (${judgeResult.code || 'REJECTED'}). Перепиши его живо и естественно именно по последней реплике пользователя, не повторяя прошлых ошибок.`
             : needsQualityRetry
             ? qualityIssues.includes('nonEmpty')
                 ? 'СТОП: предыдущий ответ оказался пустым после обработки медиа-тегов. Ответь текстом именно на последнюю реплику пользователя. Фото можно добавлять только после нормальной текстовой подписи.'
@@ -1185,7 +1215,14 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         providerName = retry.providerName || providerName;
         latencyMs = retry.latencyMs || latencyMs;
         ({ text, photo, photoRecordId, photoCaption, voice, recommendationPost: finalRecPost, showBuyButton, contentId } = await processLlmOutput(
-            userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates, isVoiceRequest, recentReplyTexts
+            userId, user, rawText, isPhotoRequest, recommendationPost, preselectedPhoto, contentCandidates, isVoiceRequest, recentReplyTexts, {
+                photo: toolPhotoPayload,
+                photoRecordId: toolPhotoRecordId,
+                photoCaption: toolPhotoCaption,
+                contentId: toolContentId,
+                voice: toolVoicePayload,
+                photoAttempted: toolPhotoAttempted
+            }, userText
         ));
         generationTrace.push({
             step: 'retry',
@@ -1217,6 +1254,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                 phase: 'retry',
                 verdict: retryJudge.verdict || 'ERROR',
                 code: retryJudge.code || null,
+                reason: retryJudge.reason || null,
                 model: retryJudge.model || null,
                 providerName: retryJudge.providerName || null,
                 latencyMs: retryJudge.latencyMs || 0,
@@ -1234,16 +1272,9 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                     photoCaption = null;
                     finalRecPost = null;
                 } else {
-                    text = getQualityFallback(routingMode, {
-                        userText,
-                        recentReplies: recentReplyTexts,
-                        lastAssistantText: lastLeraText
-                    });
-                    photo = null;
-                    photoCaption = null;
-                    finalRecPost = null;
+                    text = cleanResponseText(text || rawText);
                     generationTrace.push({
-                        step: 'fallback',
+                        step: 'second_attempt_retained',
                         reason: [`judge_${retryJudge.code || 'rejected'}`],
                         response: text
                     });
@@ -1320,7 +1351,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         .filter(Boolean);
     const activeProfile = await getLeraProfile().catch(() => null);
     writePromptLog({
-        kind: (!isInitiative && typeof messages[1]?.content === 'string' && messages[1]?.content?.startsWith('СТОП: предыдущий ответ')) ? 'RETRY' : (isInitiative ? 'INITIATIVE' : 'CHAT'),
+        kind: (!isInitiative && typeof messages[1]?.content === 'string' && messages[1]?.content?.startsWith('СТОП:')) ? 'RETRY' : (isInitiative ? 'INITIATIVE' : 'CHAT'),
         model,
         providerName,
         latencyMs,
@@ -1368,6 +1399,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         photo,
         photoRecordId,
         voice,
+        reactionEmoji: toolReactionEmoji,
+        reactionRequested: toolReactionRequested,
         recommendationPost: finalRecPost,
         showBuyButton,
         contentId,
@@ -1396,14 +1429,6 @@ export async function generateResponse(userId, text, envelope = {}) {
 
     console.log(`\n[USER ${userId}]: ${text}`);
     const user = await getUser(userId);
-
-    if (VOICE_INTENT_REGEX.test(text)) {
-        return {
-            text: "💬 Мои голосовые сообщения доступны только в VIP-пакете! Приобрети его в магазине, чтобы услышать мой стон... 😈",
-            photo: null,
-            showBuyButton: true
-        };
-    }
 
     const command = await validateUserCommand(text, { userId, batchId: envelope.batchId });
     if (command.isCommand && !command.accepted) {

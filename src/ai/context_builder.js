@@ -53,7 +53,8 @@ export class ContextBuilder {
             previousActivityAt: overrides.previousActivityAt,
             currentTime: overrides.currentTime,
             outfitText: overrides.outfit_text,
-            routingMode: overrides.routingMode || null
+            routingMode: overrides.routingMode || null,
+            userSituation: overrides.userSituation || null
         };
     }
 
@@ -134,7 +135,7 @@ export class ContextBuilder {
         const plans = uniqueLines((snapshot.commitments || []).map(humanizePlan)).filter(Boolean).slice(0, 2);
         const events = uniqueLines([...facts, ...plans]).slice(0, 5);
         const sleepGuidance = !isErotic && isSleepingTask(task)
-            ? '\n• Состояние сна: если вы только начали диалог, можно один раз упомянуть, что спала/проснулась. Но в активной переписке НЕ зацикливайся на сне и лени в каждом ответе — общайся живо по теме пользователя. Не имитируй голос, слух, шёпот, дыхание или звуки; не используй многоточия в начале фразы.'
+            ? '\n• Состояние сна: можно коротко сказать, что спала/проснулась, если вы только начали диалог. Но в активной переписке НЕ зацикливайся на сне и лени в каждом ответе — общайся живо по теме пользователя. Не имитируй голос, слух, шёпот, дыхание или звуки; не используй многоточия в начале фразы.'
             : '';
         const currentStatus = isErotic && isSleepingTask(task)
             ? 'Дома'
@@ -142,7 +143,17 @@ export class ContextBuilder {
         const wellbeing = isErotic
             ? 'Чувствует себя хорошо, возбуждена и готова к близости'
             : humanizeWellbeing(snapshot.mood, needs, snapshot.state?.physiology);
-        return `${relationshipToPrompt(snapshot.relationship || {})}
+        const userName = snapshot.user?.first_name || snapshot.user?.username || 'пользователь';
+        const userSituationText = snapshot.userSituation
+            ? `\n• Текущая обстановка собеседника: ${snapshot.userSituation}`
+            : '';
+
+        return `=== 📍 СИТУАЦИЯ И СТАТУС СОБЕСЕДНИКА ===
+• Собеседник: ${userName} (общаетесь на «ты» в личном Telegram-чате).
+• Формат общения: Дистанционная переписка в Telegram. Вы НЕ находитесь в одном физическом помещении/машине.
+• Ты находишься: в Санкт-Петербурге (${humanizeLocation(snapshot.location.name)}).${userSituationText}
+
+${relationshipToPrompt(snapshot.relationship || {})}
 
 [СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ]
 • Время: ${formatContextDate(snapshot.currentTime)}

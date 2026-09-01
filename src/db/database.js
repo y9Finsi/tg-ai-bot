@@ -1917,19 +1917,34 @@ export async function getChannelPosterSettings() {
     };
 }
 
+let cachedLatestChannelPost = null;
+let lastLatestChannelPostFetchTime = 0;
+const LATEST_CHANNEL_POST_CACHE_TTL_MS = 5 * 60 * 1000;
+
+export function invalidateLatestChannelPostCache() {
+    cachedLatestChannelPost = null;
+    lastLatestChannelPostFetchTime = 0;
+}
+
 export async function saveChannelPostLog({ channel_id, topic, text, photo_url = null, media_mode = null, provenance = {}, telegram_message_ids = [], status = 'PUBLISHED' }) {
     const result = await query(`INSERT INTO channel_post_logs (channel_id, topic, text, photo_url, media_mode, status, provenance, telegram_message_ids)
         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb) RETURNING *`, [
         channel_id, topic, text, photo_url, media_mode, status, JSON.stringify(provenance || {}), JSON.stringify(telegram_message_ids || [])
     ]);
+    invalidateLatestChannelPostCache();
     return result.rows[0];
 }
 
 export async function getLatestPublishedChannelPost() {
+    if (cachedLatestChannelPost !== null && Date.now() - lastLatestChannelPostFetchTime < LATEST_CHANNEL_POST_CACHE_TTL_MS) {
+        return cachedLatestChannelPost;
+    }
     const result = await query(
         `SELECT id, text, created_at, provenance FROM channel_post_logs WHERE status = 'PUBLISHED' ORDER BY created_at DESC LIMIT 1`
     );
-    return result.rows[0] || null;
+    cachedLatestChannelPost = result.rows[0] || null;
+    lastLatestChannelPostFetchTime = Date.now();
+    return cachedLatestChannelPost;
 }
 
 export async function getChannelPostHistory(limit = 5) {
@@ -2060,17 +2075,19 @@ export async function completeChannelPublication(idempotencyKey, { status = 'PUB
          RETURNING *`,
         [String(idempotencyKey), status, JSON.stringify(telegramMessageIds || []), errorText]
     );
+    invalidateLatestChannelPostCache();
     return result.rows[0] || null;
 }
 
 export async function deleteChannelPostLog(id) {
     const result = await query('DELETE FROM channel_post_logs WHERE id = $1 RETURNING *', [id]);
+    invalidateLatestChannelPostCache();
     return result.rows[0] || null;
 }
 
 let cachedSubscriberCount = null;
 let lastSubscriberFetchTime = 0;
-const SUBSCRIBER_CACHE_TTL_MS = 3 * 60 * 1000;
+const SUBSCRIBER_CACHE_TTL_MS = 30 * 60 * 1000;
 
 export async function getChannelSubscriberCount(bot = null) {
     if (cachedSubscriberCount !== null && Date.now() - lastSubscriberFetchTime < SUBSCRIBER_CACHE_TTL_MS) {
@@ -2914,26 +2931,6 @@ export async function getUserMemoriesAdmin(userId, includeInactive = true) {
     }
 }
 
-export async function updateUserMemoryFact(id, fact) {
-    const res = await query(
-        'UPDATE user_memories SET fact = $2 WHERE id = $1 RETURNING *',
-        [id, fact]
-    );
-    return res.rows[0] || null;
-}
-
-export async function setUserMemoryActive(id, isActive) {
-    const res = await query(
-        'UPDATE user_memories SET is_active = $2 WHERE id = $1 RETURNING *',
-        [id, !!isActive]
-    );
-    return res.rows[0] || null;
-}
-
-export async function deleteUserMemory(id) {
-    const res = await query('DELETE FROM user_memories WHERE id = $1 RETURNING *', [id]);
-    return res.rows[0] || null;
-}
 
 /**
  * Searches users by telegram id, @username or first/last name.

@@ -22,7 +22,7 @@ export function ProductionPromptModulesPanel({
             <CardHeader
                 eyebrow="Маршрутизация ответов"
                 title="Модули маршрутизации Production"
-                description="Общие правила Production разделены на реальные модули core/common/casual/erotic/joke. Профиль Леры редактируется отдельной вкладкой."
+                description="Общие правила Production разделены на реальные модули core/common/casual/erotic/joke. Сохраняются сразу и влияют на будущие ответы всех пользователей. Профиль Леры редактируется отдельной вкладкой."
                 action={
                     <div className="prompt-header-actions">
                         <Button size="sm" variant="outline" onClick={onReset}>

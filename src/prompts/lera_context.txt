@@ -2,7 +2,6 @@
 
 ## КОНТЕКСТ
 
-Собеседник: {{CONTEXT_PARTNER}}
 Пауза: {{CONTEXT_PAUSE}}
 
 {{CONTEXT_PAUSE_GUIDANCE}}

@@ -406,41 +406,52 @@ async function processAiJob(bot, job) {
 
             if (response.reactionRequested) {
                 if (!response.reactionEmoji || !reactionMessageId) {
-                    await refundReservation();
-                    if (tempMsgId) await bot.telegram.deleteMessage(chatId, tempMsgId).catch(() => {});
-                    await markInputEvents('FAILED', !response.reactionEmoji
-                        ? 'Classifier requested REACTION without a valid emoji'
-                        : 'Classifier requested REACTION without a target message');
-                    console.error(`[REACTION ERROR] user ${userId}: missing ${!response.reactionEmoji ? 'emoji' : 'target message'}`);
-                    return;
-                }
-                try {
-                    await bot.telegram.setMessageReaction(chatId, reactionMessageId, [{
-                        type: 'emoji',
-                        emoji: response.reactionEmoji
-                    }]);
-                    await refundReservation();
-                    await saveLeraEvent(response.reactionEmoji, 'REACTION', {
-                        emoji: response.reactionEmoji,
-                        target_telegram_message_id: reactionMessageId,
-                        routing_mode: 'REACTION'
-                    });
-                    await markInputEvents('COMPLETED');
-                    return;
-                } catch (reactionError) {
-                    console.warn(`[REACTION FALLBACK] user ${userId}: Telegram reaction "${response.reactionEmoji}" failed (${reactionError.message}). Fallback to text...`);
-                    response = await generateResponse(userId, text, {
-                        batchId,
-                        eventIds,
-                        firstMessageAt,
-                        preMessageGapSeconds,
-                        photoUrls: job.data.photoUrls || [],
-                        forceText: true
-                    });
+                    if (!response.text) {
+                        await refundReservation();
+                        if (tempMsgId) await bot.telegram.deleteMessage(chatId, tempMsgId).catch(() => {});
+                        await markInputEvents('FAILED', !response.reactionEmoji
+                            ? 'Classifier requested REACTION without a valid emoji'
+                            : 'Classifier requested REACTION without a target message');
+                        console.error(`[REACTION ERROR] user ${userId}: missing ${!response.reactionEmoji ? 'emoji' : 'target message'}`);
+                        return;
+                    }
+                } else {
+                    try {
+                        await bot.telegram.setMessageReaction(chatId, reactionMessageId, [{
+                            type: 'emoji',
+                            emoji: response.reactionEmoji
+                        }]);
+                        await saveLeraEvent(response.reactionEmoji, 'REACTION', {
+                            emoji: response.reactionEmoji,
+                            target_telegram_message_id: reactionMessageId,
+                            routing_mode: response.routingMode || 'REACTION'
+                        });
+                        if (!response.text && !response.photo && !response.voice) {
+                            await refundReservation();
+                            if (tempMsgId) await bot.telegram.deleteMessage(chatId, tempMsgId).catch(() => {});
+                            await markInputEvents('COMPLETED');
+                            return;
+                        }
+                    } catch (reactionError) {
+                        console.warn(`[REACTION FALLBACK] user ${userId}: Telegram reaction "${response.reactionEmoji}" failed (${reactionError.message}). Fallback to text...`);
+                        if (!response.text) {
+                            response = await generateResponse(userId, text, {
+                                batchId,
+                                eventIds,
+                                firstMessageAt,
+                                preMessageGapSeconds,
+                                photoUrls: job.data.photoUrls || [],
+                                forceText: true
+                            });
+                        }
+                    }
                 }
             }
 
             if (reservedResource === 'image' && !response.photo) {
+                await refundReservation();
+            }
+            if (reservedResource === 'voice' && !response.voice) {
                 await refundReservation();
             }
             
@@ -509,28 +520,6 @@ async function processAiJob(bot, job) {
                     };
                 }
 
-                const safeSendMessage = async (text, options) => {
-                    try {
-                        return await bot.telegram.sendMessage(chatId, text, options);
-                    } catch (e) {
-                        const noMdOptions = { ...options };
-                        delete noMdOptions.parse_mode;
-                        return await bot.telegram.sendMessage(chatId, text, noMdOptions);
-                    }
-                };
-
-                const safeEditMessage = async (msgId, text, options) => {
-                    try {
-                        return await bot.telegram.editMessageText(chatId, msgId, null, text, options);
-                    } catch (e) {
-                        const noMdOptions = { ...options };
-                        delete noMdOptions.parse_mode;
-                        return await bot.telegram.editMessageText(chatId, msgId, null, text, noMdOptions);
-                    }
-                };
-
-                const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
                 if (!response.text && response.voice) {
                     // Чисто голосовой ответ: удаляем временное сообщение-плейсхолдер
                     if (tempMsgId) {
@@ -547,12 +536,13 @@ async function processAiJob(bot, job) {
                     const firstOptions = messages.length === 1 ? extraOptions : { parse_mode: 'Markdown' };
 
                     if (tempMsgId) {
-                        await safeEditMessage(tempMsgId, firstMsg, firstOptions)
-                            .catch(async () => {
-                                await safeSendMessage(firstMsg, firstOptions);
-                            });
+                        try {
+                            await bot.telegram.editMessageText(chatId, tempMsgId, null, firstMsg, firstOptions);
+                        } catch {
+                            await safeSendMessage(bot.telegram, chatId, firstMsg, firstOptions);
+                        }
                     } else {
-                        await safeSendMessage(firstMsg, firstOptions);
+                        await safeSendMessage(bot.telegram, chatId, firstMsg, firstOptions);
                     }
 
                     // 2. Последующие сообщения "лесенкой" с реальной имитацией набора текста
@@ -564,7 +554,7 @@ async function processAiJob(bot, job) {
 
                         const isLast = (i === messages.length - 1);
                         const currentOptions = isLast ? extraOptions : { parse_mode: 'Markdown' };
-                        await safeSendMessage(msg, currentOptions);
+                        await safeSendMessage(bot.telegram, chatId, msg, currentOptions);
                     }
                     await saveLeraEvent(response.text, 'MESSAGE', { message_count: messages.length });
                 }

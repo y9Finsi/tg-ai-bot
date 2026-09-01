@@ -19,7 +19,7 @@ export const DEFAULT_ROUTING_SETTINGS = {
     classifierModel: '',
     classifierPrompt: 'Ты классификатор действия Леры. Проанализируй последние сообщения и новую реплику. Верни строго CASUAL, EROTIC, JOKE или REACTION <emoji>.\n\nCASUAL — обычный разговор, легкий флирт, бытовые вопросы, инициатива и вопросы про жизнь Леры.\nEROTIC — интимный или горячий диалог, виртуальный секс (вирт, повиртим), предложения интима, ласки, раздевание, стоны, включая продолжение уже начатой сцены (фразы вроде «начинай», «давай», «продолжай», описания действий с телом, если до этого шел интим/флирт).\nJOKE — только явная просьба в НОВОЙ реплике пользователя о шутке, меме, анекдоте или иронии. Прошлая шутка Леры не делает следующий ответ JOKE: режим действует ровно на один ответ. Не выбирай JOKE для неоднозначного продолжения; если продолжается эротический контекст, выбирай EROTIC.\nREACTION <emoji> — вместо текстового ответа поставить выбранную тобой одну уместную Telegram-реакцию на новую реплику. Выбирай только если диалог явно затухает, а новая реплика короткая и односложная (например: «ясно», «понял», «ок», «спокойной ночи», «ну и отлично», «угу», «ладно», «добро», «забей»). КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выбирать REACTION для любых вопросов («че», «что», «где», «а?», «?»), просьб, конфликтов, эротического продолжения или фото.\n\nНе объясняй решение и не возвращай JSON.',
     classifierTimeoutMs: 7000,
-    classifierMaxTokens: 12,
+    classifierMaxTokens: 16,
     initiativeLimit: 3,
     initiativePrompt: `Ты пишешь первой от лица Леры, когда система уже решила, что момент подходит.
 Пиши живо, коротко и естественно, как продолжение реальной переписки. Учитывай последние сообщения, контекст дня и отношения с пользователем.
@@ -196,7 +196,7 @@ export async function getRoutingSettings() {
         classifierModel: String(raw.classifierModel || ''),
         classifierPrompt: String(raw.classifierPrompt || DEFAULT_ROUTING_SETTINGS.classifierPrompt),
         classifierTimeoutMs: asNumber(raw.classifierTimeoutMs, 7000, 1000, 60000),
-        classifierMaxTokens: asNumber(raw.classifierMaxTokens, 4, 4, 8),
+        classifierMaxTokens: asNumber(raw.classifierMaxTokens, 16, 4, 32),
         initiativeLimit: Math.round(asNumber(raw.initiativeLimit, 3, 0, 20)),
         initiativePrompt: asPrompt(raw.initiativePrompt, DEFAULT_ROUTING_SETTINGS.initiativePrompt),
         contentPrompt: asPrompt(raw.contentPrompt, DEFAULT_ROUTING_SETTINGS.contentPrompt),
@@ -236,7 +236,7 @@ export async function updateRoutingSettings(input = {}) {
         classifierModel: String(next.classifierModel || '').trim(),
         classifierPrompt: String(next.classifierPrompt || current.classifierPrompt || DEFAULT_ROUTING_SETTINGS.classifierPrompt).trim(),
         classifierTimeoutMs: asNumber(next.classifierTimeoutMs, current.classifierTimeoutMs, 1000, 60000),
-        classifierMaxTokens: asNumber(next.classifierMaxTokens, current.classifierMaxTokens, 4, 8),
+        classifierMaxTokens: asNumber(next.classifierMaxTokens, current.classifierMaxTokens, 4, 32),
         initiativeLimit: Math.round(asNumber(next.initiativeLimit, current.initiativeLimit, 0, 20)),
         initiativePrompt: asPrompt(next.initiativePrompt ?? current.initiativePrompt, DEFAULT_ROUTING_SETTINGS.initiativePrompt),
         contentPrompt: asPrompt(next.contentPrompt ?? current.contentPrompt, DEFAULT_ROUTING_SETTINGS.contentPrompt),

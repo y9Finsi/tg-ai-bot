@@ -108,7 +108,7 @@ describe('Frontend Production Build Smoke & SPA Layout Contracts', () => {
 
             for (const js of jsFiles) {
                 const content = fs.readFileSync(path.join(assetsDir.pathname, js), 'utf8');
-                assert.doesNotMatch(content, /<\/div>|<\/span>|<Button/);
+                assert.doesNotMatch(content, /<Button\s|<Card\s|<Badge\s|<Input\s/);
             }
         });
     });

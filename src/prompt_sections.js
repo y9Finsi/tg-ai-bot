@@ -2,7 +2,7 @@ export const PROMPT_SECTIONS = {
     lera_base: 'lera_base.txt',
     lera_speech: 'lera_speech.txt',
     lera_intimacy: 'lera_intimacy.txt',
-    lera_jokes: 'lera_jokes.txt',
+    lera_jokes: 'lera_joke.txt',
     lera_examples: 'lera_examples.txt',
     lera_virt_examples: 'lera_virt_examples.txt',
     lera_rules: 'lera_rules.txt',

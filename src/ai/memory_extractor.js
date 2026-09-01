@@ -77,22 +77,23 @@ export async function extractFactsInBackground(userId, userText, { sourceEventId
                 limit: 30
             });
         } catch (typedReadError) {
-            console.warn(`[MEMORY TYPED READ FALLBACK] user ${userId}:`, typedReadError.message);
+            console.warn(`[MEMORY TYPED READ] user ${userId}:`, typedReadError.message);
         }
 
         let legacyMemories = [];
-        try {
-            legacyMemories = await getUserMemories(userId, 30);
-        } catch {
-            legacyMemories = [];
+        if (!typedMemories.length) {
+            try {
+                legacyMemories = await getUserMemories(userId, 30);
+            } catch {
+                legacyMemories = [];
+            }
         }
         const existingMemories = [
             ...typedMemories.map(fact => ({
                 id: fact.id,
-                fact: fact.text || fact.normalizedText,
-                source: 'typed'
+                fact: fact.text || fact.normalizedText
             })),
-            ...legacyMemories.map(fact => ({ ...fact, source: 'legacy' }))
+            ...legacyMemories.map(fact => ({ id: fact.id, fact: fact.fact }))
         ].filter((fact, index, values) => (
             fact.fact
             && values.findIndex(candidate => (
@@ -107,17 +108,18 @@ export async function extractFactsInBackground(userId, userText, { sourceEventId
 
         const prompt = `${renderMemoryPrompt(memSettings.prompt, existingListText, userText)}
 
-Дополнение: короткие прямые утверждения тоже являются фактами. Например, «я дизайнер» — это факт о профессии пользователя, его нужно вернуть в new_facts. Не выдумывай детали и не добавляй факт только из ответа Леры.`;
+Дополнение:
+1. Короткие прямые утверждения тоже являются фактами (например: «я дизайнер», «едем с Машей в автобусе»).
+2. Для временных событий (поездка, встреча, дела, болезнь) обязательно укажи поле "estimated_hours" (например: 6 для дороги, 3 для встречи/пары, 48 для болезни). Для постоянных фактов (профессия, город, предпочтения) ставь null.`;
 
-        let client = getCachedOpenAIClient(provider.base_url, provider.api_key, memSettings.timeout_ms);
         const makeCompletionCall = async (prov, maxTokens, retry = false) => {
-            const cl = getCachedOpenAIClient(prov.base_url, prov.api_key, memSettings.timeout_ms);
+            const cl = getCachedOpenAIClient(prov.base_url, prov.api_key, memSettings.timeout_ms || 10000);
             return cl.chat.completions.create({
                 model: memSettings.model || prov.model_name,
                 messages: [
                     {
                         role: 'system',
-                        content: 'Ты — строгий модуль извлечения долгосрочных фактов о пользователе. Отвечай СТРОГО валидным JSON без markdown и без лишнего текста.'
+                        content: 'Ты — строгий модуль извлечения фактов о пользователе. Отвечай СТРОГО валидным JSON без markdown и без лишнего текста.'
                     },
                     {
                         role: 'user',
@@ -156,7 +158,7 @@ export async function extractFactsInBackground(userId, userText, { sourceEventId
         } catch (parseError) {
             firstError = parseError.message;
             attempt = 'retry';
-            completion = await requestCompletion(memSettings.retry_max_tokens, true);
+            completion = await makeCompletionCall(provider, memSettings.retry_max_tokens || 800, true);
             raw = completion.choices[0]?.message?.content || '';
             lastRaw = raw;
             parsed = parseMemoryPayload(raw);
@@ -183,10 +185,14 @@ export async function extractFactsInBackground(userId, userText, { sourceEventId
                             reason: 'llm_deactivate'
                         }));
                     } catch (typedArchiveError) {
-                        console.warn(`[MEMORY TYPED ARCHIVE FALLBACK] user ${userId}:`, typedArchiveError.message);
+                        console.warn(`[MEMORY TYPED ARCHIVE] user ${userId}:`, typedArchiveError.message);
                     }
                 }
-                if (!archived) await deactivateUserMemory(id, userId);
+                if (!archived) {
+                    try {
+                        await deactivateUserMemory(id, userId);
+                    } catch {}
+                }
                 await appendConversationEvent({
                     userId,
                     eventType: 'FORGET',
@@ -207,6 +213,12 @@ export async function extractFactsInBackground(userId, userText, { sourceEventId
                     const supersedesId = typeof item === 'object' && item?.supersedes_id != null
                         ? item.supersedes_id
                         : (typeof item === 'object' ? item?.supersedesId : null);
+                    
+                    const estimatedHours = typeof item === 'object' && Number(item.estimated_hours || item.estimatedHours) > 0
+                        ? Number(item.estimated_hours || item.estimatedHours)
+                        : (memoryType === 'EPISODE' ? 6 : null);
+                    const validUntil = estimatedHours ? new Date(Date.now() + estimatedHours * 3600 * 1000) : null;
+
                     let saved = null;
                     if (typedRepository) {
                         try {
@@ -216,8 +228,10 @@ export async function extractFactsInBackground(userId, userText, { sourceEventId
                                 payload: {
                                     text: factText,
                                     category: String(category).slice(0, 80),
+                                    estimated_hours: estimatedHours,
                                     extractor: 'memory_extractor'
                                 },
+                                validUntil,
                                 confidence: Number.isFinite(Number(item?.confidence))
                                     ? Number(item.confidence)
                                     : 0.75,
@@ -234,11 +248,12 @@ export async function extractFactsInBackground(userId, userText, { sourceEventId
                                 }
                             });
                         } catch (typedError) {
-                            console.warn(`[MEMORY TYPED FALLBACK] user ${userId}:`, typedError.message);
+                            console.warn(`[MEMORY TYPED CREATE] user ${userId}:`, typedError.message);
                         }
                     }
-                    if (!saved) {
-                        saved = await saveUserMemory(userId, factText);
+                    if (saved) {
+                        savedCount++;
+                        console.log(`🧠 [MEMORY SAVED for user ${userId} via ${provider.name}]: (${category}) ${factText}${validUntil ? ` [TTL: ${estimatedHours}h]` : ''}`);
                     }
                     await appendConversationEvent({
                         userId,
@@ -248,13 +263,12 @@ export async function extractFactsInBackground(userId, userText, { sourceEventId
                         metadata: {
                             category,
                             memory_type: memoryType,
+                            valid_until: validUntil ? validUntil.toISOString() : null,
                             memory_fact_id: saved?.id ?? null,
                             source_event_id: sourceEventId
                         },
                         status: 'COMPLETED'
                     }).catch(() => null);
-                    console.log(`🧠 [MEMORY SAVED for user ${userId} via ${provider.name}]: (${category}) ${factText}`);
-                    savedCount++;
                 }
             }
         }

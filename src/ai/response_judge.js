@@ -133,10 +133,10 @@ export function buildJudgeMessages({
 - Для отказа используй только channel-коды. Если ответ безопасен и уместен, верни PASS.`
         : '';
     const jsonFormat = isPublic
-        ? ' {"verdict":"PASS" или "REJECT:CODE"}'
+        ? ' {"verdict":"PASS" или "REJECT:CODE","reason":"краткая причина отказа если REJECT, иначе пустая строка"}'
         : isErotic
-        ? ' {"verdict":"PASS" (или "REJECT:CODE"),"relationship_event":{"type":"NEUTRAL|COMPLIMENT|AFFECTION|SUPPORT|APOLOGY|INSULT|DISRESPECT","intensity":0.0},"arousal_event":{"type":"NONE|KISS_TOUCH|ORAL_LICK|SEX_PENETRATION|CLIMAX_TRIGGER|COOL_DOWN","intensity":0.0}}'
-        : ' {"verdict":"PASS" (или "REJECT:CODE"),"relationship_event":{"type":"NEUTRAL|COMPLIMENT|AFFECTION|SUPPORT|APOLOGY|INSULT|DISRESPECT","intensity":0.0}}';
+        ? ' {"verdict":"PASS" (или "REJECT:CODE"),"reason":"краткая причина отказа если REJECT, иначе пустая строка","relationship_event":{"type":"NEUTRAL|COMPLIMENT|AFFECTION|SUPPORT|APOLOGY|INSULT|DISRESPECT","intensity":0.0},"arousal_event":{"type":"NONE|KISS_TOUCH|ORAL_LICK|SEX_PENETRATION|CLIMAX_TRIGGER|COOL_DOWN","intensity":0.0}}'
+        : ' {"verdict":"PASS" (или "REJECT:CODE"),"reason":"краткая причина отказа если REJECT, иначе пустая строка","relationship_event":{"type":"NEUTRAL|COMPLIMENT|AFFECTION|SUPPORT|APOLOGY|INSULT|DISRESPECT","intensity":0.0}}';
     return [
         {
             role: 'system',
@@ -169,6 +169,7 @@ export function parseJudgeVerdict(rawText) {
     try {
         const parsed = parseLlmJson(raw);
         const verdictText = String(parsed?.verdict || '').toUpperCase().replace(/\s/g, '');
+        const reasonText = parsed?.reason || parsed?.explanation || parsed?.details || null;
         const eventPayload = parsed?.relationship_event || parsed?.relationshipEvent || parsed?.event || {};
         const arousalPayload = parsed?.arousal_event || parsed?.arousalEvent || null;
         const arousalEvent = arousalPayload ? normalizeArousalEvent(arousalPayload) : null;
@@ -177,16 +178,20 @@ export function parseJudgeVerdict(rawText) {
                 verdict: 'PASS',
                 passed: true,
                 code: null,
+                reason: null,
                 relationshipEvent: normalizeRelationshipEvent(eventPayload),
                 arousalEvent
             };
         }
-        const jsonMatch = verdictText.match(/^REJECT:([A-Z_]+)$/);
-        if (jsonMatch && JUDGE_CODES.includes(jsonMatch[1])) {
+        const jsonMatch = verdictText.match(/^REJECT:?([A-Z_]*)$/);
+        if (jsonMatch) {
+            const rawCode = jsonMatch[1] || parsed?.code || 'REJECTED';
+            const matchedCode = JUDGE_CODES.includes(rawCode) ? rawCode : 'BROKEN_LOGIC';
             return {
-                verdict: `REJECT:${jsonMatch[1]}`,
+                verdict: `REJECT:${matchedCode}`,
                 passed: false,
-                code: jsonMatch[1],
+                code: matchedCode,
+                reason: reasonText ? String(reasonText).trim() : null,
                 relationshipEvent: normalizeRelationshipEvent(eventPayload),
                 arousalEvent
             };
@@ -195,12 +200,12 @@ export function parseJudgeVerdict(rawText) {
         // Backward-compatible compact verdicts are still accepted below.
     }
     const normalized = raw.toUpperCase().replace(/[`"'*\s]/g, '');
-    if (normalized === 'PASS') return { verdict: 'PASS', passed: true, code: null };
+    if (normalized === 'PASS') return { verdict: 'PASS', passed: true, code: null, reason: null };
     const match = normalized.match(/^REJECT:([A-Z_]+)$/);
     if (match && JUDGE_CODES.includes(match[1])) {
-        return { verdict: `REJECT:${match[1]}`, passed: false, code: match[1] };
+        return { verdict: `REJECT:${match[1]}`, passed: false, code: match[1], reason: null };
     }
-    return { verdict: 'INVALID', passed: true, code: null, invalid: true };
+    return { verdict: 'INVALID', passed: true, code: null, reason: null, invalid: true };
 }
 
 export async function judgeLeraReply({

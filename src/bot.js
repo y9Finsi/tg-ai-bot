@@ -1183,11 +1183,6 @@ function startPlategaAutoCheck(botInstance, txId, userId, textCount, imgCount, r
             console.error("[МАГАЗИН ОШИБКА АВТОПРОВЕРКИ]:", e);
         }
     }, 30000);
-}
-
-bot.on('pre_checkout_query', (ctx) => ctx.answerPreCheckoutQuery(true).catch(console.error));
-// ... дальше идет bot.on('successful_payment' ...
-
 bot.on('pre_checkout_query', (ctx) => ctx.answerPreCheckoutQuery(true).catch(console.error));
 bot.on('successful_payment', async (ctx) => {
     const userId = ctx.from.id;
@@ -1370,7 +1365,7 @@ bot.on(['photo', 'video', 'voice', 'document', 'animation'], async (ctx) => {
         const captionText = ctx.message.caption || '';
         const userMsgText = captionText.trim() || 'Посмотри на фото';
 
-        await appendConversationEvent({
+        const event = await appendConversationEvent({
             userId,
             eventType,
             role: 'user',
@@ -1411,6 +1406,12 @@ bot.on(['photo', 'video', 'voice', 'document', 'animation'], async (ctx) => {
                 }
             }
 
+            if (event?.id) {
+                userDebounceBuffer[userId].eventIds.push(event.id);
+                if (userDebounceBuffer[userId].preMessageGapSeconds === null) {
+                    userDebounceBuffer[userId].preMessageGapSeconds = Number(event.gap_seconds || 0);
+                }
+            }
             userDebounceBuffer[userId].textParts.push(userMsgText);
             if (photoUrl) {
                 userDebounceBuffer[userId].photoUrls.push(photoUrl);
