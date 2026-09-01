@@ -354,3 +354,73 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
 
     return false;
 }
+
+export async function handleGroupMention(bot, ctx) {
+    const msg = ctx.message;
+    if (!msg || !msg.text || !ctx.chat) return false;
+
+    const botUsername = ctx.botInfo?.username?.toLowerCase() || '';
+    const isBotTagged = Boolean(botUsername) && msg.text.toLowerCase().includes(`@${botUsername}`);
+    const isReplyToBot = msg.reply_to_message?.from?.id === ctx.botInfo?.id;
+    const isGuestMention = msg.entities?.some(e => e.type === 'mention' && msg.text.substring(e.offset, e.offset + e.length).toLowerCase() === `@${botUsername}`);
+
+    if (!isBotTagged && !isReplyToBot && !isGuestMention) return false;
+
+    // Защита от дублей
+    if (!(await claimChannelProcessedMessage(ctx.chat.id, msg.message_id))) return false;
+
+    ctx.sendChatAction('typing').catch(() => {});
+
+    // Очищаем запрос от тега бота
+    let userQuery = msg.text;
+    if (botUsername) {
+        userQuery = userQuery.replace(new RegExp(`@${botUsername}`, 'gi'), '').trim();
+    }
+    if (!userQuery && msg.reply_to_message?.text) {
+        userQuery = msg.reply_to_message.text;
+    }
+
+    const commenter = await getCommenterContext(msg.from?.id);
+    const channelSettings = await getChannelPosterSettings().catch(() => ({}));
+
+    // Контекст реплая
+    const threadContext = [];
+    if (msg.reply_to_message?.text) {
+        const replySender = msg.reply_to_message.from?.first_name || (msg.reply_to_message.from?.id === ctx.botInfo?.id ? 'Лера' : 'Участник');
+        threadContext.push({ sender: replySender, text: msg.reply_to_message.text });
+    }
+
+    try {
+        const decision = await generateCommentDecision({
+            postText: ctx.chat.title ? `Групповой чат: "${ctx.chat.title}"` : 'Групповой чат',
+            threadContext,
+            commentText: userQuery || msg.text,
+            commenter,
+            isDirectMention: true,
+            channelSettings
+        });
+
+        if (decision?.reaction && ALLOWED_REACTIONS.has(decision.reaction)) {
+            try {
+                await ctx.telegram.setMessageReaction(ctx.chat.id, msg.message_id, [{ type: 'emoji', emoji: decision.reaction }]);
+            } catch {
+                // Ignore reaction API errors
+            }
+        }
+
+        if (decision?.reply) {
+            const replyText = cleanResponseText(decision.reply).replace(/\|\|\|/g, '\n\n');
+            await ctx.reply(replyText, {
+                reply_parameters: { message_id: msg.message_id }
+            }).catch(async () => {
+                await ctx.reply(replyText, { reply_to_message_id: msg.message_id });
+            });
+            return true;
+        }
+    } catch (err) {
+        console.error('[GROUP MENTION ERROR]:', err.message);
+    }
+
+    return false;
+}
+

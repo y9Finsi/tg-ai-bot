@@ -62,22 +62,31 @@ src/
 
 ## 3. Диалоговый и ИИ-пайплайн (Smart Agent Core)
 
-1. **Native Tool Calling (`src/ai/chat_tools.js`):**
-   - Инструменты: `send_photo`, `send_voice`, `send_content`, `set_reaction`, `set_interaction_mode`.
-   - Модель управляет медиа, реакциями и эротическими переходами через нативные вызовы функций вместо текстовых псевдо-тегов `[VOICE: ...]`.
+1. **Native Tool Calling (`src/radiant/actions/` & `src/ai.js`):**
+   - Инструменты: `send_photo`, `send_voice`, `send_content`, `set_reaction`, `set_interaction_mode`, `web_search`, `weather`, `spb_places`, `get_channel_posts`.
+   - **Умный подбор фото (`send_photo.js`):**
+     - Строгий запрет повторного круга (ранее отправленные фото из `sent_photos` исключаются навсегда).
+     - Контекстный скоринг: совпадение по времени суток, локации/обстановке (кровать/сон/пижама vs улица/прогулка/город) и штрафы за несовместимый вайб (уличные фото при запросе перед сном).
+     - При отсутствии подходящего кадра — автоматический запуск нейрогенератора `generateLeraPhoto` с точным описанием сцены и сохранением в базу. При недоступности — возврат кода `NO_PHOTO` для естественного нехардкод-отказа модели.
+   - **Голосовые сообщения (`send_voice.js`):**
+     - Вызов `generateLeraVoice({ text })` синтезирует живой голос Леры через CosyVoice.
+     - Изоляция follow-up шага: текст войса не скармливается обратно в LLM, чтобы исключить утечки мета-рассуждений. В Telegram отправляется чистый войс с нативным индикатором `record_voice`.
+     - Нативный статус `upload_photo` и `record_voice` в [`typing_manager.js`](file:///Users/bogdan/Desktop/Telegram-AI-bot-with-payments-main/src/typing_manager.js) вместо текстовых заглушек.
 
 2. **Pre-flight Response Judge (`src/ai/response_judge.js`):**
-   - Возвращает JSON: `{ passed, verdict, code, reason, relationshipEvent, arousalEvent }`.
-   - **Reflective Retry:** При отклонении реплики передает модели точную причину (`judgeResult.reason`).
-   - При повторном отклонении ответ берется из второй очищенной попытки без вымышленных VPN-заглушек.
+   - JSON-валидация ответа: `{ passed, verdict, code, reason, relationshipEvent, arousalEvent }`.
+   - **Контракт `SYSTEM_LEAK`:** Автоматическая отбраковка любых служебных инструкций и мета-мыслей модели («НЕ повторяй...», «Не начинай с...», «Ответь своими словами»).
+   - **Reflective Retry:** При отклонении реплики передает модели точную причину (`judgeResult.reason`) для естественного исправления.
 
 3. **Ситуационная память с динамическим TTL (`src/ai/memory_extractor.js`):**
-   - Временные события (`EPISODE`: дорога, тусовка, пары, болезнь) получают `valid_until`.
+   - Временные события (`EPISODE`: дорога, тусовка, пары, болезнь) получают динамический `valid_until` (от 2 до 48 часов).
    - Экстрактор имеет автоматический фолбэк на активный провайдер чата при сетевых ошибках и 502 ответах.
+   - Фоновый воркер `memory_outbox_worker.js` асинхронно синхронизирует воспоминания с `semantica-service`.
 
-4. **Кэширование статистики канала (`src/db/database.js`):**
-   - `getChannelSubscriberCount` — in-memory кэш с TTL 30 минут (`SUBSCRIBER_CACHE_TTL_MS = 30 * 60 * 1000`).
+4. **Кэширование статистики и постов канала (`src/db/database.js`):**
+   - `getChannelSubscriberCount` — in-memory кэш с TTL 30 минут.
    - `getLatestPublishedChannelPost` — in-memory кэш с TTL 5 минут.
+   - Автоматическая инвалидация кэша (`invalidateLatestChannelPostCache`) при сохранении, публикации или удалении постов.
 
 ---
 
