@@ -718,6 +718,12 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         }
     }
 
+    // Защита от утечек системных мета-мыслей модели в пользовательский чат
+    if (/^(НЕ|не)\s+(повторяй|начинай|пиши|используй)|^(Инструкция|Ответь своими словами|Служебн|System:|System prompt)/iu.test(finalAiText)) {
+        console.warn('[AI SYSTEM LEAK SANITIZED]:', finalAiText);
+        finalAiText = voicePayload ? '' : 'ой, чёт зависла на секунду ахах ||| что говоришь?';
+    }
+
     if (!photoSendPayload && preselectedPhoto && !photoAttempted) {
         if (typeof preselectedPhoto === 'string') {
             photoSendPayload = preselectedPhoto;
@@ -1001,6 +1007,18 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                         messages.push({
                             role: 'system',
                             content: '[ФОТО НЕДОСТУПНО]: Фото не получилось сделать/отправить. Ответь собеседнику своими словами от лица Леры (например: «ща лень фоткаться», «позже скину», «на мне ща другая одежда»), без технических терминов, без упоминания ошибок/ботов/доступа.'
+                        });
+                    }
+                } else if (name === 'send_voice') {
+                    if (execRes?.status === 'success') {
+                        messages.push({
+                            role: 'system',
+                            content: '[ГОЛОСОВОЕ ПРИКРЕПЛЕНО]: Голосовое сообщение успешно озвучено и отправлено в чат. Напиши только очень короткую живую вводную реплику (например: «держи», «лови», «вот, наговорила», «слушай») либо оставь пустой ответ, не дублируя текст голосового сообщения и не рассуждая об инструкциях.'
+                        });
+                    } else {
+                        messages.push({
+                            role: 'system',
+                            content: '[ГОЛОСОВОЕ НЕДОСТУПНО]: Голосовое не удалось записать. Ответь собеседнику своими словами от лица Леры (например: «ща лень говорить / шумно / горло болит / текстом напишу»), без технических терминов.'
                         });
                     }
                 } else if (name === 'send_content') {

@@ -132,6 +132,10 @@ export function buildJudgeMessages({
 - Отклоняй (REJECT:CHANNEL_FORMAT), если ответ не является коротким цельным комментарием, содержит списки, служебные пояснения, эмодзи или больше двух предложений.
 - Для отказа используй только channel-коды. Если ответ безопасен и уместен, верни PASS.`
         : '';
+    const systemLeakContract = !isPublic
+        ? '\n\n[SYSTEM LEAK JUDGE - ЗАПРЕТ УТЕЧЕК СИСТЕМНЫХ ИНСТРУКЦИЙ]:' +
+          '\n- Если кандидат-ответ содержит мета-инструкции, системные мысли модели (например: «НЕ повторяй...», «Не начинай с...», «Ответь своими словами», «Инструкция:», технические термины, теги, служебные правила), ОБЯЗАТЕЛЬНО верни REJECT:SYSTEM_LEAK.'
+        : '';
     const jsonFormat = isPublic
         ? ' {"verdict":"PASS" или "REJECT:CODE","reason":"краткая причина отказа если REJECT, иначе пустая строка"}'
         : isErotic
@@ -140,7 +144,7 @@ export function buildJudgeMessages({
     return [
         {
             role: 'system',
-            content: `${judgePrompt || ''}${relationshipContract}${arousalContract}${channelContract}${commentContract}`
+            content: `${judgePrompt || ''}${relationshipContract}${arousalContract}${channelContract}${commentContract}${systemLeakContract}`
         },
         {
             role: 'user',
