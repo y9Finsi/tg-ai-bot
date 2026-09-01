@@ -185,9 +185,10 @@ setInterval(() => {
     }
 }, 15 * 60 * 1000);
 
-// Обработчик гостевых запросов Telegram (Guest Mode / guest_query)
+// Обработчик гостевых запросов Telegram (Guest Mode / guest_message / guest_query)
 bot.use(async (ctx, next) => {
-    if (ctx.update?.guest_query) {
+    if (ctx.update?.guest_message || ctx.update?.guest_query || ctx.message?.guest_query_id) {
+        console.log('🤖 [GUEST QUERY UPDATE]:', Object.keys(ctx.update));
         const handled = await handleGuestQuery(bot, ctx).catch(err => {
             console.error('[GUEST QUERY HANDLER ERROR]:', err.message);
             return false;
@@ -1822,7 +1823,7 @@ async function safeStartBot() {
             }
 
             await bot.launch({
-                allowedUpdates: ['message', 'message_reaction', 'callback_query', 'pre_checkout_query', 'channel_post', 'edited_channel_post', 'guest_query', 'inline_query'],
+                allowedUpdates: ['message', 'message_reaction', 'callback_query', 'pre_checkout_query', 'channel_post', 'edited_channel_post', 'guest_message', 'guest_query', 'inline_query'],
                 dropPendingUpdates: true
             });
             console.log('🚀 Бот успешно запущен и подключен к Telegram!');

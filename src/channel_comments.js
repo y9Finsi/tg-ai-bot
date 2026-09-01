@@ -434,13 +434,22 @@ export async function handleGroupMention(bot, ctx) {
 }
 
 export async function handleGuestQuery(bot, ctx) {
-    const gq = ctx.update?.guest_query;
+    const update = ctx.update;
+    const gq = update?.guest_message || update?.guest_query || (ctx.message?.guest_query_id ? ctx.message : null);
     if (!gq) return false;
+
+    console.log('🤖 [GUEST QUERY RECEIVED]:', JSON.stringify(gq));
+
+    const guestQueryId = gq.guest_query_id || gq.id || ctx.message?.guest_query_id;
+    if (!guestQueryId) return false;
+
     try {
         const botUsername = ctx.botInfo?.username?.toLowerCase() || 'gexyy_bot';
-        let userQuery = String(gq.query || '').replace(new RegExp(`@${botUsername}`, 'gi'), '').trim();
-        const commenter = await getCommenterContext(gq.from?.id);
+        let userQuery = String(gq.text || gq.query || gq.caption || ctx.message?.text || '').replace(new RegExp(`@${botUsername}`, 'gi'), '').trim();
+        const fromUser = gq.from || gq.guest_bot_caller_user || ctx.from;
+        const commenter = await getCommenterContext(fromUser?.id);
         const channelSettings = await getChannelPosterSettings().catch(() => ({}));
+        
         const decision = await generateCommentDecision({
             postText: 'Гостевой запрос Telegram в чате',
             threadContext: [],
@@ -449,12 +458,32 @@ export async function handleGuestQuery(bot, ctx) {
             isDirectMention: true,
             channelSettings
         });
+        
         const replyText = decision?.reply ? cleanResponseText(decision.reply).replace(/\|\|\|/g, '\n\n') : 'привеет, я тут';
-        await bot.telegram.callApi('answerGuestQuery', {
-            guest_query_id: gq.id,
-            text: replyText
-        });
-        return true;
+
+        // 1. Попытка через result (InlineQueryResultArticle) по Bot API 10.0
+        try {
+            await bot.telegram.callApi('answerGuestQuery', {
+                guest_query_id: guestQueryId,
+                result: {
+                    type: 'article',
+                    id: String(Date.now()),
+                    title: 'Лера',
+                    input_message_content: {
+                        message_text: replyText
+                    }
+                }
+            });
+            return true;
+        } catch (callErr1) {
+            console.warn('[ANSWER GUEST QUERY RESULT ATTEMPT FAILED]:', callErr1.message);
+            // 2. Фолбэк через прямой text параметр
+            await bot.telegram.callApi('answerGuestQuery', {
+                guest_query_id: guestQueryId,
+                text: replyText
+            });
+            return true;
+        }
     } catch (err) {
         console.error('[HANDLE GUEST QUERY ERROR]:', err.message);
         return false;
