@@ -8,7 +8,7 @@ import {
 /**
  * Строит точный и строгий промпт для генерации с сохранением лица референса
  */
-export function buildImagePrompt({ prompt, baseStyle, hasReference = false, isChatModel = false }) {
+export function buildImagePrompt({ prompt, baseStyle, hasReference = false, isChatModel = true }) {
     const defaultBaseStyle = 'Candid authentic amateur photo of Lera, a 19-year-old Russian student girl from Saint Petersburg. Appearance: fair skin with natural freckles across cheeks and nose bridge, distinct grey-green almond-shaped eyes with subtle thin winged eyeliner, soft natural brows, full natural lips. Shoulder-length messy textured dirty-blonde hair with wispy curtain bangs framing her face. Vibe & Aesthetic: cute, natural, expressive, genuine real-life iPhone camera photo, natural skin texture with subtle pores, warm ambient lighting, filmic grain, no CGI, no 3D render, no plastic AI smoothing.';
     let style = String(baseStyle || '').trim() || defaultBaseStyle;
     const cleanPrompt = String(prompt || '').trim();
@@ -37,6 +37,7 @@ export function buildImagePrompt({ prompt, baseStyle, hasReference = false, isCh
             `1. FACE & IDENTITY: Strictly preserve the exact face structure, features, freckles, eye color/shape, and hair from the reference and character specification.`,
             `2. DYNAMIC SCENE: Follow the requested scene, outfit, pose, expression, and environment described above. Do NOT hardcode unrelated poses or rooms.`,
             `3. REALISM: Photorealistic candid shot, natural lighting, real depth of field, unedited phone camera quality, zero CGI or plastic smoothing.`,
+            `4. NO TEXT / NO WATERMARKS: Strictly photorealistic image without any rendered text, words, letters, captions, titles, speech bubbles, watermarks, or typography.`,
             `[OUTPUT FORMAT]:`,
             `Return the generated image as markdown: ![image](data:image/jpeg;base64,...)`
         ].join('\n\n');
@@ -51,12 +52,13 @@ export function buildImagePrompt({ prompt, baseStyle, hasReference = false, isCh
             cleanPrompt,
             `[REQUIREMENTS]:`,
             `Candid authentic photograph, natural ambient lighting, real skin texture, subtle film grain, real smartphone camera look.`,
+            `STRICTLY NO text, words, letters, captions, signs, watermarks, or typography rendered on the photo.`,
             `Return the image in markdown format: ![image](data:image/jpeg;base64,...)`
         ].join('\n\n');
     }
 
     // Для специализированных моделей /images/generations (DALL-E, gpt-image-2, Flux, SD и т.д.)
-    return `${style}. Scene: ${cleanPrompt}. Highly detailed, candid smartphone photograph, natural ambient light, authentic film grain, authentic skin texture, realistic phone photo look.`.trim();
+    return `${style}. Scene: ${cleanPrompt}. Highly detailed, candid smartphone photograph, natural ambient light, authentic film grain, authentic skin texture, realistic phone photo look. STRICTLY NO text, words, letters, captions, or typography.`.trim();
 }
 
 /**

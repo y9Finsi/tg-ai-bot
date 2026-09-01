@@ -879,7 +879,7 @@ export async function getRandomChannelContent({ type = null, excludeRecent = tru
 
     if (excludeRecent) {
         try {
-            // 1. Приоритет: контент, который еще ни разу не публиковался в ТГК
+            // Ищем контент, который еще ни разу не публиковался в ТГК
             const unpostedResult = await query(
                 `SELECT c.* FROM lera_content c
                  ${filter}
@@ -895,23 +895,8 @@ export async function getRandomChannelContent({ type = null, excludeRecent = tru
                 return unpostedResult.rows[0];
             }
 
-            // 2. Если весь контент уже был опубликован: берем тот, который публиковался давнее всего (LRU)
-            const lruResult = await query(
-                `SELECT c.*, MAX(l.created_at) as last_posted
-                 FROM lera_content c
-                 LEFT JOIN channel_post_logs l ON (
-                     (l.provenance->>'media_content_id')::text = c.id::text
-                     OR (l.provenance->>'content_id')::text = c.id::text
-                 )
-                 ${filter}
-                 GROUP BY c.id
-                 ORDER BY last_posted ASC NULLS FIRST, RANDOM()
-                 LIMIT 1`,
-                params
-            );
-            if (lruResult.rows.length > 0) {
-                return lruResult.rows[0];
-            }
+            // Если весь контент уже был опубликован — строгий запрет повторов, возвращаем null
+            return null;
         } catch {
             // Fallback при любых проблемах с логами
         }
@@ -1634,21 +1619,8 @@ export async function getRandomLeraPhoto({ access_level = null, time_of_day = nu
             );
             if (unpostedAny.rows.length > 0) return unpostedAny.rows[0];
 
-            // 3. Если абсолютно все фото уже побывали в канале — берем то, которое публиковалось ДАВНЕЕ всего (LRU)
-            const lruPhoto = await query(
-                `SELECT lera_photos.*, 
-                   COALESCE((
-                     SELECT MAX(l.created_at) FROM channel_post_logs l 
-                     WHERE l.status = 'PUBLISHED' 
-                       AND (l.photo_url = lera_photos.file_id 
-                            OR (l.provenance->>'media_content_id') = ('photo:' || lera_photos.id::text))
-                   ), '1970-01-01'::timestamptz) as last_posted_at
-                 FROM lera_photos
-                 WHERE ($1::text IS NULL OR access_level = $1)
-                 ORDER BY last_posted_at ASC, RANDOM() LIMIT 1`,
-                [access_level || null]
-            );
-            if (lruPhoto.rows.length > 0) return lruPhoto.rows[0];
+            // Если абсолютно все фото уже побывали в канале — строгий запрет повторов, возвращаем null
+            return null;
         } catch (e) {
             console.warn('[DB] Ошибка выборки уникального фото для канала:', e.message);
         }

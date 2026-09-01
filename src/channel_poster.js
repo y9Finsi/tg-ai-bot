@@ -516,7 +516,8 @@ export async function publishChannelDraft(bot, draft = {}, overrideSettings = nu
     if (isMediaRequested && !contentMedia && !photoToSend && (settings.media_mode === 'ai_photo' || settings.media_mode === 'db_photo')) {
         if (settings.media_mode === 'ai_photo') {
             try {
-                const prompt = `Candid photo of Lera for Telegram channel post. Topic: ${topic}. Post text: "${cleanedText.slice(0, 300)}"`;
+                const topicDesc = TOPIC_DESCRIPTIONS[topic] || 'everyday life in Saint Petersburg';
+                const prompt = `Authentic candid photograph of Lera in Saint Petersburg. Context & vibe: ${topicDesc}. Realistic natural atmosphere. STRICTLY NO text, NO words, NO letters, NO captions on the image.`;
                 const generated = await generateLeraPhoto({
                     prompt,
                     timeOfDay: getTimeOfDayMSK(),
@@ -529,13 +530,23 @@ export async function publishChannelDraft(bot, draft = {}, overrideSettings = nu
                 } else if (generated?.file_id) {
                     photoToSend = generated.file_id;
                 }
+                if (generated?.savedPhoto?.id) {
+                    provenance.media_content_id = `photo:${generated.savedPhoto.id}`;
+                    provenance.media_type = 'photo';
+                }
             } catch (e) {
-                console.warn('[CHANNEL POSTER] Сбой генерации фото через Gemini, берем fallback из БД:', e.message);
+                console.warn('[CHANNEL POSTER] Сбой генерации фото через AI:', e.message);
             }
         }
         if (!photoToSend) {
             const photo = await getRandomLeraPhoto({ access_level: 'free', time_of_day: getTimeOfDayMSK(), excludeChannelUsed: true });
-            photoToSend = photo?.file_id || null;
+            if (photo?.file_id) {
+                photoToSend = photo.file_id;
+                provenance.media_content_id = `photo:${photo.id}`;
+                provenance.media_type = 'photo';
+            } else {
+                console.warn('[CHANNEL POSTER] Нет уникальных фото в БД (все уже публиковались), пост выйдет без медиа');
+            }
         }
     }
     const telegramMessageIds = [];

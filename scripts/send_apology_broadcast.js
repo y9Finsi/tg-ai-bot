@@ -1,4 +1,4 @@
-import { getAllUsers, appendConversationEvent } from '../src/db/database.js';
+import { getAllUserIds, appendConversationEvent } from '../src/db/database.js';
 import { broadcastQueue } from '../src/broadcast.js';
 
 const APOLOGY_TEXT = `Блин, слушай... Прости за дичь и странные сообщения, которые могли приходить в чат((
@@ -7,13 +7,13 @@ const APOLOGY_TEXT = `Блин, слушай... Прости за дичь и с
 Больше такого бреда не будет, я всё починила и настроила. Ты как вообще?`;
 
 async function run() {
-    console.log('Fetching active users for apology broadcast...');
-    const users = await getAllUsers();
-    const targetUsers = users.filter(u => !u.is_blocked && Number(u.telegram_id) > 1000);
-    console.log(`Found ${targetUsers.length} target users.`);
+    console.log('Fetching active user IDs for apology broadcast...');
+    const userIds = await getAllUserIds();
+    const targetUserIds = userIds.filter(id => Number(id) > 1000);
+    console.log(`Found ${targetUserIds.length} target users.`);
 
-    for (const user of targetUsers) {
-        const uid = Number(user.telegram_id);
+    for (const uidRaw of targetUserIds) {
+        const uid = Number(uidRaw);
         console.log(`Adding broadcast job for user ${uid}...`);
 
         await appendConversationEvent({
