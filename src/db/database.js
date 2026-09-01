@@ -1161,7 +1161,21 @@ export async function logPayment(userId, amount, currency, provider, payload, st
     return res.rows[0];
 }
 
-export async function processPlategaPayment(paymentId, userId, amountRub, packageType) {
+export async function processPlategaPayment(arg1, arg2, arg3, arg4, arg5) {
+    let paymentId, userId, amountRub, textCount = 0, imgCount = 0, packageType = null;
+    if (arg5 !== undefined) {
+        userId = arg1;
+        amountRub = arg2;
+        textCount = parseInt(arg3, 10) || 0;
+        imgCount = parseInt(arg4, 10) || 0;
+        paymentId = String(arg5);
+    } else {
+        paymentId = String(arg1);
+        userId = arg2;
+        amountRub = arg3;
+        packageType = arg4;
+    }
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -1179,7 +1193,15 @@ export async function processPlategaPayment(paymentId, userId, amountRub, packag
             [userId, amountRub, paymentId]
         );
 
-        if (packageType === 'text_small') {
+        if (textCount > 0 || imgCount > 0) {
+            await client.query(
+                `UPDATE users SET 
+                    free_requests_left = free_requests_left + $1,
+                    image_balance = image_balance + $2
+                 WHERE telegram_id = $3`,
+                [textCount, imgCount, userId]
+            );
+        } else if (packageType === 'text_small') {
             await client.query('UPDATE users SET free_requests_left = free_requests_left + 50 WHERE telegram_id = $1', [userId]);
         } else if (packageType === 'text_large') {
             await client.query('UPDATE users SET free_requests_left = free_requests_left + 200 WHERE telegram_id = $1', [userId]);
