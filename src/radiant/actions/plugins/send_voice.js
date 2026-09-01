@@ -29,13 +29,18 @@ export const sendVoiceAction = {
         }
 
         try {
-            const voiceBuffer = await generateLeraVoice({ text });
-            if (voiceBuffer) {
+            const voiceRes = await generateLeraVoice({ text });
+            if (voiceRes && voiceRes.buffer) {
                 return {
                     status: 'success',
                     data: {
                         text,
-                        voice: voiceBuffer,
+                        voice: {
+                            source: voiceRes.buffer,
+                            buffer: voiceRes.buffer,
+                            filename: voiceRes.filename || 'voice.ogg',
+                            mimeType: voiceRes.mimeType
+                        },
                         summary: `Озвучено голосовое сообщение (${text.length} симв.)`
                     }
                 };
