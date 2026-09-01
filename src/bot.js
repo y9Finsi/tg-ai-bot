@@ -1183,6 +1183,8 @@ function startPlategaAutoCheck(botInstance, txId, userId, textCount, imgCount, r
             console.error("[МАГАЗИН ОШИБКА АВТОПРОВЕРКИ]:", e);
         }
     }, 30000);
+}
+
 bot.on('pre_checkout_query', (ctx) => ctx.answerPreCheckoutQuery(true).catch(console.error));
 bot.on('successful_payment', async (ctx) => {
     const userId = ctx.from.id;
