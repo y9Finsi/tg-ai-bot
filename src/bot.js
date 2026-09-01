@@ -150,7 +150,7 @@ async function flushUserBuffer(userId) {
 
     try {
         const chatAction = isPhoto ? 'upload_photo' : (isVoice ? 'record_voice' : 'typing');
-        startTyping(bot, ctx.chat.id, requestId, chatAction);
+        startTyping(bot, ctx.chat.id, buf.batchId || String(userId), chatAction);
         const tempMsgId = null;
 
         await aiQueue.add('ask-ai', {
