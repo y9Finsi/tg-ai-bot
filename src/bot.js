@@ -12,7 +12,7 @@ import {
     getAllPromocodes, getPromocodeById, togglePromoStatus, togglePromoNewUsersOnly, deletePromocode, updatePromoField, getUsersForBonusNotify, markBonusNotified,
     addLeraPhoto, addLeraContent, findDuplicateLeraContent, appendConversationEvent, updateConversationEventStatus,
     reserveFreeRequest, reserveImageRequest, reserveVoiceRequest, refundReservedRequest,
-    getAdminDebugLogEnabled, setAdminDebugLogEnabled
+    getAdminDebugLogEnabled, setAdminDebugLogEnabled, closeDB
 } from './database.js';
 import { createPlategaInvoice, checkPlategaInvoice } from './platega.js';
 import { processReferral } from './referral.js';
@@ -1954,8 +1954,6 @@ initDatabaseTables()
         console.error("❌ DB Schema init error:", err);
         process.exitCode = 1;
     });
-
-import { closeDB } from './database.js';
 
 async function gracefulShutdown(signal) {
     console.log(`\n[SHUTDOWN] Выключаем бота и закрываем базу (${signal})...`);
