@@ -33,7 +33,7 @@ import { initDatabaseTables } from './database.js';
 import { initChannelPoster, stopChannelPoster } from './channel_poster.js';
 import { editContentChannelPost, extractContentFromChannelPost } from './content_service.js';
 import { enqueuePersonalInitiatives } from './initiative_service.js';
-import { handleChannelDiscussionMessage, handleGroupMention } from './channel_comments.js';
+import { handleChannelDiscussionMessage, handleGroupMention, handleGuestQuery } from './channel_comments.js';
 import { createSemanticaClient } from './memory/semantica_client.js';
 import { createMemoryOutboxWorker } from './memory/memory_outbox_worker.js';
 import { memoryRepository } from './memory/memory_repository.js';
@@ -175,17 +175,27 @@ async function flushUserBuffer(userId) {
     }
 }
 
-// Автоочистка памяти от старых сессий (каждые 15 минут)
+// Автоочистка памяти от зависших состояний ввода (каждые 15 минут)
 setInterval(() => {
     const now = Date.now();
-    for (const uid in lastMessageTime) {
-        if (now - lastMessageTime[uid] > 30 * 60 * 1000) { // 30 минут неактивности
-            delete lastMessageTime[uid];
-            delete userState[uid];
+    for (const uid in userDebounceBuffer) {
+        if (userDebounceBuffer[uid]?.lastTime && (now - userDebounceBuffer[uid].lastTime > 30 * 60 * 1000)) {
             clearUserDebounceBuffer(uid);
         }
     }
 }, 15 * 60 * 1000);
+
+// Обработчик гостевых запросов Telegram (Guest Mode / guest_query)
+bot.use(async (ctx, next) => {
+    if (ctx.update?.guest_query) {
+        const handled = await handleGuestQuery(bot, ctx).catch(err => {
+            console.error('[GUEST QUERY HANDLER ERROR]:', err.message);
+            return false;
+        });
+        if (handled) return;
+    }
+    return next();
+});
 
 // === СЛОВАРЬ СТИЛЕЙ ПРОФИЛЯ ===
 const userLevels = {
@@ -599,17 +609,6 @@ bot.action('admin_edit_pkgs', async (ctx) => {
         userState[ctx.from.id] = `WAITING_EDIT_PKG_${pkg.toUpperCase()}`;
         await ctx.answerCbQuery();
         return ctx.editMessageText(`✏️ Редактирование пакета *${pkg.toUpperCase()}*.\n\nВведите 4 числа через пробел:\n\`Звезды Рубли Тексты Фото\`\n\n_Например (35 звёзд, 50 руб, 50 текстов, 0 фото):_\n\`35 50 50 0\``, {
-            parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'cancel_input' }]] }
-        });
-    });
-});
-
-// Кнопки ожидания для пакетов
-['lite', 'medium', 'hard', 'full'].forEach(pkg => {
-    bot.action(`edit_pkg_${pkg}`, async (ctx) => {
-        userState[ctx.from.id] = `WAITING_EDIT_PKG_${pkg.toUpperCase()}`;
-        await ctx.answerCbQuery();
-        return ctx.editMessageText(`💬 Отправьте новые настройки для пакета *${pkg.toUpperCase()}* в чат.\n\nФормат (четыре числа через пробел): \`ЦенаXTR ЦенаRUB Тексты Фото\`\nПример: \`35 25 50 5\``, {
             parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'cancel_input' }]] }
         });
     });
@@ -1448,17 +1447,17 @@ bot.on('message_reaction', async (ctx) => {
 
 bot.on('text', async (ctx) => {
     if (ctx.chat && (ctx.chat.type === 'supergroup' || ctx.chat.type === 'group')) {
-        const handledDiscussion = await handleChannelDiscussionMessage(bot, ctx).catch(err => {
-            console.error('[CHANNEL DISCUSSION ERROR]:', err.message);
-            return false;
-        });
-        if (handledDiscussion) return;
-
         const handledMention = await handleGroupMention(bot, ctx).catch(err => {
             console.error('[GROUP MENTION ERROR]:', err.message);
             return false;
         });
         if (handledMention) return;
+
+        const handledDiscussion = await handleChannelDiscussionMessage(bot, ctx).catch(err => {
+            console.error('[CHANNEL DISCUSSION ERROR]:', err.message);
+            return false;
+        });
+        if (handledDiscussion) return;
 
         return;
     }

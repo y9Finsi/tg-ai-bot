@@ -433,3 +433,31 @@ export async function handleGroupMention(bot, ctx) {
     return false;
 }
 
+export async function handleGuestQuery(bot, ctx) {
+    const gq = ctx.update?.guest_query;
+    if (!gq) return false;
+    try {
+        const botUsername = ctx.botInfo?.username?.toLowerCase() || 'gexyy_bot';
+        let userQuery = String(gq.query || '').replace(new RegExp(`@${botUsername}`, 'gi'), '').trim();
+        const commenter = await getCommenterContext(gq.from?.id);
+        const channelSettings = await getChannelPosterSettings().catch(() => ({}));
+        const decision = await generateCommentDecision({
+            postText: 'Гостевой запрос Telegram в чате',
+            threadContext: [],
+            commentText: userQuery || 'Привет, Лера',
+            commenter,
+            isDirectMention: true,
+            channelSettings
+        });
+        const replyText = decision?.reply ? cleanResponseText(decision.reply).replace(/\|\|\|/g, '\n\n') : 'привеет, я тут';
+        await bot.telegram.callApi('answerGuestQuery', {
+            guest_query_id: gq.id,
+            text: replyText
+        });
+        return true;
+    } catch (err) {
+        console.error('[HANDLE GUEST QUERY ERROR]:', err.message);
+        return false;
+    }
+}
+

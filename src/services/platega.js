@@ -32,9 +32,14 @@ export async function createPlategaInvoice(amountRub, description, payloadId) {
     }
 
     const data = await response.json();
+    const invoiceId = data.invoice_id || data.id;
+    const payUrl = data.pay_url || data.url || data.paymentUrl;
     return {
-        invoice_id: data.invoice_id || data.id,
-        pay_url: data.pay_url || data.url
+        invoice_id: invoiceId,
+        transactionId: invoiceId,
+        pay_url: payUrl,
+        redirect: payUrl,
+        url: payUrl
     };
 }
 
@@ -57,8 +62,11 @@ export async function checkPlategaInvoice(invoiceId) {
     }
 
     const data = await response.json();
+    const statusNormalized = String(data.status || '').toUpperCase();
+    const isPaid = statusNormalized === 'PAID' || statusNormalized === 'COMPLETED' || statusNormalized === 'CONFIRMED' || statusNormalized === 'SUCCESS';
     return {
-        status: data.status,
-        is_paid: data.status === 'paid' || data.status === 'completed'
+        status: isPaid ? 'CONFIRMED' : (statusNormalized === 'PENDING' ? 'PENDING' : statusNormalized),
+        raw_status: data.status,
+        is_paid: isPaid
     };
 }

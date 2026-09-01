@@ -1056,30 +1056,34 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     let { rawText, usage } = llmResult;
     let { model, providerName, latencyMs } = llmResult;
     if (!rawText || !rawText.trim()) {
-        if (isInitiative) {
+        const hasExecutedMediaTool = Boolean(toolPhotoPayload || toolVoicePayload || toolContentId);
+        if (hasExecutedMediaTool) {
+            rawText = '';
+        } else if (isInitiative) {
             writePromptLog({ model, providerName, latencyMs, errorText: 'Пустой ответ от LLM (инициатива пропущена)' });
             return { text: "", photo: null, recommendationPost: null, blockedByJudge: true };
-        }
-        // Попытка быстрого повторного запроса для чата
-        try {
-            llmResult = await requestLlmCompletion(user, messages, isPhotoRequest, getOpenAIClientAndModel, generationParams);
-            rawText = llmResult?.rawText || '';
-            usage = llmResult?.usage || usage;
-            model = llmResult?.model || model;
-            providerName = llmResult?.providerName || providerName;
-            latencyMs = llmResult?.latencyMs || latencyMs;
-        } catch (retryErr) {
-            // ignore
-        }
-        if (!rawText || !rawText.trim()) {
-            writePromptLog({ model, providerName, latencyMs, errorText: 'Пустой ответ от LLM' });
-            const fallbackText = getQualityFallback(routingMode, {
-                userText,
-                recentReplies: recentReplyTexts,
-                lastAssistantText: lastLeraText,
-                reason: 'EMPTY_RESPONSE'
-            });
-            return { text: fallbackText, photo: null, recommendationPost: null };
+        } else {
+            // Попытка быстрого повторного запроса для чата
+            try {
+                llmResult = await requestLlmCompletion(user, messages, isPhotoRequest, getOpenAIClientAndModel, generationParams);
+                rawText = llmResult?.rawText || '';
+                usage = llmResult?.usage || usage;
+                model = llmResult?.model || model;
+                providerName = llmResult?.providerName || providerName;
+                latencyMs = llmResult?.latencyMs || latencyMs;
+            } catch (retryErr) {
+                // ignore
+            }
+            if (!rawText || !rawText.trim()) {
+                writePromptLog({ model, providerName, latencyMs, errorText: 'Пустой ответ от LLM' });
+                const fallbackText = getQualityFallback(routingMode, {
+                    userText,
+                    recentReplies: recentReplyTexts,
+                    lastAssistantText: lastLeraText,
+                    reason: 'EMPTY_RESPONSE'
+                });
+                return { text: fallbackText, photo: null, recommendationPost: null };
+            }
         }
     }
 

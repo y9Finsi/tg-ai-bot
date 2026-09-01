@@ -1283,7 +1283,24 @@ export async function getUsersPage(limit = 20, offset = 0) {
     return res.rows;
 }
 
-export async function grantPackage(userId, packageType) {
+export async function grantPackage(userId, arg2, arg3 = 0, arg4 = 0, arg5 = null) {
+    if (typeof arg2 === 'number' || typeof arg3 === 'number') {
+        const textCount = parseInt(arg2, 10) || 0;
+        const imgCount = parseInt(arg3, 10) || 0;
+        const isVip = arg5 === 'ADMIN_VIP' || textCount >= 500;
+        const vipClause = isVip ? ', is_premium = TRUE' : '';
+        const res = await query(
+            `UPDATE users SET 
+                free_requests_left = free_requests_left + $1,
+                image_balance = image_balance + $2
+                ${vipClause}
+             WHERE telegram_id = $3 RETURNING *`,
+            [textCount, imgCount, userId]
+        );
+        return res.rows[0];
+    }
+
+    const packageType = arg2;
     let updateQuery = '';
     if (packageType === 'text_small') updateQuery = 'free_requests_left = free_requests_left + 50';
     else if (packageType === 'text_large') updateQuery = 'free_requests_left = free_requests_left + 200';
