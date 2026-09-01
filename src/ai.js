@@ -395,10 +395,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     const gapSeconds = Number.isFinite(Number(preMessageGapSeconds))
         ? Math.max(0, Number(preMessageGapSeconds))
         : (lastEvent ? Math.max(0, Math.floor((new Date(firstMessageAt || now).getTime() - new Date(lastEvent.occurred_at).getTime()) / 1000)) : 0);
-    let modeInstruction = `\n\n[ИНСТРУКЦИЯ ПО ГОЛОСОВЫМ СООБЩЕНИЯМ]:
-Если пользователь просит голосовое («скажи голосом», «наговори гс», «хочу услышать твой голос»), или если ты сама в особо живой, милый, ленивый или эмоциональный момент хочешь сказать фразу голосом, добавь тег [VOICE: текст реплики на русском].
-- Текст внутри [VOICE: ...] будет озвучен твоим живым голосом.
-- Ты можешь прислать текстовую реплику и следом войс (например: «слушай, ща наговорю [VOICE: Привет, ну как твои дела?]»), либо ответить только голосовым без лишнего текста (например: «[VOICE: Ой, мне так лень сейчас печатать, слушай...]»).`;
+    let modeInstruction = '';
 
     if (routingMode === 'EROTIC') {
         const climaxPrompt = getClimaxPromptInstruction(climaxState);

@@ -8,7 +8,7 @@ import { generateLeraVoice } from '../../../services/voice_generator.js';
 export const sendVoiceAction = {
     name: 'send_voice',
     title: 'Отправить голосовое сообщение',
-    description: 'Озвучить реплику живым голосовым сообщением (войсом) Леры.',
+    description: 'Отправляет живое голосовое сообщение (войс) Леры в Telegram чат. Вызывай, когда пользователь просит прислать войс («запиши гс», «скинь войс», «скажи голосом», «наговори», «хочу услышать твой голос») или когда ты сама хочешь озвучить реплику голосом.',
     inputSchema: {
         type: 'object',
         properties: {
