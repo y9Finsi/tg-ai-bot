@@ -325,7 +325,7 @@ export const ALLOWED_TELEGRAM_REACTIONS = new Set([
     '😴', '😭', '🤓', '👻', '👀', '🎃', '🙈', '😇', '😨',
     '🤝', '✍', '🤗', '🫡', '💅', '🤪', '🗿',
     '🆒', '💘', '🙉', '🦄', '😘', '🙊', '😎', '👾',
-    '🤷', '😡'
+    '🤷', '😡', '🇷🇺'
 ]);
 
 export function extractReactionEmoji(rawText) {
@@ -335,6 +335,7 @@ export function extractReactionEmoji(rawText) {
         : Array.from(suffix);
     const emojis = segments.filter(segment => /(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3)/u.test(segment));
     const emoji = emojis.length === 1 ? emojis[0] : '';
+    if (!emoji || !ALLOWED_TELEGRAM_REACTIONS.has(emoji)) return '';
     return Array.from(emoji).length <= 16 ? emoji : '';
 }
 
