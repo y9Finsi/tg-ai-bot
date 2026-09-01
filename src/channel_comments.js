@@ -9,7 +9,7 @@ import {
     getLeraProfile,
     getLeraProfileProjection
 } from './database.js';
-import { getOpenAIClientAndModel } from './ai.js';
+import { getOpenAIClientAndModel, generateResponse } from './ai.js';
 import { getCachedOpenAIClient, logLlmTrace } from './ai/llm_client.js';
 import { parseLlmJson } from './utils/robust_json.js';
 import { getRoutingSettings, getModeGenerationParams } from './ai/intent_router.js';
@@ -391,41 +391,34 @@ export async function handleGroupMention(bot, ctx) {
     }
 
     try {
-        const decision = await generateCommentDecision({
-            postText: ctx.chat.title ? `Групповой чат: "${ctx.chat.title}"` : 'Групповой чат',
-            threadContext,
-            commentText: userQuery || msg.text,
-            commenter,
-            isDirectMention: true,
-            channelSettings
-        });
+        const userId = msg.from?.id || 0;
+        const response = await generateResponse(userId, userQuery || msg.text);
+        const replyText = (response?.text ? cleanResponseText(response.text) : 'привеет, я тут').replace(/\|\|\|/g, '\n\n');
 
-        if (decision?.reaction && ALLOWED_REACTIONS.has(decision.reaction)) {
-            try {
-                await ctx.telegram.setMessageReaction(ctx.chat.id, msg.message_id, [{ type: 'emoji', emoji: decision.reaction }]);
-            } catch {
-                // Ignore reaction API errors
-            }
-        }
-
-        if (decision?.reply) {
-            const replyText = cleanResponseText(decision.reply).replace(/\|\|\|/g, '\n\n');
-            const guestQueryId = msg.guest_query_id || ctx.update?.guest_query?.id;
-            if (guestQueryId && bot.telegram?.callApi) {
+        const guestQueryId = msg.guest_query_id || ctx.update?.guest_query?.id;
+        if (guestQueryId && bot.telegram?.callApi) {
+            await bot.telegram.callApi('answerGuestQuery', {
+                guest_query_id: guestQueryId,
+                result: {
+                    type: 'article',
+                    id: String(Date.now()),
+                    title: 'Лера',
+                    input_message_content: { message_text: replyText }
+                }
+            }).catch(async () => {
                 await bot.telegram.callApi('answerGuestQuery', {
                     guest_query_id: guestQueryId,
                     text: replyText
-                }).catch(gqErr => {
-                    console.warn('[ANSWER GUEST QUERY WARNING]:', gqErr.message);
-                });
-            }
-            await ctx.reply(replyText, {
-                reply_parameters: { message_id: msg.message_id }
-            }).catch(async () => {
-                await ctx.reply(replyText, { reply_to_message_id: msg.message_id }).catch(() => {});
+                }).catch(() => {});
             });
-            return true;
         }
+
+        await ctx.reply(replyText, {
+            reply_parameters: { message_id: msg.message_id }
+        }).catch(async () => {
+            await ctx.reply(replyText, { reply_to_message_id: msg.message_id }).catch(() => {});
+        });
+        return true;
     } catch (err) {
         console.error('[GROUP MENTION ERROR]:', err.message);
     }
@@ -447,43 +440,30 @@ export async function handleGuestQuery(bot, ctx) {
         const botUsername = ctx.botInfo?.username?.toLowerCase() || 'gexyy_bot';
         let userQuery = String(gq.text || gq.query || gq.caption || ctx.message?.text || '').replace(new RegExp(`@${botUsername}`, 'gi'), '').trim();
         const fromUser = gq.from || gq.guest_bot_caller_user || ctx.from;
-        const commenter = await getCommenterContext(fromUser?.id);
-        const channelSettings = await getChannelPosterSettings().catch(() => ({}));
-        
-        const decision = await generateCommentDecision({
-            postText: 'Гостевой запрос Telegram в чате',
-            threadContext: [],
-            commentText: userQuery || 'Привет, Лера',
-            commenter,
-            isDirectMention: true,
-            channelSettings
-        });
-        
-        const replyText = decision?.reply ? cleanResponseText(decision.reply).replace(/\|\|\|/g, '\n\n') : 'привеет, я тут';
+        const userId = fromUser?.id || 0;
 
-        // 1. Попытка через result (InlineQueryResultArticle) по Bot API 10.0
-        try {
-            await bot.telegram.callApi('answerGuestQuery', {
-                guest_query_id: guestQueryId,
-                result: {
-                    type: 'article',
-                    id: String(Date.now()),
-                    title: 'Лера',
-                    input_message_content: {
-                        message_text: replyText
-                    }
+        const response = await generateResponse(userId, userQuery || 'привет');
+        const replyText = (response?.text ? cleanResponseText(response.text) : 'привеет, я тут').replace(/\|\|\|/g, '\n\n');
+
+        await bot.telegram.callApi('answerGuestQuery', {
+            guest_query_id: guestQueryId,
+            result: {
+                type: 'article',
+                id: String(Date.now()),
+                title: 'Лера',
+                input_message_content: {
+                    message_text: replyText
                 }
-            });
-            return true;
-        } catch (callErr1) {
-            console.warn('[ANSWER GUEST QUERY RESULT ATTEMPT FAILED]:', callErr1.message);
-            // 2. Фолбэк через прямой text параметр
+            }
+        }).catch(async (apiErr) => {
+            console.warn('[ANSWER GUEST QUERY RESULT FAILED, RETRYING WITH TEXT]:', apiErr.message);
             await bot.telegram.callApi('answerGuestQuery', {
                 guest_query_id: guestQueryId,
                 text: replyText
             });
-            return true;
-        }
+        });
+
+        return true;
     } catch (err) {
         console.error('[HANDLE GUEST QUERY ERROR]:', err.message);
         return false;
