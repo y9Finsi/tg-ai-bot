@@ -38,8 +38,17 @@ export const getChannelPostsAction = {
             const params = [];
 
             if (searchKeywords) {
-                params.push(`%${searchKeywords}%`);
-                sql += ` AND (text ILIKE $${params.length} OR topic ILIKE $${params.length})`;
+                const words = searchKeywords.split(/\s+/).filter(w => w.length >= 3);
+                if (words.length > 0) {
+                    const conditions = words.map(w => {
+                        params.push(`%${w}%`);
+                        return `(text ILIKE $${params.length} OR topic ILIKE $${params.length})`;
+                    });
+                    sql += ` AND (${conditions.join(' OR ')})`;
+                } else {
+                    params.push(`%${searchKeywords}%`);
+                    sql += ` AND (text ILIKE $${params.length} OR topic ILIKE $${params.length})`;
+                }
             }
 
             params.push(limit);
