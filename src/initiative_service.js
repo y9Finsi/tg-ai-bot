@@ -7,7 +7,8 @@ import {
     getActiveMute,
     updateConversationEventMetadata,
     getInitiativeStages,
-    toLocalDateString
+    toLocalDateString,
+    getActiveOpenThread
 } from './database.js';
 import { classifyInitiativeState, getRoutingSettings } from './ai/intent_router.js';
 
@@ -54,7 +55,9 @@ export function chooseInitiativeKind({
     stageKinds = [],
     newMoscowDay = false,
     initiativeLimit = INITIATIVE_LIMIT,
-    isColdStart = false
+    isColdStart = false,
+    hasActiveOpenThread = false,
+    openThreadAgeSeconds = 0
 }) {
     const initiativesAvailable = counts.initiatives < initiativeLimit;
     if (!initiativesAvailable) return null;
@@ -80,12 +83,23 @@ export function chooseInitiativeKind({
         return null;
     }
 
-    // Шаг 1: Новый день — если сегодня ещё не здоровались и юзер не в блоке 4 дней
+    // Шаг 1: Открытый тред / обещание собеседника — если наступил новый день
+    if (newMoscowDay && hasActiveOpenThread && !stageKinds.includes('open_thread')) {
+        // Если тред уже созрел (12+ часов = 43200 сек) — отправляем его
+        if (openThreadAgeSeconds >= 43200) {
+            return 'open_thread';
+        }
+        // Если еще не созрел (< 12ч, например в 09:00 после ночного обещания в 23:00):
+        // Ждем созревания днем (12:00+), не сжигаем день дежурным new_day!
+        return null;
+    }
+
+    // Шаг 2: Новый день — если сегодня ещё не здоровались и юзер не в блоке 4 дней
     if (newMoscowDay && !stageKinds.includes('new_day')) {
         return 'new_day';
     }
 
-    // Шаг 2: Напоминание через 15 минут (900 сек), если юзер проигнорил реплику Леры или утренний new_day
+    // Шаг 3: Напоминание через 15 минут (900 сек), если юзер проигнорил реплику Леры или утренний new_day
     if ((state === 'IGNORED' || stageKinds.includes('new_day')) && !stageKinds.includes('ignore_1')) {
         if (ageSeconds >= 900 && ageSeconds <= 7200) {
             return 'ignore_1';
@@ -183,6 +197,11 @@ export async function enqueuePersonalInitiatives(queue) {
                 ? await getContentCandidates(latest.user_id, 'initiative', 4)
                 : [];
             const stageKinds = await getInitiativeStages(latest.user_id, anchor.id);
+            const activeOpenThread = newMoscowDay ? await getActiveOpenThread(latest.user_id) : null;
+            const openThreadAgeSeconds = activeOpenThread
+                ? Math.max(0, Math.floor((Date.now() - new Date(activeOpenThread.created_at).getTime()) / 1000))
+                : 0;
+
             const kind = chooseInitiativeKind({
                 ageSeconds,
                 state,
@@ -192,9 +211,12 @@ export async function enqueuePersonalInitiatives(queue) {
                 contentAvailable: contentCandidates.length > 0,
                 stageKinds,
                 newMoscowDay,
-                initiativeLimit
+                initiativeLimit,
+                hasActiveOpenThread: Boolean(activeOpenThread),
+                openThreadAgeSeconds
             });
             if (!kind) continue;
+            if (kind === 'open_thread' && (hourMsk < 12 || hourMsk >= 20)) continue;
             if (['content_4h', 'idle_4h'].includes(kind) && (hourMsk < 11 || hourMsk >= 21)) continue;
             const candidates = kind === 'content_4h'
                 || (kind === 'open' && !dialogue.some(event => event.event_type === 'CONTENT') && counts.content < CONTENT_LIMIT)
@@ -206,11 +228,15 @@ export async function enqueuePersonalInitiatives(queue) {
                 chatId: Number(latest.user_id),
                 anchorEventId: Number(anchor.id),
                 initiativeKind: kind,
+                openThreadId: activeOpenThread?.id || null,
+                openThreadTopic: activeOpenThread?.payload?.topic || null,
                 contentCandidateIds: candidates.map(item => Number(item.id))
             }, {
-                jobId: newMoscowDay
-                    ? `initiative-${latest.user_id}-${todayDate}-new_day`
-                    : `initiative-${latest.user_id}-${anchor.id}-${kind}`,
+                jobId: kind === 'open_thread'
+                    ? `initiative-${latest.user_id}-${todayDate}-open_thread`
+                    : newMoscowDay
+                        ? `initiative-${latest.user_id}-${todayDate}-new_day`
+                        : `initiative-${latest.user_id}-${anchor.id}-${kind}`,
                 attempts: 3
             });
         } catch (error) {

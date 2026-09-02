@@ -16,6 +16,7 @@ import { setReactionAction } from './plugins/set_reaction.js';
 import { getChannelPostsAction } from './plugins/get_channel_posts.js';
 import { scheduleFollowupAction } from './plugins/schedule_followup.js';
 import { scheduleReminderAction } from './plugins/schedule_reminder.js';
+import { recordOpenThreadAction } from './plugins/record_open_thread.js';
 
 // Авторегистрация системных действий ядра
 actionRegistry.register(webSearchAction);
@@ -29,6 +30,7 @@ actionRegistry.register(setReactionAction);
 actionRegistry.register(getChannelPostsAction);
 actionRegistry.register(scheduleFollowupAction);
 actionRegistry.register(scheduleReminderAction);
+actionRegistry.register(recordOpenThreadAction);
 
 export {
     actionRegistry,
@@ -44,6 +46,7 @@ export {
     setReactionAction,
     getChannelPostsAction,
     scheduleFollowupAction,
-    scheduleReminderAction
+    scheduleReminderAction,
+    recordOpenThreadAction
 };
 

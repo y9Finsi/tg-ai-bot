@@ -7,7 +7,7 @@ import {
     savePromptLog, applyUserRelationshipEvent, getInitiativeDailyCounts,
     getActiveDialogueEvents, getContentCandidates,
     getLeraProfile, formatConversationGap, toLocalDateString,
-    getLeraContent
+    getLeraContent, getActiveOpenThread, deactivateOpenThread
 } from './database.js';
 import { getRoutedSystemPrompt } from './prompts.js';
 import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX } from './constants/intents.js';
@@ -638,6 +638,12 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: перекладывать на собеседника задачи Макса/шоурума («ты подумал над постом?») или требовать от него решений по твоей работе!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: использовать кринжовые фразы вроде «ну ты и залип», «я залипла», «да я чет залипла»!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: выдумывать новые прошлые разговоры, обещания, видео/ссылки или сериалы («ты рассказывал про сериал», «ты скинул ссылку»), которых нет в памяти и истории переписки!`;
+        } else if (initiativeKind === 'open_thread') {
+            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: СОБЕСЕДНИК ОБЕЩАЛ ТЕБЕ ДЕЛО / НАПОМИНАНИЕ!
+Повод: ${initiativeReason || 'собеседник обещал скинуть трек или сделать что-то для тебя'}
+Задача Леры:
+- Напиши первой в личку в своем характере: легко, живо, с легким подколом («кстааати)) ты мне трек обещал скинуть вообще-то, я все еще жду», «кстати, а где трек-то? делись давай ахах»).
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: душить, требовать как коллектор, обижаться или писать фразы робота («напоминаю по вашему поручению»). Только легкий человеческий интерес.`;
         } else if (initiativeKind === 'followup_promise') {
             initiativeDirective = `⚠️ ТЫ ВОЗВРАЩАЕШЬСЯ К СОБЕСЕДНИКУ: ВЫПОЛНЕНИЕ ОБЕЩАНИЯ / ОТЛОЖЕННОЕ ДЕЙСТВИЕ!
 Повод: ${initiativeReason || 'ты только что закончила дело, о котором обещала рассказать'}
@@ -663,6 +669,38 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
             const pendingDirective = `⚠️ У ТЕБЯ ВИСИТ ОБЕЩАНИЕ СОБЕСЕДНИКУ: ты недавно обещала: "${pendingPromise.topic}".
 Если собеседник спросил об этом или уместно — выполни обещание или скажи, что ещё в процессе. Если диалог ушел в другую сторону — общайся естественно по новой теме.`;
             messages.push({ role: 'system', content: pendingDirective });
+        }
+
+        const activeOpenThread = await getActiveOpenThread(userId).catch(() => null);
+        if (activeOpenThread?.payload?.topic) {
+            const threadTopic = activeOpenThread.payload.topic;
+            const threadDirective = `📌 СОБЕСЕДНИК ТЕБЕ ОБЕЩАЛ: "${threadTopic}".
+Если в разговоре возникнет пауза, зайдёт речь о смежной теме или ты хочешь подколоть собеседника — можешь естественно припомнить ему это в своём стиле («кстааати, а ты обещал...»), легко, живо, без душноты и без давления. Не повторяй это, если уже спрашивала.`;
+            messages.push({ role: 'system', content: threadDirective });
+
+            const topic = String(threadTopic).toLowerCase();
+            const textLower = String(userText || '').toLowerCase();
+            let isResolved = false;
+
+            if (/трек|музык|песн|плейлист/i.test(topic)) {
+                if (/скинул аудио|трек|песн|spotify|music\.yandex|vk\.com\/audio|soundcloud/i.test(textLower)) {
+                    isResolved = true;
+                }
+            }
+            if (/фот|кот|селфи|вид|картинк|показать/i.test(topic)) {
+                if ((Array.isArray(photoUrls) && photoUrls.length > 0) || /вот|смотри|глянь|фотк|кот/i.test(textLower)) {
+                    isResolved = true;
+                }
+            }
+            if (/ссылк|видео|видос|стать/i.test(topic)) {
+                if (/https?:\/\/|вот|скинул/i.test(textLower)) {
+                    isResolved = true;
+                }
+            }
+
+            if (isResolved) {
+                await deactivateOpenThread(activeOpenThread.id).catch(() => null);
+            }
         }
     }
 

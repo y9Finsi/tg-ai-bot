@@ -3169,3 +3169,43 @@ export async function prunePromptLogs(keep = 5000) {
         return 0;
     }
 }
+
+/**
+ * Open Thread / Social Commitment helpers
+ */
+export async function getActiveOpenThread(userId) {
+    if (!userId) return null;
+    try {
+        const res = await query(
+            `SELECT id, user_id, payload, normalized_text, created_at, valid_until
+             FROM memory_fact
+             WHERE user_id = $1
+               AND memory_type = 'OPEN_THREAD'
+               AND is_active = TRUE
+               AND (valid_until IS NULL OR valid_until > NOW())
+             ORDER BY id DESC
+             LIMIT 1`,
+            [Number(userId)]
+        );
+        return res.rows[0] || null;
+    } catch (err) {
+        console.warn(`[GET_ACTIVE_OPEN_THREAD WARN] user ${userId}:`, err.message);
+        return null;
+    }
+}
+
+export async function deactivateOpenThread(factId) {
+    if (!factId) return false;
+    try {
+        const res = await query(
+            `UPDATE memory_fact
+             SET is_active = FALSE, updated_at = NOW()
+             WHERE id = $1`,
+            [Number(factId)]
+        );
+        return (res.rowCount || 0) > 0;
+    } catch (err) {
+        console.warn(`[DEACTIVATE_OPEN_THREAD WARN] fact ${factId}:`, err.message);
+        return false;
+    }
+}

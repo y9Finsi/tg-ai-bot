@@ -1290,7 +1290,7 @@ bot.on(['channel_post', 'edited_channel_post'], async (ctx) => {
     }
 });
 
-bot.on(['photo', 'video', 'voice', 'document', 'animation'], async (ctx) => {
+bot.on(['photo', 'video', 'voice', 'document', 'animation', 'audio'], async (ctx) => {
     const userId = ctx.from.id;
     if (userId === ADMIN_ID && userState[userId] === 'WAITING_FOR_BROADCAST') {
         userState[userId] = 'WAITING_FOR_BROADCAST_BTN';
@@ -1303,6 +1303,9 @@ bot.on(['photo', 'video', 'voice', 'document', 'animation'], async (ctx) => {
         } else if (ctx.message.video) {
             msgType = 'video';
             fileId = ctx.message.video.file_id;
+        } else if (ctx.message.audio) {
+            msgType = 'audio';
+            fileId = ctx.message.audio.file_id;
         } else if (ctx.message.document) {
             msgType = 'document';
             fileId = ctx.message.document.file_id;
@@ -1333,9 +1336,10 @@ bot.on(['photo', 'video', 'voice', 'document', 'animation'], async (ctx) => {
     try {
         let eventType = 'PHOTO';
         let photoUrl = null;
-        const media = ctx.message.photo?.at(-1) || ctx.message.video || ctx.message.voice || ctx.message.document || ctx.message.animation;
+        const media = ctx.message.photo?.at(-1) || ctx.message.video || ctx.message.voice || ctx.message.audio || ctx.message.document || ctx.message.animation;
         if (ctx.message.video) eventType = 'VIDEO';
         if (ctx.message.voice) eventType = 'VOICE';
+        if (ctx.message.audio) eventType = 'AUDIO';
         if (ctx.message.animation) eventType = 'VIDEO';
         if (ctx.message.photo && media?.file_id) {
             try {
@@ -1356,19 +1360,29 @@ bot.on(['photo', 'video', 'voice', 'document', 'animation'], async (ctx) => {
         const user = await getUser(userId);
         if (!user) await createUser(userId);
         const captionText = ctx.message.caption || '';
-        const userMsgText = captionText.trim() || 'Посмотри на фото';
+        let userMsgText = captionText.trim();
+        if (eventType === 'AUDIO' && ctx.message.audio) {
+            const title = ctx.message.audio.title || ctx.message.audio.file_name || 'трек';
+            const performer = ctx.message.audio.performer ? ` — ${ctx.message.audio.performer}` : '';
+            const audioLabel = `[Скинул аудиозапись/трек: ${title}${performer}]`;
+            userMsgText = userMsgText ? `${audioLabel} ${userMsgText}` : audioLabel;
+        } else if (!userMsgText) {
+            userMsgText = 'Посмотри на фото';
+        }
 
         const event = await appendConversationEvent({
             userId,
             eventType,
             role: 'user',
-            content: captionText,
+            content: userMsgText,
             occurredAt: ctx.message?.date ? new Date(Number(ctx.message.date) * 1000) : new Date(),
             telegramMessageId: ctx.message?.message_id || null,
             metadata: {
                 file_id: media?.file_id || null,
                 photo_url: photoUrl || null,
                 caption: captionText,
+                title: ctx.message.audio?.title || null,
+                performer: ctx.message.audio?.performer || null,
                 width: media?.width || null,
                 height: media?.height || null,
                 duration: media?.duration || null
@@ -1376,8 +1390,8 @@ bot.on(['photo', 'video', 'voice', 'document', 'animation'], async (ctx) => {
             status: 'COMPLETED'
         });
 
-        // Если это личный диалог и пользователь прислал фото — ставим задачу в очередь генерации ответа Леры
-        if (eventType === 'PHOTO' && (!ctx.chat || ctx.chat.type === 'private')) {
+        // Если это личный диалог и пользователь прислал фото или аудио — ставим задачу в очередь генерации ответа Леры
+        if ((eventType === 'PHOTO' || eventType === 'AUDIO') && (!ctx.chat || ctx.chat.type === 'private')) {
             if (!userDebounceBuffer[userId]) {
                 userDebounceBuffer[userId] = {
                     textParts: [],

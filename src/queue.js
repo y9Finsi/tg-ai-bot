@@ -4,7 +4,7 @@ import {
     decrementFreeRequest, appendConversationEvent, updateConversationEventStatus, refundReservedRequest,
     getUser, getActiveMute, getCompletedEvent, getLatestMeaningfulEvent, getInitiativeDailyCounts,
     hasInitiativeStage, getLeraContent, wasContentSent, recordPhotoSent, getChatHistoryClearedAt,
-    toLocalDateString, setBlockStatus, getAdminDebugLogEnabled
+    toLocalDateString, setBlockStatus, getAdminDebugLogEnabled, deactivateOpenThread
 } from './database.js';
 import { splitResponseMessages } from './utils/response_text.js';
 import { sendCatalogContent } from './content_service.js';
@@ -190,7 +190,7 @@ async function processContentDeliveryJob(bot, job) {
 }
 
 async function processInitiativeJob(bot, job) {
-    const { userId, chatId, anchorEventId, initiativeKind, contentCandidateIds = [] } = job.data;
+    const { userId, chatId, anchorEventId, initiativeKind, contentCandidateIds = [], openThreadId, openThreadTopic } = job.data;
     const isColdStart = initiativeKind === 'cold_start';
     const [user, mute, anchor, latest, counts, duplicate, routingSettings] = await Promise.all([
         getUser(userId),
@@ -219,7 +219,7 @@ async function processInitiativeJob(bot, job) {
         hourCycle: 'h23'
     }).format(new Date()));
     if (isColdStart && (hourMsk < 11 || hourMsk >= 21)) return;
-    if (initiativeKind === 'new_day' && (latestLocalDate >= todayMsk || hourMsk < 9)) return;
+    if ((initiativeKind === 'new_day' || initiativeKind === 'open_thread') && (latestLocalDate >= todayMsk || hourMsk < 9)) return;
     const anchorAgeSeconds = anchor ? (Date.now() - new Date(anchor.occurred_at).getTime()) / 1000 : 0;
     if (initiativeKind === 'open' && (anchorAgeSeconds < 300 || anchorAgeSeconds > 3600)) return;
     if (initiativeKind === 'ignore_1' && (anchorAgeSeconds < 900 || anchorAgeSeconds > 7200)) return;
@@ -233,7 +233,7 @@ async function processInitiativeJob(bot, job) {
     }
 
     let candidates = [];
-    if (!['ignore_1', 'ignore_2', 'ignore_4d', 'new_day', 'idle_4h', 'cold_start'].includes(initiativeKind) && counts.content < 3) {
+    if (!['ignore_1', 'ignore_2', 'ignore_4d', 'new_day', 'open_thread', 'idle_4h', 'cold_start'].includes(initiativeKind) && counts.content < 3) {
         const rows = await Promise.all(contentCandidateIds.map(id => getLeraContent(id)));
         candidates = rows.filter(item => item?.enabled && item.allow_initiative);
         const sentFlags = await Promise.all(candidates.map(item => wasContentSent(userId, item.id)));
@@ -241,17 +241,19 @@ async function processInitiativeJob(bot, job) {
     }
     if (initiativeKind === 'content_4h' && candidates.length === 0) return;
 
-    const reason = initiativeKind === 'cold_start'
-        ? 'написать первой и познакомиться / поинтересоваться как дела, без предыдущей истории переписки'
-        : initiativeKind === 'open'
-            ? 'естественно продолжить последний незакрытый диалог'
-            : initiativeKind === 'new_day'
-                ? 'наступил новый день, а вы сегодня ещё не общались'
-            : initiativeKind === 'content_4h'
-                ? 'после паузы самой поделиться контентом'
-            : initiativeKind === 'idle_4h'
-                ? 'после дневной паузы поинтересоваться как дела, связав со своим днем и прошлым разговором'
-                : 'пользователь не ответил на реплику Леры';
+    const reason = initiativeKind === 'open_thread'
+        ? `Ты вспомнила, что собеседник обещал тебе: "${openThreadTopic || 'кое-что'}". Спроси у него в своем стиле («кстааати)) ты мне обещал...»), легко, живо, с подколом, без душноты и без давления.`
+        : initiativeKind === 'cold_start'
+            ? 'написать первой и познакомиться / поинтересоваться как дела, без предыдущей истории переписки'
+            : initiativeKind === 'open'
+                ? 'естественно продолжить последний незакрытый диалог'
+                : initiativeKind === 'new_day'
+                    ? 'наступил новый день, а вы сегодня ещё не общались'
+                : initiativeKind === 'content_4h'
+                    ? 'после паузы самой поделиться контентом'
+                : initiativeKind === 'idle_4h'
+                    ? 'после дневной паузы поинтересоваться как дела, связав со своим днем и прошлым разговором'
+                    : 'пользователь не ответил на реплику Леры';
     const response = await generateAiInitiativeResponse(userId, reason, {
         initiativeKind,
         anchorEventId: anchorEventId || null,
@@ -273,8 +275,14 @@ async function processInitiativeJob(bot, job) {
             const photoPayload = (response.photo && typeof response.photo === 'object' && response.photo.source)
                 ? { source: response.photo.source, filename: response.photo.filename || 'photo.jpg' }
                 : response.photo;
-            const sentMsg = await bot.telegram.sendPhoto(chatId, photoPayload);
-            const sentFileId = sentMsg?.photo?.at(-1)?.file_id || (typeof response.photo === 'string' ? response.photo : null);
+            let sentFileId = null;
+            if (response.photoFileId) {
+                const photoMsg = await bot.telegram.sendPhoto(chatId, response.photoFileId).catch(() => null);
+                if (photoMsg?.photo) sentFileId = photoMsg.photo.at(-1)?.file_id;
+            } else if (response.photo) {
+                const photoMsg = await bot.telegram.sendPhoto(chatId, photoPayload).catch(() => null);
+                if (photoMsg?.photo) sentFileId = photoMsg.photo.at(-1)?.file_id;
+            }
             if (response.photoRecordId) {
                 await recordPhotoSent(userId, response.photoRecordId).catch(() => {});
             }
@@ -300,6 +308,7 @@ async function processInitiativeJob(bot, job) {
             return;
         }
         console.warn(`[INITIATIVE SEND ERR] user ${userId}:`, sendErr.message);
+        throw sendErr;
     }
 
     const initiativeEvent = await appendConversationEvent({
@@ -311,6 +320,9 @@ async function processInitiativeJob(bot, job) {
         metadata: { kind: initiativeKind, anchor_event_id: Number(anchorEventId), stage: initiativeKind },
         status: 'COMPLETED'
     });
+    if (initiativeKind === 'open_thread' && openThreadId) {
+        await deactivateOpenThread(openThreadId).catch(() => null);
+    }
     if (response.contentId) {
         await deliverContentOrRetry(bot, {
             userId, chatId, contentId: response.contentId, source: 'initiative',
