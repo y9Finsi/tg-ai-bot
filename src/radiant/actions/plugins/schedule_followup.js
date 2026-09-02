@@ -10,15 +10,15 @@ import { getUser } from '../../../database.js';
 export const scheduleFollowupAction = {
     name: 'schedule_followup',
     title: 'Запланировать бытовое возвращение Леры',
-    description: 'Планирует отложенное сообщение от лица Леры через указанное количество минут (от 1 до 360 мин). Вызывай, когда ты сама обещаешь сделать бытовое действие и вернуться/скинуть фото (заварить кофе, доехать до работы, выйти из душа, скинуть лук). Для просьб пользователя («напомни мне через X») используй инструмент schedule_reminder.',
+    description: 'Планирует отложенное сообщение от лица Леры через указанное количество минут (от 1 до 2880 мин, то есть до 48 часов). Вызывай, когда ты сама обещаешь сделать бытовое действие и вернуться/скинуть фото (заварить кофе, доехать до работы, выйти из душа, скинуть лук). Для просьб пользователя («напомни мне через X») используй инструмент schedule_reminder.',
     inputSchema: {
         type: 'object',
         properties: {
             delay_minutes: {
                 type: 'integer',
                 minimum: 1,
-                maximum: 360,
-                description: 'Через сколько минут вернуться собеседнику (в минутах, от 1 до 360).'
+                maximum: 2880,
+                description: 'Через сколько минут вернуться собеседнику (в минутах, от 1 до 2880, максимум 48 часов).'
             },
             topic: {
                 type: 'string',
@@ -57,7 +57,7 @@ export const scheduleFollowupAction = {
             }
         }
 
-        const delayMinutes = Math.min(Math.max(parseInt(args.delay_minutes, 10) || 5, 1), 360);
+        const delayMinutes = Math.min(Math.max(parseInt(args.delay_minutes, 10) || 5, 1), 2880);
         const topic = String(args.topic || '').trim();
         const sendPhoto = Boolean(args.send_photo);
 

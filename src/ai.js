@@ -27,7 +27,8 @@ import { createContextRetriever } from './ai/context_retriever.js';
 import { buildMemoryRetrievalQuery } from './ai/memory_query.js';
 import { shouldPersistToolObservation } from './ai/tool_observation_policy.js';
 import { memoryRepository } from './memory/memory_repository.js';
-import { getPendingFollowup, cancelFollowupPromise } from './queue.js';
+import { enqueueFollowupPromise, getPendingFollowup } from './queue.js';
+import { maybeScheduleFollowupPromise } from './ai/followup_interceptor.js';
 // --- 1. КОНСТАНТЫ И ДИНАМИЧЕСКИЙ КЛИЕНТ ИИ ---
 
 const rateLimitMap = new Map();
@@ -983,9 +984,9 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                     radiantContext,
                     routingMode,
                     isPublicContext: Boolean(isPublicContext),
-                    chatId: options.chatId || null,
-                    threadId: options.threadId || null,
-                    anchorEventId: options.anchorEventId || null
+                    chatId: chatId || null,
+                    threadId: threadId || null,
+                    anchorEventId: anchorEventId || null
                 }
             });
             let toolResultContent = '';
@@ -1427,6 +1428,26 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         text = "о, зацени че в новостях вычитала 👇";
     }
 
+    const scheduleFollowupSucceeded = toolsExecuted.some(tool =>
+        tool.name === 'schedule_followup' && tool.status === 'success'
+    );
+    const followupIntercept = await maybeScheduleFollowupPromise({
+        text,
+        userId,
+        chatId,
+        anchorEventId,
+        isInitiative,
+        isPublicContext,
+        scheduleFollowupSucceeded,
+        enqueue: enqueueFollowupPromise
+    });
+    if (followupIntercept.scheduled) {
+        generationTrace.push({
+            step: 'followup_interceptor',
+            promise: followupIntercept.promise
+        });
+    }
+
     // 4. Логирование и БД (с учётом отправленной фотографии в истории)
     await recordAiTransaction(userId, usage);
     console.log(`🤖 [${isInitiative ? 'AI INITIATIVE' : 'BOT'} ${userId}]: ${text}`);
@@ -1677,10 +1698,6 @@ export async function generateResponse(userId, text, envelope = {}) {
         senderName: envelope.senderName,
         replyingTo: envelope.replyingTo
     });
-
-    if (!isPublicContext && aiResponse) {
-        cancelFollowupPromise(userId).catch(() => {});
-    }
 
     return aiResponse;
 }

@@ -71,7 +71,21 @@ test('schedule_followup: validation and execution checks', async () => {
     assert.equal(pending.topic, 'заварить кофе');
     assert.equal(pending.sendPhoto, false);
 
-    // 6. cancelFollowupPromise should clear it
+    const resLongDelay = await scheduleFollowupAction.execute(
+        { delay_minutes: 2880, topic: 'завтра показать результат', send_photo: false },
+        { userId: testUserId }
+    );
+    assert.equal(resLongDelay.status, 'success');
+    assert.equal(resLongDelay.data.delay_minutes, 2880);
+
+    // 6. A new explicit promise replaces the old one for the same user.
+    const replacedPending = getPendingFollowup(testUserId);
+    assert.ok(replacedPending, 'Replacement followup should exist');
+    assert.equal(replacedPending.topic, 'завтра показать результат');
+    assert.ok(replacedPending.dueAt - replacedPending.scheduledAt <= 2880 * 60 * 1000);
+    assert.ok(replacedPending.dueAt - replacedPending.scheduledAt >= 2880 * 60 * 1000 - 1000);
+
+    // 7. cancelFollowupPromise should clear it
     await cancelFollowupPromise(testUserId);
     const pendingAfterCancel = getPendingFollowup(testUserId);
     assert.equal(pendingAfterCancel, null, 'Pending followup should be cleared after cancel');
@@ -115,4 +129,3 @@ test('schedule_reminder: validation and execution checks', async () => {
     assert.equal(resMinutes.data.delay_seconds, 900);
     assert.equal(addedJob?.opts?.delay, 900000);
 });
-

@@ -354,16 +354,16 @@ export async function enqueueFollowupPromise(userId, chatId, { delayMinutes = 15
     const numericChatId = Number(chatId || userId);
     if (!numericUserId) throw new Error('Не указан userId для отложенного обещания');
 
-    const delayMs = Math.min(Math.max(parseInt(delayMinutes, 10) || 5, 1), 360) * 60 * 1000;
+    const delayMs = Math.min(Math.max(parseInt(delayMinutes, 10) || 5, 1), 48 * 60) * 60 * 1000;
     const dueAt = Date.now() + delayMs;
 
-    pendingFollowupMap.set(String(numericUserId), {
+    const pendingEntry = {
         topic,
         sendPhoto: Boolean(sendPhoto),
         dueAt,
         scheduledAt: Date.now(),
         anchorEventId: anchorEventId ? Number(anchorEventId) : null
-    });
+    };
 
     const jobId = `followup-${numericUserId}`;
     try {
@@ -391,7 +391,11 @@ export async function enqueueFollowupPromise(userId, chatId, { delayMinutes = 15
         });
     } catch (qErr) {
         console.warn(`[FOLLOWUP QUEUE WARN] user ${numericUserId}: не удалось добавить в Redis (${qErr.message})`);
+        pendingFollowupMap.delete(String(numericUserId));
+        throw qErr;
     }
+
+    pendingFollowupMap.set(String(numericUserId), pendingEntry);
 
     console.log(`⏱️ [FOLLOWUP PROMISE ENQUEUED] user ${numericUserId}: тема "${topic}", возврат через ${delayMinutes} мин`);
 }
