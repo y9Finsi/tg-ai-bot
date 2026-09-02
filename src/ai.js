@@ -752,7 +752,7 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
     // Защита от утечек системных мета-мыслей модели в пользовательский чат
     if (/^(НЕ|не)\s+(повторяй|начинай|пиши|используй)|^(Инструкция|Ответь своими словами|Служебн|System:|System prompt)|(Если уместно|добавь одну короткую фразу|Не пиши\s+[«"]?вот фото[»"]?|не отвечай одним тегом|\[IMAGE\]|\[IMAGE)/iu.test(finalAiText)) {
         console.warn('[AI SYSTEM LEAK SANITIZED]:', finalAiText);
-        finalAiText = (voicePayload || photoSendPayload) ? '' : 'ой, чёт зависла на секунду ахах ||| что говоришь?';
+        finalAiText = '';
     }
 
     if (!photoSendPayload && preselectedPhoto && !photoAttempted) {
@@ -1224,7 +1224,9 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                 : `СТОП: проверка качества отклонила предыдущий ответ (${judgeResult.code || 'REJECTED'}). Перепиши его живо и естественно именно по последней реплике пользователя, не повторяя прошлых ошибок.`
             : needsQualityRetry
             ? qualityIssues.includes('nonEmpty')
-                ? 'СТОП: предыдущий ответ оказался пустым после обработки медиа-тегов. Ответь текстом именно на последнюю реплику пользователя. Фото можно добавлять только после нормальной текстовой подписи.'
+                ? (isPhotoRequest
+                    ? 'СТОП: предыдущий ответ оказался пустым. ВАЖНО: либо вызови инструмент send_photo (взяв свой текущий лук из контекста), либо ответь собеседнику живым текстом от лица Леры без пустых рассуждений.'
+                    : 'СТОП: предыдущий ответ оказался пустым. Напиши живой ответ собеседнику своими словами от лица Леры без пустых рассуждений и тегов.')
                 : `СТОП: фраза «${forbiddenPhrase}» уже была отправлена недавно. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО повторять её дословно! Ответь на вопрос другими словами, добавь новую деталь о том, что делаешь/чувствуешь, либо слегка подколи собеседника («ты уже спрашивал ахах / я ж только что сказала»), если он переспрашивает то же самое.`
             : `СТОП: предыдущий ответ совпал с прошлой репликой «${forbiddenPhrase}». Сгенерируй новый живой ответ именно на последнюю CURRENT_MESSAGE другими словами. Не повторяй прошлый текст.`;
         const retryMessages = [
@@ -1342,11 +1344,15 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         hasRecentGreeting
     });
     if (!isInitiative && userText && !(photo && !text) && !(voice && !text) && !finalQuality.passed) {
-        text = getQualityFallback(routingMode, {
-            userText,
-            recentReplies: recentReplyTexts,
-            lastAssistantText: lastLeraText
-        });
+        if (isPublicContext) {
+            text = '';
+        } else {
+            text = getQualityFallback(routingMode, {
+                userText,
+                recentReplies: recentReplyTexts,
+                lastAssistantText: lastLeraText
+            });
+        }
         photo = null;
         photoCaption = null;
         voice = null;
