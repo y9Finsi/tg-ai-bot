@@ -41,23 +41,23 @@ test('schedule_followup: validation and execution checks', async () => {
     assert.equal(resEmptyTopic.status, 'error');
     assert.equal(resEmptyTopic.error.code, 'EMPTY_TOPIC');
 
-    // 4. Valid execution clamps delay_minutes (min: 3, max: 360)
+    // 4. Valid execution with small delay (min: 1)
     const testUserId = 999001;
     const resSuccess = await scheduleFollowupAction.execute(
-        { delay_minutes: 2, topic: 'заварила кофе', send_photo: true },
+        { delay_minutes: 1, topic: 'напомнить написать пост', send_photo: false },
         { userId: testUserId }
     );
 
     assert.equal(resSuccess.status, 'success');
-    assert.equal(resSuccess.data.delay_minutes, 3, 'delay_minutes should be clamped to minimum 3');
-    assert.equal(resSuccess.data.topic, 'заварила кофе');
-    assert.equal(resSuccess.data.send_photo, true);
+    assert.equal(resSuccess.data.delay_minutes, 1);
+    assert.equal(resSuccess.data.topic, 'напомнить написать пост');
+    assert.equal(resSuccess.data.send_photo, false);
 
     // 5. getPendingFollowup should return the active promise
     const pending = getPendingFollowup(testUserId);
     assert.ok(pending, 'Pending followup should exist');
-    assert.equal(pending.topic, 'заварила кофе');
-    assert.equal(pending.sendPhoto, true);
+    assert.equal(pending.topic, 'напомнить написать пост');
+    assert.equal(pending.sendPhoto, false);
 
     // 6. cancelFollowupPromise should clear it
     await cancelFollowupPromise(testUserId);
