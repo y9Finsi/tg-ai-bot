@@ -155,8 +155,8 @@ export const sendPhotoAction = {
         const userId = context.userId;
         const user = userId ? await getUser(userId).catch(() => null) : null;
         let prompt = String(args.prompt || '').trim();
-        let outfit = String(args.outfit || '').trim();
-        const allowFallback = args.allow_db_fallback !== false;
+        const isPublic = Boolean(context.isPublicContext || context.currentContext?.isPublicContext);
+        const allowFallback = isPublic ? false : (args.allow_db_fallback !== false);
 
         // 1. Автоматическое определение времени суток
         const hour = getMoscowHour();

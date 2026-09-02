@@ -110,3 +110,20 @@ src/
   - `memory_outbox` — асинхронная выгрузка и индексация воспоминаний.
   - `channel_content_generation` — генерация постов и медиа по расписанию.
   - `broadcast_queue` — массовая рассылка уведомлений пользователям с учетом лимитов Telegram.
+
+---
+
+## 5. Изолированный контекст групп и гостевой режим (Guest Mode)
+
+- **База данных:** `conversation_events` хранит `chat_id BIGINT` и `thread_id BIGINT`, составной индекс `idx_conversation_events_chat_thread (chat_id, thread_id, occurred_at DESC)`.
+- **Изоляция:**
+  - В группах (`envelope.chatId !== userId` или `isPublicContext: true`) история выбирается через `getRecentScopeConversationEvents(chatId, threadId, limit)`.
+  - Приватная романтическая память ЛС не утекает в публичные чаты (`memories = []`).
+  - Принудительный режим `CASUAL`, 18+/EROTIC в группе жестко блокируется и осаживается в характере Леры.
+- **Мультидиалог:**
+  - Входящие и исторические сообщения размечаются тегами `<user name="Имя">текст</user>`.
+  - Реплаи (`reply_to_message`) размечаются с указанием автора и сниппета (`[в ответ на сообщение (Имя): «...»]`).
+- **Медиа и тулы в группе:**
+  - `send_photo`: в публичном контексте отключается `allow_db_fallback` (`allowFallback = false`), генерируя свежее фото на лету без использования готовой галереи базы.
+  - Поддержка `ctx.replyWithPhoto`, `ctx.replyWithVoice` с авто-фоллбэком на текст при запретах в группе.
+  - В гостевом режиме ответ отправляется через `answerGuestQuery`.

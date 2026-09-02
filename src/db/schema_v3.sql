@@ -276,6 +276,9 @@ CREATE TABLE IF NOT EXISTS sandbox_runs (
 CREATE INDEX IF NOT EXISTS idx_sandbox_runs_created ON sandbox_runs (created_at DESC, id DESC);
 
 ALTER TABLE ai_providers ADD COLUMN IF NOT EXISTS sampling_capabilities JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE conversation_events ADD COLUMN IF NOT EXISTS chat_id BIGINT;
+ALTER TABLE conversation_events ADD COLUMN IF NOT EXISTS thread_id BIGINT;
+CREATE INDEX IF NOT EXISTS idx_conversation_events_chat_thread ON conversation_events (chat_id, thread_id, occurred_at DESC);
 
 INSERT INTO sim_state (id, location_id, needs, physiology, wallet_rubles, wallet_stars, active_modifiers, cycle_anchor_date)
 VALUES (1, 'petrogradka_home', '{"hunger":20,"fatigue":10,"boredom":30,"horny":40,"bladder":0,"hygiene":90}'::jsonb, '{"cycle_day":3,"arousal_level":20,"irritation":0,"refractory_period":false}'::jsonb, 3820, 150, '[]'::jsonb, (CURRENT_DATE - 2))

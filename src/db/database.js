@@ -303,6 +303,10 @@ export async function initDatabaseTables() {
                 ON conversation_events (telegram_message_id);
             CREATE INDEX IF NOT EXISTS idx_conversation_events_status
                 ON conversation_events (status);
+            ALTER TABLE conversation_events ADD COLUMN IF NOT EXISTS chat_id BIGINT;
+            ALTER TABLE conversation_events ADD COLUMN IF NOT EXISTS thread_id BIGINT;
+            CREATE INDEX IF NOT EXISTS idx_conversation_events_chat_thread
+                ON conversation_events (chat_id, thread_id, occurred_at DESC);
             CREATE UNIQUE INDEX IF NOT EXISTS uq_conversation_events_telegram_message
                 ON conversation_events (user_id, telegram_message_id)
                 WHERE telegram_message_id IS NOT NULL;
@@ -598,6 +602,8 @@ export function formatConversationGap(gapSeconds) {
 
 export async function appendConversationEvent({
     userId,
+    chatId = null,
+    threadId = null,
     eventType = 'SYSTEM',
     role = 'system',
     content = '',
@@ -608,6 +614,7 @@ export async function appendConversationEvent({
     status = 'PENDING'
 }) {
     const eventDate = asEventDate(occurredAt);
+    const resolvedChatId = chatId !== null && chatId !== undefined ? chatId : userId;
     if (telegramMessageId !== null && telegramMessageId !== undefined) {
         const existing = await query(
             'SELECT * FROM conversation_events WHERE user_id = $1 AND telegram_message_id = $2 LIMIT 1',
@@ -635,12 +642,12 @@ export async function appendConversationEvent({
 
     const result = await query(
         `INSERT INTO conversation_events
-            (user_id, event_type, role, content, occurred_at, timezone, local_date,
+            (user_id, chat_id, thread_id, event_type, role, content, occurred_at, timezone, local_date,
              gap_seconds, gap_label, calendar_day_changed, conversation_day,
              telegram_message_id, batch_id, status, metadata)
-         VALUES ($1, $2, $3, $4, $5, 'Europe/Moscow', $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'Europe/Moscow', $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb)
          RETURNING *`,
-        [userId, eventType, role, content || '', eventDate, localDate, gapSeconds,
+        [userId, resolvedChatId, threadId, eventType, role, content || '', eventDate, localDate, gapSeconds,
             formatConversationGap(gapSeconds), calendarDayChanged, conversationDay,
             telegramMessageId, batchId, status, JSON.stringify(metadata || {})]
     );
@@ -673,6 +680,26 @@ export async function getRecentConversationEvents(userId, limit = 20) {
          ORDER BY occurred_at ASC, id ASC`,
         [userId, limit]
     );
+    return result.rows;
+}
+
+export async function getRecentScopeConversationEvents(chatId, threadId = null, limit = 20) {
+    if (!chatId) return [];
+    const querySql = threadId !== null && threadId !== undefined
+        ? `SELECT * FROM (
+            SELECT * FROM conversation_events
+            WHERE chat_id = $1 AND thread_id = $2 AND status <> 'FAILED'
+            ORDER BY occurred_at DESC, id DESC LIMIT $3
+           ) events
+           ORDER BY occurred_at ASC, id ASC`
+        : `SELECT * FROM (
+            SELECT * FROM conversation_events
+            WHERE chat_id = $1 AND status <> 'FAILED'
+            ORDER BY occurred_at DESC, id DESC LIMIT $2
+           ) events
+           ORDER BY occurred_at ASC, id ASC`;
+    const params = threadId !== null && threadId !== undefined ? [chatId, threadId, limit] : [chatId, limit];
+    const result = await query(querySql, params);
     return result.rows;
 }
 

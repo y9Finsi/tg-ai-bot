@@ -1,5 +1,7 @@
 import {
     getUser,
+    updateUserMeta,
+    appendConversationEvent,
     getChannelPosterSettings,
     getChannelPostByTelegramMessageId,
     claimChannelProcessedMessage,
@@ -357,22 +359,21 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
 
 export async function handleGroupMention(bot, ctx) {
     const msg = ctx.message;
-    if (!msg || !msg.text || !ctx.chat) return false;
+    if (!msg || (!msg.text && !msg.caption) || !ctx.chat) return false;
 
+    const rawText = msg.text || msg.caption || '';
     const botUsername = ctx.botInfo?.username?.toLowerCase() || '';
-    const isBotTagged = Boolean(botUsername) && msg.text.toLowerCase().includes(`@${botUsername}`);
+    const isBotTagged = Boolean(botUsername) && rawText.toLowerCase().includes(`@${botUsername}`);
     const isReplyToBot = msg.reply_to_message?.from?.id === ctx.botInfo?.id;
-    const isGuestMention = msg.entities?.some(e => e.type === 'mention' && msg.text.substring(e.offset, e.offset + e.length).toLowerCase() === `@${botUsername}`);
+    const isGuestMention = msg.entities?.some(e => e.type === 'mention' && rawText.substring(e.offset, e.offset + e.length).toLowerCase() === `@${botUsername}`);
 
     if (!isBotTagged && !isReplyToBot && !isGuestMention) return false;
 
     // Защита от дублей
     if (!(await claimChannelProcessedMessage(ctx.chat.id, msg.message_id))) return false;
 
-    ctx.sendChatAction('typing').catch(() => {});
-
     // Очищаем запрос от тега бота
-    let userQuery = msg.text;
+    let userQuery = rawText;
     if (botUsername) {
         userQuery = userQuery.replace(new RegExp(`@${botUsername}`, 'gi'), '').trim();
     }
@@ -380,23 +381,67 @@ export async function handleGroupMention(bot, ctx) {
         userQuery = msg.reply_to_message.text;
     }
 
-    const commenter = await getCommenterContext(msg.from?.id);
-    const channelSettings = await getChannelPosterSettings().catch(() => ({}));
-
-    // Контекст реплая
-    const threadContext = [];
-    if (msg.reply_to_message?.text) {
-        const replySender = msg.reply_to_message.from?.first_name || (msg.reply_to_message.from?.id === ctx.botInfo?.id ? 'Лера' : 'Участник');
-        threadContext.push({ sender: replySender, text: msg.reply_to_message.text });
+    const userId = msg.from?.id || 0;
+    if (userId > 0 && msg.from) {
+        updateUserMeta(userId, {
+            username: msg.from.username,
+            first_name: msg.from.first_name,
+            last_name: msg.from.last_name
+        }).catch(() => null);
     }
 
-    try {
-        const userId = msg.from?.id || 0;
-        const response = await generateResponse(userId, userQuery || msg.text);
-        const replyText = (response?.text ? cleanResponseText(response.text) : 'привеет, я тут').replace(/\|\|\|/g, '\n\n');
+    const rawName = msg.from?.first_name || msg.from?.username || 'Участник';
+    const senderName = String(rawName).replace(/[\[\]<>{}\r\n]/g, '').slice(0, 25).trim() || 'Участник';
 
+    // Контекст реплая
+    let replyingTo = null;
+    if (msg.reply_to_message) {
+        const isReplyToLera = msg.reply_to_message.from?.id === ctx.botInfo?.id;
+        const repRawName = isReplyToLera
+            ? 'Лера'
+            : (msg.reply_to_message.from?.first_name || msg.reply_to_message.from?.username || 'Участник');
+        const repSender = String(repRawName).replace(/[\[\]<>{}\r\n]/g, '').slice(0, 25).trim();
+        const repText = msg.reply_to_message.text
+            || msg.reply_to_message.caption
+            || (msg.reply_to_message.sticker ? '[Стикер]' : (msg.reply_to_message.photo ? '[Фото]' : (msg.reply_to_message.voice ? '[Голосовое]' : '[Медиа]')));
+        replyingTo = { sender: repSender, text: repText, isReplyToLera };
+    }
+
+    // Сохраняем входящее сообщение в историю группы
+    await appendConversationEvent({
+        userId,
+        chatId: ctx.chat.id,
+        threadId: msg.message_thread_id || null,
+        eventType: 'MESSAGE',
+        role: 'user',
+        content: userQuery || rawText,
+        telegramMessageId: msg.message_id,
+        metadata: { sender_name: senderName, replying_to: replyingTo },
+        status: 'COMPLETED'
+    }).catch(() => null);
+
+    ctx.sendChatAction('typing').catch(() => {});
+    const typingInterval = setInterval(() => {
+        ctx.sendChatAction('typing').catch(() => {});
+    }, 4000);
+
+    try {
+        const response = await generateResponse(userId, userQuery || rawText, {
+            isPublicContext: true,
+            chatId: ctx.chat.id,
+            threadId: msg.message_thread_id || null,
+            senderName,
+            replyingTo
+        });
+        clearInterval(typingInterval);
+
+        if (!response) return false;
+
+        const replyText = response.text ? cleanResponseText(response.text).replace(/\|\|\|/g, '\n') : '';
+
+        // Гостевой ответ если есть guest_query_id
         const guestQueryId = msg.guest_query_id || ctx.update?.guest_query?.id;
-        if (guestQueryId && bot.telegram?.callApi) {
+        if (guestQueryId && replyText && bot.telegram?.callApi) {
             await bot.telegram.callApi('answerGuestQuery', {
                 guest_query_id: guestQueryId,
                 result: {
@@ -413,13 +458,59 @@ export async function handleGroupMention(bot, ctx) {
             });
         }
 
-        await ctx.reply(replyText, {
-            reply_parameters: { message_id: msg.message_id }
-        }).catch(async () => {
-            await ctx.reply(replyText, { reply_to_message_id: msg.message_id }).catch(() => {});
-        });
+        let sentMessage = null;
+
+        // 1. Отправка фото
+        if (response.photo) {
+            try {
+                sentMessage = await ctx.replyWithPhoto(response.photo, {
+                    caption: replyText || undefined,
+                    reply_parameters: { message_id: msg.message_id }
+                });
+            } catch (photoErr) {
+                console.warn('[GROUP PHOTO SEND FAILED, FALLING BACK TO TEXT]:', photoErr.message);
+            }
+        }
+
+        // 2. Отправка голосового
+        if (!sentMessage && response.voice) {
+            try {
+                sentMessage = await ctx.replyWithVoice({ source: response.voice }, {
+                    caption: replyText || undefined,
+                    reply_parameters: { message_id: msg.message_id }
+                });
+            } catch (voiceErr) {
+                console.warn('[GROUP VOICE SEND FAILED, FALLING BACK TO TEXT]:', voiceErr.message);
+            }
+        }
+
+        // 3. Отправка текста (если медиа не было или произошел фолбэк)
+        if (!sentMessage && replyText) {
+            sentMessage = await ctx.reply(replyText, {
+                reply_parameters: { message_id: msg.message_id }
+            }).catch(async () => {
+                return await ctx.reply(replyText, { reply_to_message_id: msg.message_id }).catch(() => null);
+            });
+        }
+
+        // Сохраняем ответ ассистента в историю группы
+        if (replyText || response.photo || response.voice) {
+            await appendConversationEvent({
+                userId,
+                chatId: ctx.chat.id,
+                threadId: msg.message_thread_id || null,
+                eventType: 'MESSAGE',
+                role: 'assistant',
+                content: replyText || (response.photo ? '[Лера отправила фото]' : '[Лера отправила голосовое]'),
+                telegramMessageId: sentMessage?.message_id || null,
+                metadata: { replied_to_user: senderName },
+                status: 'COMPLETED'
+            }).catch(() => null);
+        }
+
         return true;
     } catch (err) {
+        clearInterval(typingInterval);
         console.error('[GROUP MENTION ERROR]:', err.message);
     }
 
@@ -441,27 +532,67 @@ export async function handleGuestQuery(bot, ctx) {
         let userQuery = String(gq.text || gq.query || gq.caption || ctx.message?.text || '').replace(new RegExp(`@${botUsername}`, 'gi'), '').trim();
         const fromUser = gq.from || gq.guest_bot_caller_user || ctx.from;
         const userId = fromUser?.id || 0;
+        const chatId = gq.chat?.id || ctx.chat?.id || userId;
 
-        const response = await generateResponse(userId, userQuery || 'привет');
-        const replyText = (response?.text ? cleanResponseText(response.text) : 'привеет, я тут').replace(/\|\|\|/g, '\n\n');
+        if (userId > 0 && fromUser) {
+            updateUserMeta(userId, {
+                username: fromUser.username,
+                first_name: fromUser.first_name,
+                last_name: fromUser.last_name
+            }).catch(() => null);
+        }
 
-        await bot.telegram.callApi('answerGuestQuery', {
-            guest_query_id: guestQueryId,
-            result: {
-                type: 'article',
-                id: String(Date.now()),
-                title: 'Лера',
-                input_message_content: {
-                    message_text: replyText
-                }
-            }
-        }).catch(async (apiErr) => {
-            console.warn('[ANSWER GUEST QUERY RESULT FAILED, RETRYING WITH TEXT]:', apiErr.message);
+        const rawName = fromUser?.first_name || fromUser?.username || 'Участник';
+        const senderName = String(rawName).replace(/[\[\]<>{}\r\n]/g, '').slice(0, 25).trim() || 'Участник';
+
+        // Сохраняем входящее событие
+        await appendConversationEvent({
+            userId,
+            chatId,
+            eventType: 'MESSAGE',
+            role: 'user',
+            content: userQuery || 'привет',
+            metadata: { sender_name: senderName },
+            status: 'COMPLETED'
+        }).catch(() => null);
+
+        const response = await generateResponse(userId, userQuery || 'привет', {
+            isPublicContext: true,
+            chatId,
+            senderName
+        });
+        const replyText = response?.text ? cleanResponseText(response.text).replace(/\|\|\|/g, '\n') : '';
+
+        if (replyText) {
             await bot.telegram.callApi('answerGuestQuery', {
                 guest_query_id: guestQueryId,
-                text: replyText
+                result: {
+                    type: 'article',
+                    id: String(Date.now()),
+                    title: 'Лера',
+                    input_message_content: {
+                        message_text: replyText
+                    }
+                }
+            }).catch(async (apiErr) => {
+                console.warn('[ANSWER GUEST QUERY RESULT FAILED, RETRYING WITH TEXT]:', apiErr.message);
+                await bot.telegram.callApi('answerGuestQuery', {
+                    guest_query_id: guestQueryId,
+                    text: replyText
+                }).catch(() => {});
             });
-        });
+        }
+
+        // Сохраняем исходящее событие
+        await appendConversationEvent({
+            userId,
+            chatId,
+            eventType: 'MESSAGE',
+            role: 'assistant',
+            content: replyText,
+            metadata: { replied_to_user: senderName },
+            status: 'COMPLETED'
+        }).catch(() => null);
 
         return true;
     } catch (err) {

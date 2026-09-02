@@ -3,7 +3,7 @@ import {
     getUser, addApiCost,
     getActiveAiProvider, getUserMemories, getMemorySettings,
     getLeraPhotoCandidates, getSentPhotos,
-    getRecentConversationEvents, formatConversationEvent, getRecentSimulationReflections,
+    getRecentConversationEvents, getRecentScopeConversationEvents, formatConversationEvent, getRecentSimulationReflections,
     savePromptLog, applyUserRelationshipEvent, getInitiativeDailyCounts,
     getActiveDialogueEvents, getContentCandidates,
     getLeraProfile, formatConversationGap, toLocalDateString,
@@ -348,12 +348,17 @@ async function generateVoiceForText(user, voiceText) {
 
 // --- 3. ПАЙПЛАЙН AI ДВИЖКА ---
 
-async function buildMessagePayload(user, userId, { userText, photoUrls = [], isInitiative, routingMode = 'CASUAL', initiativeReason = null, initiativeKind = null, contentCandidates = [], batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, actionResult = null, climaxState = null }) {
+async function buildMessagePayload(user, userId, { userText, photoUrls = [], isInitiative, routingMode = 'CASUAL', initiativeReason = null, initiativeKind = null, contentCandidates = [], batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, actionResult = null, climaxState = null, isPublicContext = false, chatId = null, threadId = null, senderName = null, replyingTo = null }) {
+    const isPublic = Boolean(isPublicContext || (chatId && String(chatId) !== String(userId)));
     const productionRoutingSettings = await getRoutingSettings();
     const productionIntentConfig = getModeIntentConfig(routingMode, productionRoutingSettings);
+    const conversationEventsPromise = isPublic
+        ? getRecentScopeConversationEvents(chatId || userId, threadId, 10).catch(() => [])
+        : getRecentConversationEvents(userId, 10).catch(() => []);
+
     const [baseSystemPromptText, conversationEvents] = await Promise.all([
         getRoutedSystemPrompt(routingMode, productionIntentConfig),
-        getRecentConversationEvents(userId, 10).catch(() => [])
+        conversationEventsPromise
     ]);
 
     const mediaLogInstruction = "\n\nПометки вида [Лера отправила личное фото: ...] в истории диалога — это служебные логи отправленных медиафайлов. Никогда не повторяй текст этих пометок в своих ответах! Не присылай несвязанное фото сама по себе.";
@@ -391,13 +396,21 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         );
         console.warn(`[MEMORY RETRIEVAL FALLBACK] user ${userId}:`, memoryError.message);
     }
-    const memories = memoryRetrieval.facts || [];
+    const memories = isPublic ? [] : (memoryRetrieval.facts || []);
     const gapSeconds = Number.isFinite(Number(preMessageGapSeconds))
         ? Math.max(0, Number(preMessageGapSeconds))
         : (lastEvent ? Math.max(0, Math.floor((new Date(firstMessageAt || now).getTime() - new Date(lastEvent.occurred_at).getTime()) / 1000)) : 0);
     let modeInstruction = '';
 
-    if (routingMode === 'EROTIC') {
+    if (isPublic) {
+        modeInstruction += `\n\n[ГРУППОВОЙ ЧАТ / ГОСТЕВОЙ РЕЖИМ]:
+- Ты общаешься в публичной группе Telegram среди нескольких участников.
+- Каждое входящее сообщение от участников оформлено тегом <user name="Имя">текст</user>.
+- Обращай внимание, кто автор текущего сообщения и кому адресованы реплики в треде.
+- Отвечай в своём обычном характере (живой питерский сленг, подколы, дружелюбие), органично используя имя собеседника при необходимости, но не повторяя его механически в начале каждой фразы.
+- СТРОЖАЙШИЙ ЗАПРЕТ НА ЭРОТИКУ/18+ В ГРУППЕ: Если кто-то просит пошлости или интим — дерзко осаживай («ты в своём уме при всех такое просить? го в лс»), не раскрывая приватные темы из лички.
+- ФОТО И ВОЙСЫ: Если просят селфи/фото или войс в группе — генерируй их на лету через доступные инструменты.`;
+    } else if (routingMode === 'EROTIC') {
         const climaxPrompt = getClimaxPromptInstruction(climaxState);
         modeInstruction += `\n\n[РЕЖИМ БЛИЗОСТИ И ВИРТА]:${climaxPrompt}
 - СТРОЖАЙШИЙ ЗАПРЕТ НА ОТГОВОРКИ ПРО СОН И УСТАЛОСТЬ: В интимном контексте КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО говорить «я усну», «я засыпаю», «я сонная», «мозг отключается», «устала».
@@ -421,7 +434,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     let radiantLayers = {};
     try {
         const detailedContext = await ContextBuilder.buildTelegramContextDetailed(userId, {
-            overrides: { preMessageGapSeconds: gapSeconds, previousActivityAt: lastEvent?.occurred_at, currentTime, routingMode },
+            overrides: { preMessageGapSeconds: gapSeconds, previousActivityAt: lastEvent?.occurred_at, currentTime, routingMode, isPublicContext: isPublic, chatId },
             actionResult,
             routingMode
         });
@@ -551,8 +564,13 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
                     continue;
                 }
 
-                const cleanContent = sanitizeHistoryContent(ev.content);
+                let cleanContent = sanitizeHistoryContent(ev.content);
                 if (cleanContent) {
+                    if (isPublic && !isLera) {
+                        const rawSpeaker = ev.metadata?.sender_name || (user?.first_name || 'Участник');
+                        const speaker = String(rawSpeaker).replace(/[\[\]<>{}\r\n]/g, '').slice(0, 25).trim() || 'Участник';
+                        cleanContent = `<user name="${speaker}">${cleanContent}</user>`;
+                    }
                     messages.push({
                         role: isLera ? 'assistant' : 'user',
                         content: cleanContent
@@ -562,7 +580,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         }
     }
 
-    if (userRepetition.isRepeated && routingMode !== 'EROTIC') {
+    if (userRepetition.isRepeated && routingMode !== 'EROTIC' && !isPublic) {
         const repetitionDirective = `⚠️ ПОЛЬЗОВАТЕЛЬ ПОВТОРЯЕТСЯ: он уже писал ровно это («${userText}») недавно в этом диалоге (${userRepetition.repeatCount}-й раз подряд).
 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО отвечать так, будто это новое сообщение, здороваться заново или выдавать новую бытовую сводку!
 Отреагируй дерзко, с подколом или удивлением в характере Леры:
@@ -610,7 +628,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
             initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ПЕРВОЕ ЗНАКОМСТВО / НЕТ ИСТОРИИ ПЕРЕПИСКИ!
 Задача Леры: у вас с пользователем ещё нет переписки или она была очищена.
 - Напиши первой коротко, легко, по-питерски и в своём характере: поздоровайся, спроси как дела/чем занят или поделись своим текущим моментом («привет! ты как ваще?», «хей, чем занят? я тут кофе пью / собираюсь по делам», «привет! как твой день?»).
-- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: ссылаться на несуществующие прошлые разговоры или выдумывать, что вы уже о чем-то договаривались. Пиши естественно с чистого листа.`;
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: ссылаться на несуществующие прошлые разговоры или выдумывать, что вы уже о чем-договаривались. Пиши естественно с чистого листа.`;
         } else if (initiativeKind === 'open') {
             initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ВОЗВРАТ К НЕЗАВЕРШЕННОЙ ТЕМЕ / ЮЗЕР ЗАМОЛЧАЛ!
 Задача Леры: диалог прервался недавно на вопросе/просьбе или на полуслове, а собеседник завис.
@@ -642,18 +660,31 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
             }
         }
 
+        let currentTurnText = userText;
+        if (isPublic && userText) {
+            const rawSpeaker = senderName || user?.first_name || 'Участник';
+            const speaker = String(rawSpeaker).replace(/[\[\]<>{}\r\n]/g, '').slice(0, 25).trim() || 'Участник';
+            if (replyingTo) {
+                const repSender = String(replyingTo.sender || 'Участник').replace(/[\[\]<>{}\r\n]/g, '').slice(0, 25).trim();
+                const repSnippet = String(replyingTo.text || '').replace(/[\r\n]+/g, ' ').slice(0, 150).trim();
+                currentTurnText = `<user name="${speaker}">[в ответ на сообщение (${repSender}): «${repSnippet}»]\n${userText}</user>`;
+            } else {
+                currentTurnText = `<user name="${speaker}">${userText}</user>`;
+            }
+        }
+
         const lastMsg = messages.at(-1);
-        if (!lastMsg || lastMsg.role !== 'user' || lastMsg.content !== userText) {
+        if (!lastMsg || lastMsg.role !== 'user' || lastMsg.content !== currentTurnText) {
             if (activePhotoUrls.length > 0) {
                 messages.push({
                     role: 'user',
                     content: [
-                        { type: 'text', text: userText || 'Посмотри на фото' },
+                        { type: 'text', text: currentTurnText || 'Посмотри на фото' },
                         ...activePhotoUrls.map(url => ({ type: 'image_url', image_url: { url } }))
                     ]
                 });
             } else {
-                messages.push({ role: 'user', content: userText });
+                messages.push({ role: 'user', content: currentTurnText });
             }
         }
     }
@@ -678,7 +709,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     };
 }
 
-async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingRecommendationPost = null, preselectedPhoto = null, contentCandidates = [], isVoiceRequest = false, recentReplies = [], toolOverrides = {}, userText = '') {
+async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingRecommendationPost = null, preselectedPhoto = null, contentCandidates = [], isVoiceRequest = false, recentReplies = [], toolOverrides = {}, userText = '', isPublicContext = false, chatId = null, threadId = null, senderName = null, replyingTo = null) {
     let workingText = rawText || '';
     let voiceText = null;
     let contentId = toolOverrides?.contentId || null;
@@ -795,7 +826,7 @@ async function recordAiTransaction(userId, usage) {
 
 // --- 4. ДЕКЛАРАТИВНЫЙ ЕДИНЫЙ ДВИЖОК ---
 
-async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', isVoiceRequest = false, classifierResult = null, actionRouting = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, climaxState = null } = {}) {
+async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', isVoiceRequest = false, classifierResult = null, actionRouting = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, climaxState = null, isPublicContext = false, chatId = null, threadId = null, senderName = null, replyingTo = null } = {}) {
     const user = await getUser(userId);
     if (!user) return null;
 
@@ -810,7 +841,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         userText, photoUrls, isInitiative, routingMode, initiativeReason,
         initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds,
         firstMessageAt, actionResult: resolvedActionRouting?.actionResult || null,
-        climaxState
+        climaxState, isPublicContext, chatId, threadId, senderName, replyingTo
     });
     persistMemoryRetrieval(userId, memoryRetrieval);
     const routingSettings = await getRoutingSettings();
@@ -1473,16 +1504,23 @@ export async function generateResponse(userId, text, envelope = {}) {
         };
     }
 
+    const isPublicContext = Boolean(envelope.isPublicContext || (envelope.chatId && String(envelope.chatId) !== String(userId)));
+    const scopeChatId = envelope.chatId || userId;
+    const scopeThreadId = envelope.threadId || null;
+
     let routingMode = 'CASUAL';
     let classifierResult = null;
     let actionRouting = null;
 
-    const events = await getRecentConversationEvents(userId, 6).catch(() => []);
+    const events = isPublicContext
+        ? await getRecentScopeConversationEvents(scopeChatId, scopeThreadId, 6).catch(() => [])
+        : await getRecentConversationEvents(userId, 6).catch(() => []);
+
     const lastLeraEvent = events
         .filter(e => e.status === 'COMPLETED' && (e.role === 'lera' || e.role === 'assistant'))
         .slice(-1)[0];
     const lastWasReaction = lastLeraEvent?.event_type === 'REACTION' || lastLeraEvent?.metadata?.mode === 'REACTION';
-    const allowReaction = !lastWasReaction;
+    const allowReaction = !lastWasReaction && !isPublicContext;
 
     const history = events
         .filter(event => event.status === 'COMPLETED'
@@ -1502,14 +1540,14 @@ export async function generateResponse(userId, text, envelope = {}) {
     const gapSeconds = lastEventTime > 0 ? Math.max(0, Math.floor((now - lastEventTime) / 1000)) : Infinity;
     const lastMode = lastCompletedEvent?.metadata?.mode || lastCompletedEvent?.roleplay_mode || 'CASUAL';
     const isEroticSceneActive = gapSeconds < EROTIC_SESSION_TTL_SECONDS && lastMode === 'EROTIC';
-    const activeMode = isEroticSceneActive ? 'EROTIC' : 'CASUAL';
+    const activeMode = isPublicContext ? 'CASUAL' : (isEroticSceneActive ? 'EROTIC' : 'CASUAL');
 
     // 1. Классификация намерения и режима диалога (CASUAL, EROTIC, JOKE, REACTION)
     try {
         classifierResult = await classifyIntent({ userId, userText: text, history, activeMode, allowReaction });
-        routingMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(classifierResult.mode)
-            ? classifierResult.mode
-            : 'CASUAL';
+        routingMode = isPublicContext
+            ? 'CASUAL'
+            : (['CASUAL', 'EROTIC', 'JOKE'].includes(classifierResult.mode) ? classifierResult.mode : 'CASUAL');
         const usage = classifierResult.usage || {};
         const classifierCost = (Number(usage.prompt_tokens || 0) * 0.13 / 1000000)
             + (Number(usage.completion_tokens || 0) * 0.28 / 1000000);
@@ -1596,7 +1634,12 @@ export async function generateResponse(userId, text, envelope = {}) {
         eventIds: envelope.eventIds || [],
         preMessageGapSeconds: envelope.preMessageGapSeconds,
         firstMessageAt: envelope.firstMessageAt,
-        climaxState
+        climaxState,
+        isPublicContext,
+        chatId: scopeChatId,
+        threadId: scopeThreadId,
+        senderName: envelope.senderName,
+        replyingTo: envelope.replyingTo
     });
 }
 
