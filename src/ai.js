@@ -543,7 +543,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
                 if (lastEventTime && evTime) {
                     const gapSec = Math.max(0, Math.floor((evTime - lastEventTime) / 1000));
                     const isNewDay = lastEventDate && evDate && lastEventDate < evDate;
-                    if (gapSec >= 10800 || isNewDay || ev.calendar_day_changed) {
+                    if (gapSec >= 10800 || (isNewDay && gapSec >= 1800) || (ev.calendar_day_changed && gapSec >= 1800)) {
                         const gapLabel = formatConversationGap(gapSec);
                         const dayLabel = isNewDay ? `Наступил новый день (${evDate}). ` : '';
                         messages.push({
