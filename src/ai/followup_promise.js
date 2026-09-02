@@ -5,10 +5,11 @@ const FUTURE_ACTION_RE = /(?<![\p{L}\p{N}_])(?:скину|напишу|расс�
 const RELATIVE_TIME_RE = /через\s+(?:\d+(?:[.,]\d+)?\s*(?:минут(?:у|ы)?|мин|час(?:а|ов)?|часик(?:а)?)|полчаса|часик(?:а)?|час)(?=[\s.,!?;:)]|$)/iu;
 const CALENDAR_TIME_RE = /(?<![\p{L}\p{N}_])завтра(?:\s+(?:утром|днём|днем|вечером|ночью))?(?![\p{L}\p{N}_])|(?<![\p{L}\p{N}_])вечером(?![\p{L}\p{N}_])/iu;
 const RECIPIENT_AND_FILLER_RE = /(?<![\p{L}\p{N}_])(?:я|мне|тебе|тебя|потом|позже|как-нибудь|когда-нибудь|давай|ща|сейчас|короче|ну)(?![\p{L}\p{N}_])/igu;
+const TOPIC_FILLER_RE = /(?<![\p{L}\p{N}_])(?:блин|ок|ага|ладно|ахах|любой|любую|любое|какой-нибудь|какой нибудь)(?![\p{L}\p{N}_])/igu;
 const TOPIC_STOPWORDS = new Set([
     'а', 'в', 'во', 'да', 'до', 'и', 'из', 'к', 'на', 'по', 'с', 'со', 'у', 'через',
     'что', 'это', 'там', 'тебе', 'тебя', 'я', 'мне', 'потом', 'позже', 'про',
-    'что-нибудь', 'что нибудь', 'кое-что', 'кое что'
+    'что-нибудь', 'что нибудь', 'кое-что', 'кое что', 'блин', 'ок', 'ага', 'ладно', 'а'
 ]);
 
 function getMoscowParts(date) {
@@ -89,15 +90,22 @@ function parseDelayMinutes(text, now) {
     return null;
 }
 
-function extractTopic(text) {
+function cleanTopic(text) {
     const topic = text
         .replace(RELATIVE_TIME_RE, ' ')
         .replace(CALENDAR_TIME_RE, ' ')
         .replace(FUTURE_ACTION_RE, ' ')
         .replace(RECIPIENT_AND_FILLER_RE, ' ')
+        .replace(TOPIC_FILLER_RE, ' ')
         .replace(/[.,!?;:()[\]{}]+/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+
+    return topic;
+}
+
+function extractTopic(text) {
+    const topic = cleanTopic(text);
 
     const contentWords = topic.split(/\s+/).filter(word => !TOPIC_STOPWORDS.has(word.toLowerCase()));
     if (contentWords.length === 0) return null;
@@ -105,7 +113,28 @@ function extractTopic(text) {
     return topic.slice(0, 240);
 }
 
-export function parseFollowupPromise(rawText, now = new Date()) {
+function extractTopicFromContext(contextText) {
+    const lines = String(contextText || '')
+        .split(/\n+/)
+        .map(line => line.trim())
+        .filter(line => /^(?:пользователь|user)\s*:/iu.test(line))
+        .reverse();
+
+    for (const line of lines) {
+        const userLine = line.replace(/^(?:пользователь|user)\s*:/iu, '').trim();
+        const requestMatch = userLine.match(/(?:скинь|пришли|покажи|расскажи|напиши)\s+(?:мне\s+)?(.{2,120})$/iu);
+        if (!requestMatch) continue;
+        const topic = cleanTopic(requestMatch[1]);
+        const contentWords = topic.split(/\s+/).filter(word => !TOPIC_STOPWORDS.has(word.toLowerCase()));
+        if (contentWords.length > 0 && !/^(?:что-нибудь|что нибудь|кое-что|кое что|там|это)$/iu.test(topic)) {
+            return topic.slice(0, 240);
+        }
+    }
+
+    return null;
+}
+
+export function parseFollowupPromise(rawText, now = new Date(), contextText = '') {
     const text = String(rawText || '').replace(/\s+/g, ' ').trim();
     if (!text || !FUTURE_ACTION_RE.test(text)) return null;
 
@@ -118,7 +147,7 @@ export function parseFollowupPromise(rawText, now = new Date()) {
     const timing = parseDelayMinutes(text, now);
     if (!timing || timing.delayMinutes > MAX_FOLLOWUP_DELAY_MINUTES) return null;
 
-    const topic = extractTopic(text);
+    const topic = extractTopic(text) || extractTopicFromContext(contextText);
     if (!topic) return null;
 
     const sendPhoto = /(?<![\p{L}\p{N}_])(?:фото|фотку|фотка|селфи|изображение|снимок|картинк(?:у|а))(?![\p{L}\p{N}_])/iu.test(text);

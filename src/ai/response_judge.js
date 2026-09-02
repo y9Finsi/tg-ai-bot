@@ -212,6 +212,27 @@ export function parseJudgeVerdict(rawText) {
     return { verdict: 'INVALID', passed: true, code: null, reason: null, invalid: true };
 }
 
+export function applyJudgeModePolicy(parsedVerdict, { isPublic = false, configuredMode = 'OBSERVE' } = {}) {
+    if (isPublic && parsedVerdict?.invalid) {
+        return {
+            ...parsedVerdict,
+            verdict: 'REJECT:CHANNEL_JUDGE_INVALID',
+            passed: false,
+            code: 'CHANNEL_JUDGE_INVALID'
+        };
+    }
+    if (!isPublic && configuredMode === 'ENFORCE' && parsedVerdict?.invalid) {
+        return {
+            ...parsedVerdict,
+            verdict: 'REJECT:BROKEN_LOGIC',
+            passed: false,
+            code: 'BROKEN_LOGIC',
+            reason: 'Судья вернул невалидный ответ вместо PASS или REJECT.'
+        };
+    }
+    return parsedVerdict;
+}
+
 export async function judgeLeraReply({
     userId = 0,
     mode = 'CASUAL',
@@ -281,7 +302,10 @@ export async function judgeLeraReply({
                 trace: false
             }
         );
-        const parsedVerdict = parseJudgeVerdict(result.rawText);
+        const parsedVerdict = applyJudgeModePolicy(parseJudgeVerdict(result.rawText), {
+            isPublic,
+            configuredMode
+        });
         if (isPublic && parsedVerdict.invalid) {
             return {
                 ...parsedVerdict,

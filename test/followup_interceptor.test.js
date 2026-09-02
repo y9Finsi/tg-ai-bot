@@ -34,6 +34,20 @@ test('followup parser: ignores vague promises and non-photo topics', () => {
     assert.equal(parseFollowupPromise('вечером скину тебе трек', fixedNow)?.sendPhoto, false);
 });
 
+test('followup parser: takes a clear topic from the recent user request when reply omits it', () => {
+    assert.deepEqual(parseFollowupPromise(
+        'вечером скину',
+        fixedNow,
+        'Пользователь: Скинь любимый трек любой\nЛера: давай вечером скину, ок?'
+    ), {
+        delayMinutes: 330,
+        timeType: 'evening',
+        topic: 'любимый трек',
+        sendPhoto: false
+    });
+    assert.equal(parseFollowupPromise('вечером скину', fixedNow, 'Пользователь: Хорошо договорились'), null);
+});
+
 test('followup interceptor: schedules only a confident private chat promise', async () => {
     const calls = [];
     const enqueue = async (...args) => calls.push(args);
@@ -76,6 +90,21 @@ test('followup interceptor: falls back after a failed or missing tool call', asy
         scheduleFollowupSucceeded: false
     });
     assert.equal(calls, 1);
+});
+
+test('followup interceptor: schedules a fresh contextual promise without hardcoded reply text', async () => {
+    const calls = [];
+    const result = await maybeScheduleFollowupPromise({
+        text: 'вечером скину',
+        contextText: 'Пользователь: Скинь любимый трек любой',
+        userId: 42,
+        enqueue: async (...args) => calls.push(args)
+    });
+
+    assert.equal(result.scheduled, true);
+    assert.equal(result.promise.topic, 'любимый трек');
+    assert.equal(result.promise.sendPhoto, false);
+    assert.equal(calls.length, 1);
 });
 
 test('followup interceptor: enqueue failure does not turn into a successful schedule', async () => {

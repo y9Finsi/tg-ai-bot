@@ -5,6 +5,7 @@ export async function maybeScheduleFollowupPromise({
     userId,
     chatId = null,
     anchorEventId = null,
+    contextText = '',
     isInitiative = false,
     isPublicContext = false,
     scheduleFollowupSucceeded = false,
@@ -14,7 +15,7 @@ export async function maybeScheduleFollowupPromise({
         return { scheduled: false, reason: 'guarded' };
     }
 
-    const promise = parseFollowupPromise(text);
+    const promise = parseFollowupPromise(text, new Date(), contextText);
     if (!promise) {
         return { scheduled: false, reason: 'not_confident' };
     }

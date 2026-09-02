@@ -1,12 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildJudgeMessages, parseJudgeVerdict } from '../src/ai/response_judge.js';
+import { applyJudgeModePolicy, buildJudgeMessages, parseJudgeVerdict } from '../src/ai/response_judge.js';
 
 test('reply judge accepts only compact explicit verdicts', () => {
     assert.deepEqual(parseJudgeVerdict('PASS'), { verdict: 'PASS', passed: true, code: null, reason: null });
     assert.deepEqual(parseJudgeVerdict('reject:ignores_user'), { verdict: 'REJECT:IGNORES_USER', passed: false, code: 'IGNORES_USER', reason: null });
     assert.equal(parseJudgeVerdict('REJECT:MADE_UP_CODE').verdict, 'INVALID');
     assert.equal(parseJudgeVerdict('тут надо переписать').verdict, 'INVALID');
+});
+
+test('invalid private judge result is retried only in ENFORCE mode', () => {
+    const invalid = parseJudgeVerdict('невалидный ответ судьи');
+    assert.equal(applyJudgeModePolicy(invalid, { configuredMode: 'OBSERVE' }).passed, true);
+
+    const enforced = applyJudgeModePolicy(invalid, { configuredMode: 'ENFORCE' });
+    assert.deepEqual(enforced, {
+        verdict: 'REJECT:BROKEN_LOGIC',
+        passed: false,
+        code: 'BROKEN_LOGIC',
+        reason: 'Судья вернул невалидный ответ вместо PASS или REJECT.',
+        invalid: true
+    });
 });
 
 test('reply judge parses reason when rejected', () => {

@@ -101,6 +101,7 @@ export const sendContentAction = {
                 data: {
                     content_id: Number(chosen.id),
                     title: chosen.description,
+                    category,
                     url: chosen.url,
                     telegram_type: chosen.telegram_type,
                     telegram_file_id: chosen.telegram_file_id,

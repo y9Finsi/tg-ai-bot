@@ -958,6 +958,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     let toolPhotoRecordId = null;
     let toolPhotoCaption = null;
     let toolContentId = null;
+    let toolContentDetails = null;
     let toolVoicePayload = null;
     let toolReactionEmoji = null;
     let toolReactionRequested = false;
@@ -1046,6 +1047,12 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                 }
                 if (name === 'send_content' && execRes?.status === 'success' && execRes?.data?.content_id) {
                     toolContentId = Number(execRes.data.content_id);
+                    toolContentDetails = {
+                        title: execRes.data.title || null,
+                        category: execRes.data.category || args.category || 'any',
+                        url: execRes.data.url || null,
+                        telegramType: execRes.data.telegram_type || null
+                    };
                 }
                 if (shouldPersistToolObservation({ status: execRes?.status, name })) {
                     memoryRepository.recordToolObservation({
@@ -1086,9 +1093,11 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                     }
                 } else if (name === 'send_content') {
                     if (execRes?.status === 'success') {
+                        const title = execRes.data?.title || toolContentDetails?.title || 'материал';
+                        const category = execRes.data?.category || toolContentDetails?.category || args.category || 'any';
                         messages.push({
                             role: 'system',
-                            content: '[МАТЕРИАЛ ПРИКРЕПЛЕН]: Материал успешно отправлен в чат. Напиши короткий живой комментарий от лица Леры к этому материалу.'
+                            content: `[МАТЕРИАЛ ОТПРАВЛЕН ЛЕРОЙ]: Инструмент send_content уже успешно отправил пользователю отдельное сообщение. Название материала: «${title}». Категория: ${category}. Это не входящее сообщение пользователя: пользователь ничего не присылал Лере в этом ходе. Сформируй короткий естественный комментарий от лица Леры к только что отправленному материалу, без пересказа служебных деталей, URL и выдуманных действий пользователя.`
                         });
                     } else {
                         messages.push({
@@ -1268,7 +1277,16 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         const firstUsage = usage || {};
         let retry;
         try {
-            retry = await requestLlmCompletion(user, retryMessages, isPhotoRequest, getOpenAIClientAndModel, generationParams);
+            const hasSuccessfulSideEffectTool = toolsExecuted.some(tool =>
+                tool.status === 'success' && ['send_content', 'send_photo', 'send_voice', 'schedule_followup'].includes(tool.name)
+            );
+            retry = await requestLlmCompletion(
+                user,
+                retryMessages,
+                isPhotoRequest,
+                getOpenAIClientAndModel,
+                hasSuccessfulSideEffectTool ? { ...generationParams, tools: null } : generationParams
+            );
         } catch (retryErr) {
             generationTrace.push({
                 step: 'retry',
@@ -1431,6 +1449,17 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     const scheduleFollowupSucceeded = toolsExecuted.some(tool =>
         tool.name === 'schedule_followup' && tool.status === 'success'
     );
+    const followupContext = messages
+        .filter(message => message.role === 'user' || message.role === 'assistant')
+        .slice(-12)
+        .map(message => {
+            const content = Array.isArray(message.content)
+                ? message.content.map(part => typeof part === 'string' ? part : part?.text || '').filter(Boolean).join(' ')
+                : String(message.content || '');
+            return `${message.role === 'user' ? 'Пользователь' : 'Лера'}: ${content}`;
+        })
+        .filter(line => line.length > 12)
+        .join('\n');
     const followupIntercept = await maybeScheduleFollowupPromise({
         text,
         userId,
@@ -1439,6 +1468,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         isInitiative,
         isPublicContext,
         scheduleFollowupSucceeded,
+        contextText: followupContext,
         enqueue: enqueueFollowupPromise
     });
     if (followupIntercept.scheduled) {
