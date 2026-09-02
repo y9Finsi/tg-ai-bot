@@ -357,8 +357,8 @@ export function hasPriorReactionInHistory(history = []) {
 
 export function isActionOrToolRequest(userText = '', activeMode = 'CASUAL') {
     const text = String(userText || '');
-    // Напоминания и таймеры ВСЕГДА приоритетнее
-    if (/(?:напомни|напомнить|пни|засеки|таймер)/iu.test(text)) return true;
+    // Напоминания, таймеры и опечатки (напом, напомин, напоан, пни, засеки, через X секунд/минут) ВСЕГДА приоритетнее
+    if (/(?:напом|напомин|напоан|пни|пнуть|засек|таймер|будильник|через\s+\d+\s*(?:сек|мин|час))/iu.test(text)) return true;
     // Медиа/поиск байпасятся только в обычном диалоге, но НЕ в эротическом режиме
     if (activeMode !== 'EROTIC' && /(?:скинь|сфоткай|покажи|найди|поставь|отправь|запиши|наговори|погугли|погода)/iu.test(text)) {
         return true;
