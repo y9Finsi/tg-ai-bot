@@ -5,11 +5,12 @@
  */
 
 import { enqueueFollowupPromise } from '../../../queue.js';
+import { getUser } from '../../../database.js';
 
 export const scheduleFollowupAction = {
     name: 'schedule_followup',
     title: 'Запланировать отложенное возвращение / обещание',
-    description: 'Планирует отложенное сообщение собеседнику через указанное количество минут, когда ты обещаешь сделать действие и вернуться (заварить кофе, доехать до работы/шоурума, выйти из душа, найти мем/трек, скинуть лук). Вызывай ТОЛЬКО при реальном обещании в диалоге.',
+    description: 'Планирует отложенное сообщение собеседнику через указанное количество минут, когда ты обещаешь сделать действие и вернуться (заварить кофе, доехать до работы/шоурума, выйти из душа, найти мем/трек, скинуть лук). В публичных группах сообщение автоматически запланируется в ЛС пользователю. Вызывай ТОЛЬКО при реальном обещании в диалоге.',
     inputSchema: {
         type: 'object',
         properties: {
@@ -44,10 +45,16 @@ export const scheduleFollowupAction = {
 
         const isPublic = Boolean(context.isPublicContext || context.currentContext?.isPublicContext);
         if (isPublic) {
-            return {
-                status: 'error',
-                error: { code: 'PUBLIC_DISABLED', message: 'Отложенные обещания доступны только в личных сообщениях.' }
-            };
+            const user = await getUser(userId).catch(() => null);
+            if (!user || user.is_blocked) {
+                return {
+                    status: 'error',
+                    error: {
+                        code: 'PM_NOT_STARTED',
+                        message: 'Пользователь еще не писал тебе в личные сообщения (@gexyy_bot). Telegram запрещает боту писать первым в ЛС незнакомым людям. Скажи ему прямо в чате: пусть сначала напишет тебе в ЛС /start или привет, тогда ты сможешь скинуть/написать ему в личку.'
+                    }
+                };
+            }
         }
 
         const delayMinutes = Math.min(Math.max(parseInt(args.delay_minutes, 10) || 15, 3), 360);

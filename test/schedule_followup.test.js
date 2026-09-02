@@ -25,13 +25,13 @@ test('schedule_followup: validation and execution checks', async () => {
     assert.equal(resNoUser.status, 'error');
     assert.equal(resNoUser.error.code, 'NO_USER');
 
-    // 2. Public context blocked
-    const resPublic = await scheduleFollowupAction.execute(
+    // 2. Public context for unknown/unstarted user returns PM_NOT_STARTED
+    const resPublicUnstarted = await scheduleFollowupAction.execute(
         { delay_minutes: 10, topic: 'тест' },
-        { userId: 12345, isPublicContext: true }
+        { userId: 888777999, isPublicContext: true }
     );
-    assert.equal(resPublic.status, 'error');
-    assert.equal(resPublic.error.code, 'PUBLIC_DISABLED');
+    assert.equal(resPublicUnstarted.status, 'error');
+    assert.equal(resPublicUnstarted.error.code, 'PM_NOT_STARTED');
 
     // 3. Empty topic blocked
     const resEmptyTopic = await scheduleFollowupAction.execute(

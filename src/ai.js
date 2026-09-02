@@ -909,7 +909,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         formattedTools = activeSchemas
             .filter(s => {
                 if (s.name === 'schedule_followup') {
-                    if (isPublicContext || isInitiative) return false;
+                    if (isInitiative) return false;
                 }
                 return true;
             })
