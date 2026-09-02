@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button.jsx';
 import { Badge } from '@/components/ui/badge.jsx';
 import { api } from '@/lib/api.js';
 
-const STUDIO_EDITABLE_INTENTS = ['CASUAL', 'EROTIC', 'JOKE'];
+const STUDIO_EDITABLE_INTENTS = ['CASUAL', 'EROTIC'];
 
 export function SandboxSamplingControls({
     temperature,

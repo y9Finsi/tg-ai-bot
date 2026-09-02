@@ -36,6 +36,14 @@ const rootPosts = new Map();
 const threadHistory = new Map();
 const postReplyCounts = new Map();
 
+function setBoundedMap(map, key, value, maxSize = 500) {
+    if (map.size >= maxSize) {
+        const firstKey = map.keys().next().value;
+        if (firstKey !== undefined) map.delete(firstKey);
+    }
+    map.set(key, value);
+}
+
 export async function getCommenterContext(userId) {
     if (!userId) return { isKnown: false };
     try {
@@ -241,8 +249,8 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
     if (isChannelForward && msg.reply_to_message) {
         const text = msg.reply_to_message.text || msg.reply_to_message.caption || '';
         if (text) {
-            rootPosts.set(rootMessageId, text);
-            rootPosts.set(msg.reply_to_message.message_id, text);
+            setBoundedMap(rootPosts, rootMessageId, text);
+            setBoundedMap(rootPosts, msg.reply_to_message.message_id, text);
             await upsertChannelDiscussionThread({
                 channelId: discussionId,
                 rootMessageId,
@@ -262,13 +270,13 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
     const persistedThread = await getChannelDiscussionThread(discussionId, rootMessageId).catch(() => null);
     if (!postText && persistedThread?.post_text) {
         postText = persistedThread.post_text;
-        rootPosts.set(rootMessageId, postText);
+        setBoundedMap(rootPosts, rootMessageId, postText);
     }
     if (!postText && sourcePostMessageId) {
         const exactPost = await getChannelPostByTelegramMessageId(sourceChannelId, sourcePostMessageId).catch(() => null);
         if (exactPost?.text) {
             postText = exactPost.text;
-            rootPosts.set(rootMessageId, postText);
+            setBoundedMap(rootPosts, rootMessageId, postText);
         }
     }
     if (!postText) return false;
@@ -311,7 +319,7 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
         // Record incoming user comment in thread
         currentThread.push({ sender: commenter.name || 'Подписчик', text: msg.text });
         if (currentThread.length > 10) currentThread.shift();
-        threadHistory.set(rootMessageId, currentThread);
+        setBoundedMap(threadHistory, rootMessageId, currentThread);
         await upsertChannelDiscussionThread({
             channelId: discussionId,
             rootMessageId,
@@ -333,12 +341,12 @@ export async function handleChannelDiscussionMessage(bot, ctx) {
         // 2. Text response if chosen
         if (decision.reply) {
             await ctx.reply(decision.reply, { reply_to_message_id: msg.message_id });
-            postReplyCounts.set(rootMessageId, currentRepliesOnPost + 1);
+            setBoundedMap(postReplyCounts, rootMessageId, currentRepliesOnPost + 1);
 
             // Record bot reply in thread
             currentThread.push({ sender: 'Лера', text: decision.reply });
             if (currentThread.length > 10) currentThread.shift();
-            threadHistory.set(rootMessageId, currentThread);
+            setBoundedMap(threadHistory, rootMessageId, currentThread);
             await upsertChannelDiscussionThread({
                 channelId: discussionId,
                 rootMessageId,

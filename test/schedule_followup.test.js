@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { actionRegistry, scheduleFollowupAction } from '../src/radiant/actions/index.js';
+import { actionRegistry, scheduleFollowupAction, scheduleReminderAction } from '../src/radiant/actions/index.js';
 import { aiQueue, getPendingFollowup, cancelFollowupPromise } from '../src/queue.js';
 
 test('schedule_followup: contract and schema verification', () => {
@@ -13,6 +13,18 @@ test('schedule_followup: contract and schema verification', () => {
 
     const registered = actionRegistry.get('schedule_followup');
     assert.ok(registered, 'schedule_followup should be registered in actionRegistry');
+});
+
+test('schedule_reminder: contract and schema verification', () => {
+    assert.equal(scheduleReminderAction.name, 'schedule_reminder');
+    assert.ok(scheduleReminderAction.description.length > 10);
+    assert.ok(scheduleReminderAction.inputSchema.properties.delay_seconds);
+    assert.ok(scheduleReminderAction.inputSchema.properties.delay_minutes);
+    assert.ok(scheduleReminderAction.inputSchema.properties.reminder_text);
+    assert.deepEqual(scheduleReminderAction.inputSchema.required, ['reminder_text']);
+
+    const registered = actionRegistry.get('schedule_reminder');
+    assert.ok(registered, 'schedule_reminder should be registered in actionRegistry');
 });
 
 test('schedule_followup: validation and execution checks', async () => {
@@ -44,19 +56,19 @@ test('schedule_followup: validation and execution checks', async () => {
     // 4. Valid execution with small delay (min: 1)
     const testUserId = 999001;
     const resSuccess = await scheduleFollowupAction.execute(
-        { delay_minutes: 1, topic: 'напомнить написать пост', send_photo: false },
+        { delay_minutes: 1, topic: 'заварить кофе', send_photo: false },
         { userId: testUserId }
     );
 
     assert.equal(resSuccess.status, 'success');
     assert.equal(resSuccess.data.delay_minutes, 1);
-    assert.equal(resSuccess.data.topic, 'напомнить написать пост');
+    assert.equal(resSuccess.data.topic, 'заварить кофе');
     assert.equal(resSuccess.data.send_photo, false);
 
     // 5. getPendingFollowup should return the active promise
     const pending = getPendingFollowup(testUserId);
     assert.ok(pending, 'Pending followup should exist');
-    assert.equal(pending.topic, 'напомнить написать пост');
+    assert.equal(pending.topic, 'заварить кофе');
     assert.equal(pending.sendPhoto, false);
 
     // 6. cancelFollowupPromise should clear it
@@ -64,3 +76,43 @@ test('schedule_followup: validation and execution checks', async () => {
     const pendingAfterCancel = getPendingFollowup(testUserId);
     assert.equal(pendingAfterCancel, null, 'Pending followup should be cleared after cancel');
 });
+
+test('schedule_reminder: validation and execution checks', async () => {
+    aiQueue.getJob = async () => null;
+    let addedJob = null;
+    aiQueue.add = async (name, data, opts) => {
+        addedJob = { name, data, opts };
+        return { id: opts?.jobId || 'test-job', data };
+    };
+
+    // 1. Missing userId
+    const resNoUser = await scheduleReminderAction.execute({ reminder_text: 'написать Маше' }, {});
+    assert.equal(resNoUser.status, 'error');
+    assert.equal(resNoUser.error.code, 'NO_USER');
+
+    // 2. Empty reminder blocked
+    const resEmpty = await scheduleReminderAction.execute({ reminder_text: '' }, { userId: 12345 });
+    assert.equal(resEmpty.status, 'error');
+    assert.equal(resEmpty.error.code, 'EMPTY_REMINDER');
+
+    // 3. Second-based reminder (10 seconds)
+    const resSeconds = await scheduleReminderAction.execute(
+        { delay_seconds: 10, reminder_text: 'написать Маше писька' },
+        { userId: 952039543 }
+    );
+    assert.equal(resSeconds.status, 'success');
+    assert.equal(resSeconds.data.delay_seconds, 10);
+    assert.equal(resSeconds.data.reminder_text, 'написать Маше писька');
+    assert.equal(addedJob?.name, 'user-reminder');
+    assert.equal(addedJob?.opts?.delay, 10000);
+
+    // 4. Minute-based reminder (15 minutes)
+    const resMinutes = await scheduleReminderAction.execute(
+        { delay_minutes: 15, reminder_text: 'проверить духовку' },
+        { userId: 952039543 }
+    );
+    assert.equal(resMinutes.status, 'success');
+    assert.equal(resMinutes.data.delay_seconds, 900);
+    assert.equal(addedJob?.opts?.delay, 900000);
+});
+

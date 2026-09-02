@@ -908,7 +908,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         const activeSchemas = actionRegistry.getSchemas({ userId });
         formattedTools = activeSchemas
             .filter(s => {
-                if (s.name === 'schedule_followup') {
+                if (s.name === 'schedule_followup' || s.name === 'schedule_reminder') {
                     if (isInitiative) return false;
                 }
                 return true;
@@ -981,7 +981,11 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                     userText,
                     currentContext: leraState,
                     radiantContext,
-                    routingMode
+                    routingMode,
+                    isPublicContext: Boolean(isPublicContext),
+                    chatId: options.chatId || null,
+                    threadId: options.threadId || null,
+                    anchorEventId: options.anchorEventId || null
                 }
             });
             let toolResultContent = '';
@@ -1674,7 +1678,7 @@ export async function generateResponse(userId, text, envelope = {}) {
         replyingTo: envelope.replyingTo
     });
 
-    if (aiResponse?.photo && !isPublicContext) {
+    if (!isPublicContext && aiResponse) {
         cancelFollowupPromise(userId).catch(() => {});
     }
 

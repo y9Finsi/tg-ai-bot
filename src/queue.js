@@ -29,6 +29,7 @@ export const aiQueue = new Queue('ai-requests', {
         removeOnFail: { age: 7 * 24 * 60 * 60, count: 5000 }
     }
 });
+aiQueue.on('error', () => {});
 let aiWorker = null;
 const userJobLanes = new Map();
 
@@ -293,12 +294,12 @@ async function processInitiativeJob(bot, job) {
             await sendVoiceWithSimulation(bot, chatId, response.voice, response.voiceText || response.text);
         }
     } catch (sendErr) {
-        if (sendErr.response?.error_code === 403 || sendErr.message?.includes('bot was blocked') || sendErr.message?.includes('user is deactivated') || sendErr.message?.includes('chat not found')) {
-            console.warn(`[INITIATIVE BLOCKED] User ${userId} blocked the bot or chat unavailable, marking is_blocked=true`);
+        if (sendErr.response?.error_code === 403 && (sendErr.message?.includes('bot was blocked by the user') || sendErr.message?.includes('user is deactivated'))) {
+            console.warn(`[INITIATIVE BLOCKED] User ${userId} blocked the bot, marking is_blocked=true`);
             await setBlockStatus(userId, true).catch(() => {});
             return;
         }
-        throw sendErr;
+        console.warn(`[INITIATIVE SEND ERR] user ${userId}:`, sendErr.message);
     }
 
     const initiativeEvent = await appendConversationEvent({
@@ -353,7 +354,7 @@ export async function enqueueFollowupPromise(userId, chatId, { delayMinutes = 15
     const numericChatId = Number(chatId || userId);
     if (!numericUserId) throw new Error('Не указан userId для отложенного обещания');
 
-    const delayMs = Math.min(Math.max(parseInt(delayMinutes, 10) || 15, 3), 360) * 60 * 1000;
+    const delayMs = Math.min(Math.max(parseInt(delayMinutes, 10) || 5, 1), 360) * 60 * 1000;
     const dueAt = Date.now() + delayMs;
 
     pendingFollowupMap.set(String(numericUserId), {
@@ -395,6 +396,34 @@ export async function enqueueFollowupPromise(userId, chatId, { delayMinutes = 15
     console.log(`⏱️ [FOLLOWUP PROMISE ENQUEUED] user ${numericUserId}: тема "${topic}", возврат через ${delayMinutes} мин`);
 }
 
+export async function enqueueUserReminder(userId, chatId, { delaySeconds = 60, reminderText = '', anchorEventId = null } = {}) {
+    const numericUserId = Number(userId);
+    const numericChatId = Number(chatId || userId);
+    if (!numericUserId) throw new Error('Не указан userId для напоминания');
+
+    const delayMs = Math.min(Math.max(parseInt(delaySeconds, 10) || 60, 10), 86400) * 1000;
+    const jobId = `reminder-${numericUserId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    try {
+        await aiQueue.add('user-reminder', {
+            userId: numericUserId,
+            chatId: numericChatId,
+            reminderText,
+            scheduledAt: Date.now(),
+            anchorEventId: anchorEventId ? Number(anchorEventId) : null
+        }, {
+            jobId,
+            delay: delayMs,
+            removeOnComplete: true,
+            removeOnFail: true
+        });
+    } catch (qErr) {
+        console.warn(`[REMINDER QUEUE WARN] user ${numericUserId}: не удалось добавить в Redis (${qErr.message})`);
+    }
+
+    console.log(`⏱️ [USER REMINDER ENQUEUED] user ${numericUserId}: "${reminderText}", возврат через ${delaySeconds} сек`);
+}
+
 export async function cancelFollowupPromise(userId) {
     const key = String(userId);
     pendingFollowupMap.delete(key);
@@ -413,6 +442,38 @@ export function getPendingFollowup(userId) {
         return null;
     }
     return entry;
+}
+
+async function processReminderJob(bot, job) {
+    const { userId, chatId, reminderText, scheduledAt } = job.data;
+    const [user, mute, historyClearedAt] = await Promise.all([
+        getUser(userId),
+        getActiveMute(userId),
+        getChatHistoryClearedAt(userId)
+    ]);
+
+    if (!user || user.is_blocked || mute) {
+        console.log(`[USER REMINDER SKIPPED] user ${userId}: заблокирован или в муте`);
+        return;
+    }
+
+    if (historyClearedAt && scheduledAt && new Date(historyClearedAt).getTime() > Number(scheduledAt)) {
+        console.log(`[USER REMINDER SKIPPED] user ${userId}: история диалога была очищена`);
+        return;
+    }
+
+    const prompt = `Ты напоминаешь собеседнику то, о чём он сам просил: «${reminderText}». Напиши коротко, живо и с лёгким характером/подколом (например: «ты просил напомнить...», «ну че, ты сделал...?», «пнула, как просил»). Без занудства, одной репликой.`;
+    const response = await generateAiInitiativeResponse(userId, prompt, { initiativeKind: 'reminder' });
+    if (!response?.text) return;
+
+    try {
+        await sendTextLadder(bot, chatId, response.text);
+    } catch (sendErr) {
+        console.error(`[USER REMINDER SEND ERROR] user ${userId}:`, sendErr.message);
+        if (sendErr.response?.error_code === 403 && sendErr.message?.includes('bot was blocked by the user')) {
+            await setBlockStatus(userId, true).catch(() => {});
+        }
+    }
 }
 
 async function processFollowupJob(bot, job) {
@@ -526,12 +587,12 @@ async function processFollowupJob(bot, job) {
             status: 'COMPLETED'
         }).catch(() => {});
     } catch (sendErr) {
-        if (sendErr.response?.error_code === 403 || sendErr.message?.includes('bot was blocked') || sendErr.message?.includes('user is deactivated') || sendErr.message?.includes('chat not found')) {
+        if (sendErr.response?.error_code === 403 && (sendErr.message?.includes('bot was blocked by the user') || sendErr.message?.includes('user is deactivated'))) {
             console.warn(`[FOLLOWUP PROMISE BLOCKED] User ${userId} blocked the bot`);
             await setBlockStatus(userId, true).catch(() => {});
             return;
         }
-        throw sendErr;
+        console.warn(`[FOLLOWUP PROMISE SEND ERR] user ${userId}:`, sendErr.message);
     }
 }
 
@@ -814,6 +875,8 @@ export function startWorker(bot) {
                 ? processTestInitiativeJob(bot, job)
             : job.name === 'followup-promise'
                 ? processFollowupJob(bot, job)
+            : job.name === 'user-reminder'
+                ? processReminderJob(bot, job)
             : job.name === 'content-delivery'
                 ? processContentDeliveryJob(bot, job)
                 : processAiJob(bot, job)

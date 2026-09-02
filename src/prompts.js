@@ -19,7 +19,6 @@ const PROMPT_ORDER = [
     'lera_base',
     'lera_speech',
     'lera_intimacy',
-    'lera_jokes',
     'lera_examples',
     'lera_virt_examples',
     'lera_rules'
@@ -99,16 +98,19 @@ export async function initPromptsFromDb() {
             if (!isNaN(parsed)) llmParamsCache.frequency_penalty = parsed;
         }
 
-        for (const [key, filename] of Object.entries(PROMPT_SECTIONS)) {
-            const dbVal = await getSetting(`prompt_${key}`, null);
-            if (dbVal !== null && dbVal !== undefined && dbVal.trim() !== '') {
-                promptsCache[key] = dbVal;
-            }
-        }
-        for (const [key] of Object.entries(ROUTING_PROMPT_SECTIONS)) {
-            const dbVal = await getSetting(`prompt_${key}`, null);
-            if (dbVal !== null && dbVal !== undefined && dbVal.trim() !== '') {
-                promptsCache[key] = dbVal;
+        // Code-First синхронизация: файлы на диске являются источником правды
+        const allSections = { ...PROMPT_SECTIONS, ...ROUTING_PROMPT_SECTIONS };
+        for (const [key, filename] of Object.entries(allSections)) {
+            const diskContent = loadPromptFile(filename);
+            if (diskContent && diskContent.trim() !== '') {
+                promptsCache[key] = diskContent;
+                // Автоматически синхронизируем базу данных с файлами на диске
+                await setSetting(`prompt_${key}`, diskContent).catch(() => {});
+            } else {
+                const dbVal = await getSetting(`prompt_${key}`, null);
+                if (dbVal !== null && dbVal !== undefined && dbVal.trim() !== '') {
+                    promptsCache[key] = dbVal;
+                }
             }
         }
         isDbInitialized = true;
@@ -190,15 +192,14 @@ export async function getRoutingPromptModules() {
         core: sanitizeLegacyIdentity(promptsCache.routing_core),
         common: promptsCache.routing_common,
         casual: promptsCache.routing_casual,
-        erotic: promptsCache.routing_erotic,
-        joke: promptsCache.routing_joke
+        erotic: promptsCache.routing_erotic
     };
 }
 
 export async function getRoutedSystemPrompt(mode = 'CASUAL', config = {}) {
     const modules = await getRoutingPromptModules();
-    const normalizedMode = ['CASUAL', 'EROTIC', 'JOKE'].includes(mode) ? mode : 'CASUAL';
-    const selected = normalizedMode === 'EROTIC' ? modules.erotic : normalizedMode === 'JOKE' ? modules.joke : modules.casual;
+    const normalizedMode = mode === 'EROTIC' ? 'EROTIC' : 'CASUAL';
+    const selected = normalizedMode === 'EROTIC' ? modules.erotic : modules.casual;
     const enabled = config.promptModules || config.prompt_modules || {};
     const blocks = [
         enabled.core === false ? '' : modules.core,

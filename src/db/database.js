@@ -411,6 +411,10 @@ export async function initDatabaseTables() {
                 ON simulation_events (occurred_at DESC);
             CREATE INDEX IF NOT EXISTS idx_simulation_diary_date
                 ON simulation_diary (date DESC, importance DESC);
+            CREATE INDEX IF NOT EXISTS idx_users_retargeting
+                ON users (is_blocked, promo_store_sent, store_opened_at);
+            CREATE INDEX IF NOT EXISTS idx_sent_photos_user_photo
+                ON sent_photos (user_id, photo_id);
 
             ALTER TABLE simulation_events ADD COLUMN IF NOT EXISTS initiative_sent_at TIMESTAMPTZ;
 
@@ -1354,7 +1358,41 @@ export async function updateUserMeta(userId, { first_name, last_name, username }
     return res.rows[0];
 }
 
+const settingsCache = new Map();
+const SETTINGS_CACHE_TTL = 30000; // 30 секунд
+
+export function invalidateSettingsCache(key = null) {
+    if (key) {
+        settingsCache.delete(key);
+    } else {
+        settingsCache.clear();
+    }
+}
+
+export async function getSettingsByPrefix(prefix) {
+    try {
+        const res = await query('SELECT key, value FROM settings WHERE key LIKE $1', [`${prefix}%`]);
+        const map = {};
+        for (const row of (res.rows || [])) {
+            map[row.key] = row.value;
+            settingsCache.set(row.key, { value: row.value, timestamp: Date.now() });
+        }
+        return map;
+    } catch {
+        return {};
+    }
+}
+
 export async function getSetting(key, defaultValue = null, applyEscape = false) {
+    const cached = settingsCache.get(key);
+    if (cached && (Date.now() - cached.timestamp < SETTINGS_CACHE_TTL)) {
+        const val = cached.value !== null ? cached.value : defaultValue;
+        if (applyEscape && typeof val === 'string') {
+            return val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+        return val;
+    }
+
     let value = null;
     let foundInLegacy = false;
 
@@ -1399,6 +1437,8 @@ export async function getSetting(key, defaultValue = null, applyEscape = false) 
         }
     }
 
+    settingsCache.set(key, { value, timestamp: Date.now() });
+
     if (applyEscape && typeof value === 'string') {
         return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
@@ -1407,6 +1447,7 @@ export async function getSetting(key, defaultValue = null, applyEscape = false) 
 
 export async function setSetting(key, value) {
     const normalizedValue = String(value ?? '');
+    settingsCache.set(key, { value: normalizedValue, timestamp: Date.now() });
     let res = { rows: [] };
     let primarySaved = false;
     let legacySaved = false;
@@ -1444,7 +1485,7 @@ export async function setSetting(key, value) {
 
 export async function getAdminDebugLogEnabled(userId) {
     if (!userId) return false;
-    const val = await getSetting(`admin_debug_log_${userId}`, 'false');
+    const val = await getSetting(`admin_debug_log_${userId}`, null);
     return val === 'true' || val === '1';
 }
 

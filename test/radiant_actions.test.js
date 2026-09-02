@@ -219,12 +219,29 @@ async function runTests() {
 
     // 7. Weather Action Contract & Execution
     await test('WeatherAction: executes and returns formatted weather', async () => {
-        const { weatherAction } = await import('../src/radiant/actions/plugins/weather.js');
-        const res = await executeAction({ name: 'weather', args: {} });
-        assert.strictEqual(res.status, 'success');
-        assert.strictEqual(res.action, 'weather');
-        assert.ok(res.data.text.includes('Погода в Санкт-Петербурге'));
-        assert.strictEqual(res.meta.provider, 'open_meteo');
+        const originalFetch = global.fetch;
+        global.fetch = async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                current_weather: {
+                    temperature: 18.5,
+                    windspeed: 4.2,
+                    weathercode: 1,
+                    time: '2026-09-02T12:00'
+                }
+            })
+        });
+        try {
+            const { weatherAction } = await import('../src/radiant/actions/plugins/weather.js');
+            const res = await executeAction({ name: 'weather', args: {} });
+            assert.strictEqual(res.status, 'success');
+            assert.strictEqual(res.action, 'weather');
+            assert.ok(res.data.text.includes('Погода в Санкт-Петербурге'));
+            assert.strictEqual(res.meta.provider, 'open_meteo');
+        } finally {
+            global.fetch = originalFetch;
+        }
     });
 
     // 8. SPB Places Action Contract & Search

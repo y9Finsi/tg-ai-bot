@@ -113,9 +113,16 @@ src/
 
 - Построено на **BullMQ** + **Redis**.
 - Очереди:
+  - `ai-requests`: обработка входящих сообщений (`processAiJob`), инициатив (`processInitiativeJob`), бытовых обещаний (`processFollowupJob`), напоминаний собеседнику (`processReminderJob`), доставки контента (`processContentDeliveryJob`).
   - `memory_outbox` — асинхронная выгрузка и индексация воспоминаний.
   - `channel_content_generation` — генерация постов и медиа по расписанию.
   - `broadcast_queue` — массовая рассылка уведомлений пользователям с учетом лимитов Telegram.
+- **Инструменты напоминаний и отложенных действий:**
+  - `schedule_reminder`: планирует независимые напоминания пользователю (от 10 сек до 24 часов). Поддерживает мульти-таймеры (`jobId: reminder-${userId}-${timestamp}-${rnd}`). При вызове из групп отправляет напоминание в ЛС (`chatId: userId`).
+  - `schedule_followup`: планирует бытовые возвращения и обещания самой Леры (кофе, душ, дорога, лук с фото) с 1 активным слотом на пользователя.
+  - Dual-Mode Tool Calling: распознает как нативные `tool_calls` провайдеров, так и текстовые `<tool_call>{...}</tool_call>` теги.
+  - In-Memory Cache для настроек (`settingsCache` с TTL 30с) устраняет N+1 нагрузку на PostgreSQL.
+  - Code-First Source of Truth для промптов: файлы в Git (`src/prompts/*.txt`) автоматически обновляют записи в БД при старте.
 
 ---
 
@@ -131,5 +138,7 @@ src/
   - Реплаи (`reply_to_message`) размечаются с указанием автора и сниппета (`[в ответ на сообщение (Имя): «...»]`).
 - **Медиа и тулы в группе:**
   - `send_photo`: в публичном контексте отключается `allow_db_fallback` (`allowFallback = false`), генерируя свежее фото на лету без использования готовой галереи базы.
+  - `schedule_reminder` и `schedule_followup`: проверяют наличие диалога в ЛС (`PM_NOT_STARTED`), планируют доставку в ЛС.
   - Поддержка `ctx.replyWithPhoto`, `ctx.replyWithVoice` с авто-фоллбэком на текст при запретах в группе.
   - В гостевом режиме ответ отправляется через `answerGuestQuery`.
+

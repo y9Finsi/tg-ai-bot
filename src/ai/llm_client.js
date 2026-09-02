@@ -70,9 +70,7 @@ export function buildLlmRequestParams({ model, messages, calculatedMaxTokens, ll
 
     if (Array.isArray(traceContext.tools) && traceContext.tools.length > 0) {
         requestParams.tools = traceContext.tools;
-        if (traceContext.tool_choice) {
-            requestParams.tool_choice = traceContext.tool_choice;
-        }
+        requestParams.tool_choice = traceContext.tool_choice || 'auto';
     }
 
     if (traceContext.samplingExtraBody && typeof traceContext.samplingExtraBody === 'object' && Object.keys(traceContext.samplingExtraBody).length) {
@@ -88,6 +86,33 @@ export function buildLlmRequestParams({ model, messages, calculatedMaxTokens, ll
         };
     }
     return requestParams;
+}
+
+export function extractTextToolCalls(content) {
+    if (!content || typeof content !== 'string') return null;
+    const toolCallRegex = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
+    const matches = [...content.matchAll(toolCallRegex)];
+    if (matches.length === 0) return null;
+
+    const toolCalls = [];
+    for (const match of matches) {
+        try {
+            const parsed = JSON.parse(match[1]);
+            if (parsed.name) {
+                toolCalls.push({
+                    id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                    type: 'function',
+                    function: {
+                        name: parsed.name,
+                        arguments: typeof parsed.arguments === 'string' ? parsed.arguments : JSON.stringify(parsed.arguments || {})
+                    }
+                });
+            }
+        } catch {
+            // Игнорируем некорректный JSON
+        }
+    }
+    return toolCalls.length > 0 ? toolCalls : null;
 }
 
 export function hasMultimodalMessages(messages = []) {
@@ -202,9 +227,21 @@ export async function requestLlmCompletion(user, messages, isPhotoRequest, getOp
                     console.log(`✅ [FALLBACK SUCCESS] Успешный ответ от провайдера #${i + 1} (${prov.name}) после сбоя предыдущих!`);
                 }
                 const choiceMessage = completion.choices[0]?.message || {};
+                let toolCalls = choiceMessage.tool_calls || null;
+                let rawContent = choiceMessage.content || null;
+
+                // Dual-mode fallback: парсим текстовые <tool_call> теги, если провайдер вернул их в контенте
+                if (!toolCalls && rawContent) {
+                    const parsedTextCalls = extractTextToolCalls(rawContent);
+                    if (parsedTextCalls) {
+                        toolCalls = parsedTextCalls;
+                        rawContent = rawContent.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '').trim() || null;
+                    }
+                }
+
                 const result = {
-                    rawText: choiceMessage.content || null,
-                    tool_calls: choiceMessage.tool_calls || null,
+                    rawText: rawContent,
+                    tool_calls: toolCalls,
                     usage: completion.usage,
                     model: prov.model_name,
                     providerName: prov.name,
