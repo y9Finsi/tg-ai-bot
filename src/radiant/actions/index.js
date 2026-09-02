@@ -15,6 +15,7 @@ import { sendContentAction } from './plugins/send_content.js';
 import { setReactionAction } from './plugins/set_reaction.js';
 import { setInteractionModeAction } from './plugins/set_interaction_mode.js';
 import { getChannelPostsAction } from './plugins/get_channel_posts.js';
+import { scheduleFollowupAction } from './plugins/schedule_followup.js';
 
 // Авторегистрация системных действий ядра
 actionRegistry.register(webSearchAction);
@@ -27,6 +28,7 @@ actionRegistry.register(sendContentAction);
 actionRegistry.register(setReactionAction);
 actionRegistry.register(setInteractionModeAction);
 actionRegistry.register(getChannelPostsAction);
+actionRegistry.register(scheduleFollowupAction);
 
 export {
     actionRegistry,
@@ -41,5 +43,6 @@ export {
     sendContentAction,
     setReactionAction,
     setInteractionModeAction,
-    getChannelPostsAction
+    getChannelPostsAction,
+    scheduleFollowupAction
 };

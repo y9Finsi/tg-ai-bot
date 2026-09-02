@@ -27,6 +27,7 @@ import { createContextRetriever } from './ai/context_retriever.js';
 import { buildMemoryRetrievalQuery } from './ai/memory_query.js';
 import { shouldPersistToolObservation } from './ai/tool_observation_policy.js';
 import { memoryRepository } from './memory/memory_repository.js';
+import { getPendingFollowup, cancelFollowupPromise } from './queue.js';
 // --- 1. КОНСТАНТЫ И ДИНАМИЧЕСКИЙ КЛИЕНТ ИИ ---
 
 const rateLimitMap = new Map();
@@ -636,6 +637,13 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: перекладывать на собеседника задачи Макса/шоурума («ты подумал над постом?») или требовать от него решений по твоей работе!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: использовать кринжовые фразы вроде «ну ты и залип», «я залипла», «да я чет залипла»!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: выдумывать новые прошлые разговоры, обещания, видео/ссылки или сериалы («ты рассказывал про сериал», «ты скинул ссылку»), которых нет в памяти и истории переписки!`;
+        } else if (initiativeKind === 'followup_promise') {
+            initiativeDirective = `⚠️ ТЫ ВОЗВРАЩАЕШЬСЯ К СОБЕСЕДНИКУ: ВЫПОЛНЕНИЕ ОБЕЩАНИЯ / ОТЛОЖЕННОЕ ДЕЙСТВИЕ!
+Повод: ${initiativeReason || 'ты только что закончила дело, о котором обещала рассказать'}
+Задача Леры:
+- Напиши живую реплику от первого лица, как будто ты только что вернулась к телефону (например: «короче заварила», «доехала наконец-то», «смотри че вышло», «вышла из душа, кайф»).
+- Если тема подразумевает фото или обещано фото — обязательно вызови инструмент send_photo.
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: писать шаблонные фразы вроде «я вернулась как и обещала». Пиши естественно, по-питерски, как живая 19-летняя девушка.`;
         } else {
             initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ${initiativeReason || 'естественное продолжение разговора'}\nКАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдумывать прошлые реплики собеседника или спрашивать его про чужие рабочие задачи (Макс, шоурум).`;
         }
@@ -645,6 +653,16 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
             role: 'user',
             content: `[СИСТЕМНОЕ СОБЫТИЕ: ${initiativeReason || 'Напиши сообщение первой в соответствии с инструкцией выше'}]`
         });
+    }
+
+    // Напоминание о висящем обещании, если собеседник написал раньше времени
+    if (!isInitiative && !isPublic) {
+        const pendingPromise = getPendingFollowup(userId);
+        if (pendingPromise?.topic) {
+            const pendingDirective = `⚠️ У ТЕБЯ ВИСИТ ОБЕЩАНИЕ СОБЕСЕДНИКУ: ты недавно обещала: "${pendingPromise.topic}".
+Если собеседник спросил об этом или уместно — выполни обещание или скажи, что ещё в процессе. Если диалог ушел в другую сторону — общайся естественно по новой теме.`;
+            messages.push({ role: 'system', content: pendingDirective });
+        }
     }
 
     // Передаем последнее текущее сообщение пользователя (с поддержкой Vision)
@@ -826,7 +844,7 @@ async function recordAiTransaction(userId, usage) {
 
 // --- 4. ДЕКЛАРАТИВНЫЙ ЕДИНЫЙ ДВИЖОК ---
 
-async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', isVoiceRequest = false, classifierResult = null, actionRouting = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, climaxState = null, isPublicContext = false, chatId = null, threadId = null, senderName = null, replyingTo = null } = {}) {
+async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', isVoiceRequest = false, classifierResult = null, actionRouting = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, climaxState = null, isPublicContext = false, chatId = null, threadId = null, senderName = null, replyingTo = null, sendPhoto = false, followupTopic = null } = {}) {
     const user = await getUser(userId);
     if (!user) return null;
 
@@ -843,6 +861,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         firstMessageAt, actionResult: resolvedActionRouting?.actionResult || null,
         climaxState, isPublicContext, chatId, threadId, senderName, replyingTo
     });
+    const effectivePhotoRequest = isPhotoRequest || Boolean(sendPhoto);
     persistMemoryRetrieval(userId, memoryRetrieval);
     const routingSettings = await getRoutingSettings();
     const generationParams = getModeGenerationParams(routingMode, routingSettings);
@@ -861,7 +880,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             messages,
             stateSnapshot: leraState || {},
             memoryUsed: (memories || []).map(m => m.text || m.fact || m.normalizedText || m),
-            isPhotoRequest,
+            isPhotoRequest: effectivePhotoRequest,
             commandGateStatus: commandGate?.code || null,
             commandGateReason: commandGate?.accepted ? null : commandGate?.willingness ? `Willingness ${commandGate.willingness.value}%` : null,
             costUsd: extra.costUsd ?? ((promptTokens * 0.13 / 1000000) + (completionTokens * 0.28 / 1000000)),
@@ -887,14 +906,21 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     let formattedTools = [];
     try {
         const activeSchemas = actionRegistry.getSchemas({ userId });
-        formattedTools = activeSchemas.map(s => ({
-            type: 'function',
-            function: {
-                name: s.name,
-                description: `${s.title ? s.title + ': ' : ''}${s.description}`,
-                parameters: s.inputSchema || { type: 'object', properties: {} }
-            }
-        }));
+        formattedTools = activeSchemas
+            .filter(s => {
+                if (s.name === 'schedule_followup') {
+                    if (isPublicContext || isInitiative) return false;
+                }
+                return true;
+            })
+            .map(s => ({
+                type: 'function',
+                function: {
+                    name: s.name,
+                    description: `${s.title ? s.title + ': ' : ''}${s.description}`,
+                    parameters: s.inputSchema || { type: 'object', properties: {} }
+                }
+            }));
         if (formattedTools.length > 0) {
             generationParams.tools = formattedTools;
         }
@@ -905,7 +931,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     // 2. Вызов нейросети через модуль llm_client
     let llmResult;
     try {
-        llmResult = await requestLlmCompletion(user, messages, isPhotoRequest, getOpenAIClientAndModel, generationParams);
+        llmResult = await requestLlmCompletion(user, messages, effectivePhotoRequest, getOpenAIClientAndModel, generationParams);
     } catch (llmErr) {
         writePromptLog({ errorText: llmErr.message });
         if (isInitiative) {
@@ -1626,7 +1652,7 @@ export async function generateResponse(userId, text, envelope = {}) {
         }
     }
 
-    return await runAiEngine(userId, {
+    const aiResponse = await runAiEngine(userId, {
         userText: text,
         photoUrls: envelope.photoUrls || [],
         isInitiative: false,
@@ -1647,6 +1673,12 @@ export async function generateResponse(userId, text, envelope = {}) {
         senderName: envelope.senderName,
         replyingTo: envelope.replyingTo
     });
+
+    if (aiResponse?.photo && !isPublicContext) {
+        cancelFollowupPromise(userId).catch(() => {});
+    }
+
+    return aiResponse;
 }
 
 export async function generateAiInitiativeResponse(userId, reason = null, options = {}) {
@@ -1656,6 +1688,8 @@ export async function generateAiInitiativeResponse(userId, reason = null, option
         initiativeReason: reason,
         initiativeKind: options.initiativeKind || 'open',
         anchorEventId: options.anchorEventId || null,
-        contentCandidates: options.contentCandidates || []
+        contentCandidates: options.contentCandidates || [],
+        sendPhoto: Boolean(options.sendPhoto),
+        followupTopic: options.followupTopic || null
     });
 }

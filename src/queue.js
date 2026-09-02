@@ -346,6 +346,195 @@ async function processTestInitiativeJob(bot, job) {
     await sendTextLadder(bot, chatId, response.text);
 }
 
+const pendingFollowupMap = new Map();
+
+export async function enqueueFollowupPromise(userId, chatId, { delayMinutes = 15, topic = '', sendPhoto = false, anchorEventId = null } = {}) {
+    const numericUserId = Number(userId);
+    const numericChatId = Number(chatId || userId);
+    if (!numericUserId) throw new Error('Не указан userId для отложенного обещания');
+
+    const delayMs = Math.min(Math.max(parseInt(delayMinutes, 10) || 15, 3), 360) * 60 * 1000;
+    const dueAt = Date.now() + delayMs;
+
+    pendingFollowupMap.set(String(numericUserId), {
+        topic,
+        sendPhoto: Boolean(sendPhoto),
+        dueAt,
+        scheduledAt: Date.now(),
+        anchorEventId: anchorEventId ? Number(anchorEventId) : null
+    });
+
+    const jobId = `followup-${numericUserId}`;
+    try {
+        const existingJob = await aiQueue.getJob(jobId);
+        if (existingJob) {
+            await existingJob.remove().catch(() => {});
+        }
+    } catch {
+        // ignore
+    }
+
+    try {
+        await aiQueue.add('followup-promise', {
+            userId: numericUserId,
+            chatId: numericChatId,
+            topic,
+            sendPhoto: Boolean(sendPhoto),
+            scheduledAt: Date.now(),
+            anchorEventId: anchorEventId ? Number(anchorEventId) : null
+        }, {
+            jobId,
+            delay: delayMs,
+            removeOnComplete: true,
+            removeOnFail: true
+        });
+    } catch (qErr) {
+        console.warn(`[FOLLOWUP QUEUE WARN] user ${numericUserId}: не удалось добавить в Redis (${qErr.message})`);
+    }
+
+    console.log(`⏱️ [FOLLOWUP PROMISE ENQUEUED] user ${numericUserId}: тема "${topic}", возврат через ${delayMinutes} мин`);
+}
+
+export async function cancelFollowupPromise(userId) {
+    const key = String(userId);
+    pendingFollowupMap.delete(key);
+    try {
+        const job = await aiQueue.getJob(`followup-${userId}`);
+        if (job) await job.remove().catch(() => {});
+    } catch {}
+}
+
+export function getPendingFollowup(userId) {
+    const key = String(userId);
+    const entry = pendingFollowupMap.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.dueAt + 120000) {
+        pendingFollowupMap.delete(key);
+        return null;
+    }
+    return entry;
+}
+
+async function processFollowupJob(bot, job) {
+    const { userId, chatId, topic, sendPhoto, scheduledAt, anchorEventId, isMorningReschedule = false } = job.data;
+    pendingFollowupMap.delete(String(userId));
+
+    const [user, mute, historyClearedAt] = await Promise.all([
+        getUser(userId),
+        getActiveMute(userId),
+        getChatHistoryClearedAt(userId)
+    ]);
+
+    if (!user || user.is_blocked || mute) {
+        console.log(`[FOLLOWUP PROMISE SKIPPED] user ${userId}: заблокирован или в муте`);
+        return;
+    }
+
+    if (historyClearedAt && scheduledAt && new Date(historyClearedAt).getTime() > Number(scheduledAt)) {
+        console.log(`[FOLLOWUP PROMISE SKIPPED] user ${userId}: история чата была очищена после планирования`);
+        return;
+    }
+
+    // Проверка ночного времени по МСК (23:00 - 09:30)
+    const hourMsk = Number(new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Moscow',
+        hour: '2-digit',
+        hourCycle: 'h23'
+    }).format(new Date()));
+
+    if (!isMorningReschedule && (hourMsk >= 23 || hourMsk < 9)) {
+        console.log(`🌙 [FOLLOWUP PROMISE NIGHT RESCHEDULE] user ${userId}: наступила ночь (${hourMsk}:00 МСК), переносим на утро`);
+        const now = new Date();
+        const moscowNow = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+        const morningTarget = new Date(moscowNow);
+        if (hourMsk >= 23) {
+            morningTarget.setDate(morningTarget.getDate() + 1);
+        }
+        morningTarget.setHours(10, 30, 0, 0);
+        const delayUntilMorning = Math.max(morningTarget.getTime() - moscowNow.getTime(), 60000);
+
+        await aiQueue.add('followup-promise', {
+            userId,
+            chatId,
+            topic,
+            sendPhoto,
+            scheduledAt,
+            anchorEventId,
+            isMorningReschedule: true
+        }, {
+            jobId: `followup-${userId}`,
+            delay: delayUntilMorning,
+            removeOnComplete: true,
+            removeOnFail: true
+        });
+        return;
+    }
+
+    const reason = isMorningReschedule
+        ? `Вчера вечером ты обещала собеседнику: "${topic}", но уснула. Сейчас наступило утро, напиши в диалог от своего лица («Доброе утро! Вчера уснула и забыла скинуть/написать: ${topic}...»)`
+        : `Ты обещала собеседнику вернуться и сделать: "${topic}". Ты только что закончила это действие и возвращаешься в диалог. Напиши живую реплику от лица Леры (например: «короче заварила», «доехала наконец-то», «вот, глянь»).`;
+
+    const response = await generateAiInitiativeResponse(userId, reason, {
+        initiativeKind: 'followup_promise',
+        followupTopic: topic,
+        sendPhoto: Boolean(sendPhoto),
+        anchorEventId: anchorEventId || null
+    });
+
+    if (!response?.text && !response?.photo) {
+        console.warn(`[FOLLOWUP PROMISE EMPTY] user ${userId}: AI не выдал ответа`);
+        return;
+    }
+
+    try {
+        if (response.text) {
+            await sendTextLadder(bot, chatId, response.text);
+        }
+
+        if (response.photo) {
+            await bot.telegram.sendChatAction(chatId, 'upload_photo').catch(() => {});
+            const photoPayload = (response.photo && typeof response.photo === 'object' && response.photo.source)
+                ? { source: response.photo.source, filename: response.photo.filename || 'photo.jpg' }
+                : response.photo;
+            const sentMsg = await bot.telegram.sendPhoto(chatId, photoPayload);
+            const sentFileId = sentMsg?.photo?.at(-1)?.file_id || (typeof response.photo === 'string' ? response.photo : null);
+            if (response.photoRecordId) {
+                await recordPhotoSent(userId, response.photoRecordId).catch(() => {});
+            }
+            await appendConversationEvent({
+                userId,
+                eventType: 'PHOTO',
+                role: 'lera',
+                content: '',
+                occurredAt: new Date(),
+                metadata: { file_id: sentFileId || 'ai_generated_photo', followup_topic: topic },
+                status: 'COMPLETED'
+            }).catch(() => {});
+        }
+
+        if (response.voice) {
+            await sendVoiceWithSimulation(bot, chatId, response.voice, response.voiceText || response.text);
+        }
+
+        await appendConversationEvent({
+            userId,
+            eventType: 'INITIATIVE',
+            role: 'lera',
+            content: response.text || '[Лера выполнила обещание]',
+            occurredAt: new Date(),
+            metadata: { kind: 'followup_promise', followup_topic: topic },
+            status: 'COMPLETED'
+        }).catch(() => {});
+    } catch (sendErr) {
+        if (sendErr.response?.error_code === 403 || sendErr.message?.includes('bot was blocked') || sendErr.message?.includes('user is deactivated') || sendErr.message?.includes('chat not found')) {
+            console.warn(`[FOLLOWUP PROMISE BLOCKED] User ${userId} blocked the bot`);
+            await setBlockStatus(userId, true).catch(() => {});
+            return;
+        }
+        throw sendErr;
+    }
+}
+
 async function processAiJob(bot, job) {
         const { userId, text, chatId, shouldDecrement, reservedResource = null, tempMsgId, eventIds = [], batchId = null, firstMessageAt = null, preMessageGapSeconds = null, reactionMessageId = null } = job.data;
         const historyClearedAtBeforeGeneration = await getChatHistoryClearedAt(userId);
@@ -623,6 +812,8 @@ export function startWorker(bot) {
             ? processInitiativeJob(bot, job)
             : job.name === 'initiative-test'
                 ? processTestInitiativeJob(bot, job)
+            : job.name === 'followup-promise'
+                ? processFollowupJob(bot, job)
             : job.name === 'content-delivery'
                 ? processContentDeliveryJob(bot, job)
                 : processAiJob(bot, job)
