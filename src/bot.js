@@ -17,7 +17,6 @@ import {
 import { createPlategaInvoice, checkPlategaInvoice } from './services/platega.js';
 import { processReferral } from './services/referral.js';
 import { aiQueue, startWorker, stopWorker as stopAiWorker } from './queue.js';
-import { cancelFollowupPromise } from './services/followup_service.js';
 import { startTyping, stopTyping } from './typing_manager.js';
 import { Telegraf, Markup } from 'telegraf';
 import { broadcastQueue, startBroadcastWorker, stopBroadcastWorker } from './broadcast.js';
@@ -1480,8 +1479,6 @@ bot.on('text', async (ctx) => {
 
     const userId = ctx.from.id;
     const text = ctx.message.text;
-
-    await cancelFollowupPromise(userId).catch(() => {});
 
     await updateUserMeta(userId, {
         first_name: ctx.from.first_name || null,

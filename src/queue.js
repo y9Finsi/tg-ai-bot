@@ -438,10 +438,11 @@ async function processFollowupJob(bot, job) {
     const { userId, chatId, topic, sendPhoto, scheduledAt, anchorEventId, isMorningReschedule = false } = job.data;
     pendingFollowupMap.delete(String(userId));
 
-    const [user, mute, historyClearedAt] = await Promise.all([
+    const [user, mute, historyClearedAt, latestEvent] = await Promise.all([
         getUser(userId),
         getActiveMute(userId),
-        getChatHistoryClearedAt(userId)
+        getChatHistoryClearedAt(userId),
+        getLatestMeaningfulEvent(userId)
     ]);
 
     if (!user || user.is_blocked || mute) {
@@ -452,6 +453,16 @@ async function processFollowupJob(bot, job) {
     if (historyClearedAt && scheduledAt && new Date(historyClearedAt).getTime() > Number(scheduledAt)) {
         console.log(`[FOLLOWUP PROMISE SKIPPED] user ${userId}: история чата была очищена после планирования`);
         return;
+    }
+
+    // Если в чате идет активный диалог (последнее сообщение было < 5 минут назад) —
+    // тихо отменяем возврат, чтобы не перебивать текущий разговор
+    if (latestEvent?.occurred_at) {
+        const secondsSinceLastMsg = (Date.now() - new Date(latestEvent.occurred_at).getTime()) / 1000;
+        if (secondsSinceLastMsg < 300) {
+            console.log(`[FOLLOWUP PROMISE SKIPPED] user ${userId}: в чате идет активный диалог (${Math.round(secondsSinceLastMsg)}с назад < 5 мин)`);
+            return;
+        }
     }
 
     // Проверка ночного времени по МСК (23:00 - 09:30)
