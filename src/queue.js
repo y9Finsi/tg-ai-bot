@@ -442,7 +442,7 @@ async function processFollowupJob(bot, job) {
         getUser(userId),
         getActiveMute(userId),
         getChatHistoryClearedAt(userId),
-        getLatestMeaningfulEvent(userId)
+        getLatestMeaningfulEvent(userId).catch(() => null)
     ]);
 
     if (!user || user.is_blocked || mute) {
@@ -455,12 +455,12 @@ async function processFollowupJob(bot, job) {
         return;
     }
 
-    // Если в чате идет активный диалог (последнее сообщение было < 5 минут назад) —
-    // тихо отменяем возврат, чтобы не перебивать текущий разговор
+    // Freshness Guard: если диалог был активен прямо сейчас (< 3 минут / 180 сек назад)
     if (latestEvent?.occurred_at) {
-        const secondsSinceLastMsg = (Date.now() - new Date(latestEvent.occurred_at).getTime()) / 1000;
-        if (secondsSinceLastMsg < 300) {
-            console.log(`[FOLLOWUP PROMISE SKIPPED] user ${userId}: в чате идет активный диалог (${Math.round(secondsSinceLastMsg)}с назад < 5 мин)`);
+        const gapSeconds = Math.floor((Date.now() - new Date(latestEvent.occurred_at).getTime()) / 1000);
+        const isDepartureTopic = /душ|ванн|спать|сон|отошла|ушла|вышла|пар[ыа]|работ|дорог|доед/i.test(topic || '');
+        if (gapSeconds < 180 && isDepartureTopic) {
+            console.log(`[FOLLOWUP PROMISE SKIPPED] user ${userId}: активный диалог (${gapSeconds}с назад), статусный возврат "${topic}" пропущен`);
             return;
         }
     }

@@ -27,7 +27,7 @@ import { createContextRetriever } from './ai/context_retriever.js';
 import { buildMemoryRetrievalQuery } from './ai/memory_query.js';
 import { shouldPersistToolObservation } from './ai/tool_observation_policy.js';
 import { memoryRepository } from './memory/memory_repository.js';
-import { enqueueFollowupPromise, getPendingFollowup } from './services/followup_service.js';
+import { enqueueFollowupPromise, getPendingFollowup, cancelFollowupPromise } from './services/followup_service.js';
 import { maybeScheduleFollowupPromise } from './ai/followup_interceptor.js';
 // --- 1. КОНСТАНТЫ И ДИНАМИЧЕСКИЙ КЛИЕНТ ИИ ---
 
@@ -1526,6 +1526,14 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             step: 'followup_interceptor',
             promise: followupIntercept.promise
         });
+    }
+
+    // Если висело обещание прислать фото/контент, и Лера прямо сейчас отправила фото/войс — досрочно гасим отложенный таймер, чтобы не дублировать
+    if (photo || voice) {
+        const pending = getPendingFollowup(userId);
+        if (pending && (pending.sendPhoto || /фот|кружк|кофе|лук|селфи|вид|голос|войс/i.test(pending.topic || ''))) {
+            await cancelFollowupPromise(userId).catch(() => {});
+        }
     }
 
     // 4. Логирование и БД (с учётом отправленной фотографии в истории)
