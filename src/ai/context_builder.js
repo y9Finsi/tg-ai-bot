@@ -8,23 +8,79 @@ import { getUser, getUserRelationship, getChannelSubscriberCount, getLatestPubli
 import { getContextPromptTemplate } from '../prompts.js';
 import { relationshipToPrompt } from './relationship.js';
 
+let globalSnapshotCache = null;
+let globalSnapshotCacheExpiresAt = 0;
+const SNAPSHOT_CACHE_TTL_MS = 20000;
+
+export function invalidateSnapshotCache() {
+    globalSnapshotCache = null;
+    globalSnapshotCacheExpiresAt = 0;
+}
+
 export class ContextBuilder {
-    static async buildSnapshot(overrides = {}) {
-        const stateRow = await StateRepository.getState();
+    static invalidateSnapshotCache() {
+        invalidateSnapshotCache();
+    }
+
+    static async getGlobalSnapshot(forceRefresh = false) {
+        const now = Date.now();
+        if (!forceRefresh && globalSnapshotCache && globalSnapshotCacheExpiresAt > now) {
+            return globalSnapshotCache;
+        }
+        const stateRow = await StateRepository.getState().catch(() => null);
         WeatherService.syncOverride(stateRow?.weather_override);
-        const [inventory, queue, executable, loadedFacts, observerDigests, loadedWeather, user, relationship, channelSubscribers, latestChannelPost] = await Promise.all([
-            StateRepository.getInventory(),
-            StateRepository.getQueue(),
-            StateRepository.getExecutableTask(),
+        const [inventory, queue, executable, loadedFacts, observerDigests, loadedWeather, channelSubscribers, latestChannelPost] = await Promise.all([
+            StateRepository.getInventory().catch(() => []),
+            StateRepository.getQueue().catch(() => []),
+            StateRepository.getExecutableTask().catch(() => null),
             StateRepository.getRecentFactualEvents(12).catch(() => []),
             StateRepository.getRecentObserverBatches(3).catch(() => []),
-            WeatherService.getSnapshot(),
-            overrides.userId ? getUser(overrides.userId).catch(() => null) : Promise.resolve(null),
-            overrides.userId ? getUserRelationship(overrides.userId).catch(() => null) : Promise.resolve(null),
+            WeatherService.getSnapshot().catch(() => ({})),
             getChannelSubscriberCount().catch(() => null),
             getLatestPublishedChannelPost().catch(() => null)
         ]);
         const commitments = await StateRepository.getCommitments(null, null).catch(() => []);
+
+        globalSnapshotCache = {
+            stateRow,
+            inventory,
+            queue,
+            executable,
+            loadedFacts,
+            observerDigests,
+            loadedWeather,
+            channelSubscribers,
+            latestChannelPost,
+            commitments
+        };
+        globalSnapshotCacheExpiresAt = now + SNAPSHOT_CACHE_TTL_MS;
+        return globalSnapshotCache;
+    }
+
+    static async getOrBuildSnapshot(overrides = {}) {
+        return this.buildSnapshot(overrides);
+    }
+
+    static async buildSnapshot(overrides = {}) {
+        const globalData = await this.getGlobalSnapshot(Boolean(overrides.noCache || overrides.forceRefresh));
+        const [user, relationship] = await Promise.all([
+            overrides.userId ? getUser(overrides.userId).catch(() => null) : Promise.resolve(null),
+            overrides.userId ? getUserRelationship(overrides.userId).catch(() => null) : Promise.resolve(null)
+        ]);
+
+        const {
+            stateRow,
+            inventory,
+            queue,
+            executable,
+            loadedFacts,
+            observerDigests,
+            loadedWeather,
+            channelSubscribers,
+            latestChannelPost,
+            commitments
+        } = globalData;
+
         const facts = Array.isArray(overrides.dailyFacts)
             ? overrides.dailyFacts.map((fact, index) => typeof fact === 'string'
                 ? { id: `sandbox-fact-${index}`, event_type: 'SANDBOX_FACT', payload: { text: fact } }

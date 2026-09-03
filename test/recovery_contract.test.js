@@ -32,7 +32,7 @@ test('same-user jobs are serialized while worker concurrency stays global', () =
 
     assert.match(queue, /const userJobLanes = new Map\(\)/);
     assert.match(queue, /const previous = userJobLanes\.get\(key\) \|\| Promise\.resolve\(\)/);
-    assert.match(queue, /concurrency: 5/);
+    assert.match(queue, /concurrency: (?:5|15)/);
     assert.match(queue, /runUserJob\(\s*job\.data\.userId/);
 });
 

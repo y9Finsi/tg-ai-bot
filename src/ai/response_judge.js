@@ -257,7 +257,7 @@ export async function judgeLeraReply({
         : surfaceKey === 'INITIATIVE'
             ? settings.initiativeJudgeMode || settings.judgeMode
             : settings.judgeMode;
-    if (!['OBSERVE', 'ENFORCE'].includes(configuredMode)) {
+    if (configuredMode !== 'ENFORCE') {
         return { skipped: true, verdict: 'SKIPPED', passed: true, code: null };
     }
 

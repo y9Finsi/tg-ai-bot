@@ -669,7 +669,20 @@ export async function updateConversationEventStatus(eventId, status, errorText =
     return result.rows[0] || null;
 }
 
-export async function getRecentConversationEvents(userId, limit = 20) {
+export async function getRecentConversationEvents(userId, limit = 20, chatHistoryClearedAt = undefined) {
+    if (chatHistoryClearedAt !== undefined) {
+        const result = await query(
+            `SELECT * FROM (
+                SELECT * FROM conversation_events
+                WHERE user_id = $1 AND status <> 'FAILED'
+                  AND occurred_at > COALESCE(($3)::timestamptz, '-infinity'::timestamptz)
+                ORDER BY occurred_at DESC, id DESC LIMIT $2
+             ) events
+             ORDER BY occurred_at ASC, id ASC`,
+            [userId, limit, chatHistoryClearedAt]
+        );
+        return result.rows;
+    }
     const result = await query(
         `SELECT * FROM (
             SELECT * FROM conversation_events
@@ -1359,25 +1372,38 @@ export async function updateUserMeta(userId, { first_name, last_name, username }
 }
 
 const settingsCache = new Map();
+const prefixCache = new Map();
 const SETTINGS_CACHE_TTL = 30000; // 30 секунд
 
 export function invalidateSettingsCache(key = null) {
     if (key) {
         settingsCache.delete(key);
+        for (const p of prefixCache.keys()) {
+            if (key.startsWith(p)) {
+                prefixCache.delete(p);
+            }
+        }
     } else {
         settingsCache.clear();
+        prefixCache.clear();
     }
 }
 
 export async function getSettingsByPrefix(prefix) {
+    const cached = prefixCache.get(prefix);
+    if (cached && (Date.now() - cached.timestamp < SETTINGS_CACHE_TTL)) {
+        return { ...cached.value };
+    }
     try {
         const res = await query('SELECT key, value FROM settings WHERE key LIKE $1', [`${prefix}%`]);
         const map = {};
+        const now = Date.now();
         for (const row of (res.rows || [])) {
             map[row.key] = row.value;
-            settingsCache.set(row.key, { value: row.value, timestamp: Date.now() });
+            settingsCache.set(row.key, { value: row.value, timestamp: now });
         }
-        return map;
+        prefixCache.set(prefix, { value: map, timestamp: now });
+        return { ...map };
     } catch {
         return {};
     }
@@ -1448,6 +1474,11 @@ export async function getSetting(key, defaultValue = null, applyEscape = false) 
 export async function setSetting(key, value) {
     const normalizedValue = String(value ?? '');
     settingsCache.set(key, { value: normalizedValue, timestamp: Date.now() });
+    for (const p of prefixCache.keys()) {
+        if (key.startsWith(p)) {
+            prefixCache.delete(p);
+        }
+    }
     let res = { rows: [] };
     let primarySaved = false;
     let legacySaved = false;
@@ -1585,14 +1616,18 @@ export async function activatePromocode(userId, codeStr) {
     try {
         await client.query('BEGIN');
 
+        const promoUpdate = await client.query(
+            'UPDATE promocodes SET current_activations = current_activations + 1 WHERE id = $1 AND current_activations < max_activations RETURNING id',
+            [promo.id]
+        );
+        if (promoUpdate.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return { success: false, message: 'Лимит активаций этого промокода исчерпан.' };
+        }
+
         await client.query(
             'INSERT INTO user_promocodes (user_id, promocode_id) VALUES ($1, $2)',
             [userId, promo.id]
-        );
-
-        await client.query(
-            'UPDATE promocodes SET current_activations = current_activations + 1 WHERE id = $1',
-            [promo.id]
         );
 
         await client.query(

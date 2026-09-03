@@ -13,10 +13,11 @@ import {
     addLeraPhoto, addLeraContent, findDuplicateLeraContent, appendConversationEvent, updateConversationEventStatus,
     reserveFreeRequest, reserveImageRequest, reserveVoiceRequest, refundReservedRequest,
     getAdminDebugLogEnabled, setAdminDebugLogEnabled, closeDB
-} from './database.js';
-import { createPlategaInvoice, checkPlategaInvoice } from './platega.js';
-import { processReferral } from './referral.js';
+} from './db/database.js';
+import { createPlategaInvoice, checkPlategaInvoice } from './services/platega.js';
+import { processReferral } from './services/referral.js';
 import { aiQueue, startWorker, stopWorker as stopAiWorker } from './queue.js';
+import { cancelFollowupPromise } from './services/followup_service.js';
 import { startTyping, stopTyping } from './typing_manager.js';
 import { Telegraf, Markup } from 'telegraf';
 import { broadcastQueue, startBroadcastWorker, stopBroadcastWorker } from './broadcast.js';
@@ -29,7 +30,7 @@ import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX } from './constants/intents.js';
 import { SimulationWorker } from './workers/simulation_worker.js';
 import { StateRepository } from './db/state_repository.js';
 import { MemorySummarizer } from './memory/summarizer.js';
-import { initDatabaseTables } from './database.js';
+import { initDatabaseTables } from './db/database.js';
 import { initChannelPoster, stopChannelPoster } from './channel_poster.js';
 import { editContentChannelPost, extractContentFromChannelPost } from './content_service.js';
 import { enqueuePersonalInitiatives } from './initiative_service.js';
@@ -1479,6 +1480,8 @@ bot.on('text', async (ctx) => {
 
     const userId = ctx.from.id;
     const text = ctx.message.text;
+
+    await cancelFollowupPromise(userId).catch(() => {});
 
     await updateUserMeta(userId, {
         first_name: ctx.from.first_name || null,

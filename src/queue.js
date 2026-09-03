@@ -5,7 +5,14 @@ import {
     getUser, getActiveMute, getCompletedEvent, getLatestMeaningfulEvent, getInitiativeDailyCounts,
     hasInitiativeStage, getLeraContent, wasContentSent, recordPhotoSent, getChatHistoryClearedAt,
     toLocalDateString, setBlockStatus, getAdminDebugLogEnabled, deactivateOpenThread
-} from './database.js';
+} from './db/database.js';
+import {
+    setFollowupQueue,
+    enqueueFollowupPromise,
+    getPendingFollowup,
+    cancelFollowupPromise,
+    pendingFollowupMap
+} from './services/followup_service.js';
 import { splitResponseMessages } from './utils/response_text.js';
 import { sendCatalogContent } from './content_service.js';
 import { sendTypingAction, stopTyping } from './typing_manager.js';
@@ -30,6 +37,7 @@ export const aiQueue = new Queue('ai-requests', {
     }
 });
 aiQueue.on('error', () => {});
+setFollowupQueue(aiQueue);
 let aiWorker = null;
 const userJobLanes = new Map();
 
@@ -70,7 +78,7 @@ async function sendTextLadder(bot, chatId, text, tempMsgId = null, finalOptions 
     }
     for (const message of messages.slice(1)) {
         void sendTypingAction(bot, chatId);
-        await new Promise(resolve => setTimeout(resolve, Math.min(Math.max(message.length * 35, 500), 1600)));
+        await new Promise(resolve => setTimeout(resolve, Math.min(Math.max(message.length * 15, 200), 600)));
         await safeSendMessage(bot.telegram, chatId, message, { parse_mode: 'Markdown' });
     }
     return messages;
@@ -86,9 +94,9 @@ async function sendVoiceWithSimulation(bot, chatId, voiceObj, voiceText = '') {
         // Сразу включаем статус записи голосового в Telegram
         await bot.telegram.sendChatAction(chatId, 'record_voice').catch(() => {});
 
-        // Короткая имитация записи пропорционально длине реплики (от 1.5 до 3.5 сек)
+        // Короткая имитация записи пропорционально длине реплики (компактно, не задерживая воркер)
         const textLen = String(voiceText || '').length;
-        const recordingMs = Math.min(Math.max(textLen * 35, 1500), 3500);
+        const recordingMs = Math.min(Math.max(textLen * 15, 400), 1200);
         await sleep(recordingMs);
 
         const voicePayload = { source: voiceBuffer, filename: voiceObj.filename || 'voice.ogg' };
@@ -359,58 +367,12 @@ async function processTestInitiativeJob(bot, job) {
     await sendTextLadder(bot, chatId, response.text);
 }
 
-const pendingFollowupMap = new Map();
-
-export async function enqueueFollowupPromise(userId, chatId, { delayMinutes = 15, topic = '', sendPhoto = false, anchorEventId = null } = {}) {
-    const numericUserId = Number(userId);
-    const numericChatId = Number(chatId || userId);
-    if (!numericUserId) throw new Error('Не указан userId для отложенного обещания');
-
-    const delayMs = Math.min(Math.max(parseInt(delayMinutes, 10) || 5, 1), 48 * 60) * 60 * 1000;
-    const dueAt = Date.now() + delayMs;
-
-    const pendingEntry = {
-        topic,
-        sendPhoto: Boolean(sendPhoto),
-        dueAt,
-        scheduledAt: Date.now(),
-        anchorEventId: anchorEventId ? Number(anchorEventId) : null
-    };
-
-    const jobId = `followup-${numericUserId}`;
-    try {
-        const existingJob = await aiQueue.getJob(jobId);
-        if (existingJob) {
-            await existingJob.remove().catch(() => {});
-        }
-    } catch {
-        // ignore
-    }
-
-    try {
-        await aiQueue.add('followup-promise', {
-            userId: numericUserId,
-            chatId: numericChatId,
-            topic,
-            sendPhoto: Boolean(sendPhoto),
-            scheduledAt: Date.now(),
-            anchorEventId: anchorEventId ? Number(anchorEventId) : null
-        }, {
-            jobId,
-            delay: delayMs,
-            removeOnComplete: true,
-            removeOnFail: true
-        });
-    } catch (qErr) {
-        console.warn(`[FOLLOWUP QUEUE WARN] user ${numericUserId}: не удалось добавить в Redis (${qErr.message})`);
-        pendingFollowupMap.delete(String(numericUserId));
-        throw qErr;
-    }
-
-    pendingFollowupMap.set(String(numericUserId), pendingEntry);
-
-    console.log(`⏱️ [FOLLOWUP PROMISE ENQUEUED] user ${numericUserId}: тема "${topic}", возврат через ${delayMinutes} мин`);
-}
+export {
+    enqueueFollowupPromise,
+    getPendingFollowup,
+    cancelFollowupPromise,
+    pendingFollowupMap
+};
 
 export async function enqueueUserReminder(userId, chatId, { delaySeconds = 60, reminderText = '', anchorEventId = null } = {}) {
     const numericUserId = Number(userId);
@@ -438,26 +400,6 @@ export async function enqueueUserReminder(userId, chatId, { delaySeconds = 60, r
     }
 
     console.log(`⏱️ [USER REMINDER ENQUEUED] user ${numericUserId}: "${reminderText}", возврат через ${delaySeconds} сек`);
-}
-
-export async function cancelFollowupPromise(userId) {
-    const key = String(userId);
-    pendingFollowupMap.delete(key);
-    try {
-        const job = await aiQueue.getJob(`followup-${userId}`);
-        if (job) await job.remove().catch(() => {});
-    } catch {}
-}
-
-export function getPendingFollowup(userId) {
-    const key = String(userId);
-    const entry = pendingFollowupMap.get(key);
-    if (!entry) return null;
-    if (Date.now() > entry.dueAt + 120000) {
-        pendingFollowupMap.delete(key);
-        return null;
-    }
-    return entry;
 }
 
 async function processReminderJob(bot, job) {
@@ -539,7 +481,7 @@ async function processFollowupJob(bot, job) {
             anchorEventId,
             isMorningReschedule: true
         }, {
-            jobId: `followup-${userId}`,
+            jobId: `followup-${userId}-morning-${Date.now()}`,
             delay: delayUntilMorning,
             removeOnComplete: true,
             removeOnFail: true
@@ -814,7 +756,7 @@ async function processAiJob(bot, job) {
                     // 2. Последующие сообщения "лесенкой" с реальной имитацией набора текста
                     for (let i = 1; i < messages.length; i++) {
                         const msg = messages[i];
-                        const delay = Math.min(Math.max(msg.length * 35, 500), 1600);
+                        const delay = Math.min(Math.max(msg.length * 15, 200), 600);
                         void sendTypingAction(bot, chatId);
                         await sleep(delay);
 
@@ -898,7 +840,7 @@ export function startWorker(bot) {
                 : processAiJob(bot, job)
     ), {
         connection,
-        concurrency: 5,
+        concurrency: 15,
         lockDuration: 120000,
         stalledInterval: 30000
     });

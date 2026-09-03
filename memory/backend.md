@@ -68,8 +68,8 @@ src/
      - Позволяет Лере давать обещания («пойду заварю кофе, скину как заварюсь», «доеду до работы напишу») и ставить отложенную задачу в BullMQ (`aiQueue.add('followup-promise', ..., { delay })`).
      - Детерминированный `jobId: followup-${userId}` (максимум 1 активный followup на пользователя с авто-перезаписью).
      - Доступен строго в личных сообщениях (ЛС, `isPublicContext: false`). В группах тул не предлагается модели.
-     - **Ночной перенос на утро:** если таймер истекает ночью (23:00 - 09:30 МСК), воркер не будит пользователя, а переносит задачу на 10:30 утра («Доброе утро! Вчера уснула и забыла скинуть/написать...»).
-     - **Напоминание при раннем сообщении:** если собеседник написал раньше времени, в промпт подмешивается напоминание `[ВИСИТ ОБЕЩАНИЕ]`, а отложенный job снимается после выполнения.
+     - **Отмена при новом сообщении (`cancelFollowupPromise`):** если пользователь присылает новое текстовое сообщение в ЛС, бытовые обещания Леры («я в душ») отменяются через `cancelFollowupPromise(userId)`, чтобы не спамить неактуальным возвратом в новый разговор.
+     - **Архитектура модуля (`src/services/followup_service.js`):** управление картой обещаний (`pendingFollowupMap`), постановкой (`enqueueFollowupPromise`), отменой (`cancelFollowupPromise`) и чтением (`getPendingFollowup`) вынесено в изолированный сервис `followup_service.js`, полностью устраняя циклическую зависимость `ai.js <-> queue.js`.
    - **Социальные обещания и открытые гештальты (`record_open_thread.js`):**
      - Фиксирует обещания пользователя для Леры («скину трек потом», «покажу кота», «расскажу про работу»).
      - Сохраняет факт в Postgres (`memory_fact`, тип `OPEN_THREAD`, TTL 36ч) с правилом 1 слота (новое обещание тихо вытесняет предыдущее).
@@ -99,6 +99,13 @@ src/
    - `getChannelSubscriberCount` — in-memory кэш с TTL 30 минут.
    - `getLatestPublishedChannelPost` — in-memory кэш с TTL 5 минут.
    - Автоматическая инвалидация кэша (`invalidateLatestChannelPostCache`) при сохранении, публикации или удалении постов.
+
+5. **Оптимизация нагрузки на PostgreSQL и кэширование (Этап 2):**
+   - **Глобальный Radiant Snapshot Cache (`src/ai/context_builder.js`):** `ContextBuilder.buildSnapshot` кэширует глобальное состояние Леры (sim_state, inventory, queue, facts, observer batches, weather, channel stats, commitments) в памяти на 20 секунд (`SNAPSHOT_CACHE_TTL_MS = 20000`). Снимает 10-12 SQL-запросов на каждую входящую реплику. Экспортирует `invalidateSnapshotCache()`.
+   - **Кэширование префиксов настроек (`src/db/database.js`):** `getSettingsByPrefix` использует in-memory кэш `prefixCache` (TTL 30с). Инвалидируется при `setSetting` и `invalidateSettingsCache(key)`.
+   - **Оптимизация истории диалога (`src/db/database.js` & `src/ai.js`):** `getRecentConversationEvents(userId, limit, chatHistoryClearedAt)` принимает опциональный `chatHistoryClearedAt` параметром, полностью убирая correlated subquery к таблице `users` при генерации реплик.
+   - **Транзакционная изоляция тикера симуляции (`src/workers/simulation_worker.js`):** В `runSubTick` вызов `StateRepository.getLatestForecast(date, client)` использует транзакционный `client`, предотвращая захват лишних соединений из пула во время блокировки `sim_state`. Настройки случайных событий читаются батчем через `getSettingsByPrefix('random_event_enabled_')`.
+   - **Анти-N+1 в сервисе инициатив (`src/initiative_service.js`):** В `enqueuePersonalInitiatives` внедрена in-memory предфильтрация 500 пользователей по статусу, окнам времени (`age_seconds`), часам суток и типам событий до обращения к БД. Оставшиеся кандидаты обрабатываются батчами по 10 пользователей (`Promise.all`), а контент запрашивается строго по необходимости.
 
 ---
 

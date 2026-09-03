@@ -87,9 +87,14 @@ export function createSearchArchiveMemoryAction({
 
             // 1. Поиск в графе Semantica (если доступен)
             let semanticaFacts = [];
-            if (semanticaClient && typeof semanticaClient.searchMemory === 'function') {
+            const searchFn = semanticaClient && (typeof semanticaClient.search === 'function'
+                ? semanticaClient.search.bind(semanticaClient)
+                : typeof semanticaClient.searchMemory === 'function'
+                    ? semanticaClient.searchMemory.bind(semanticaClient)
+                    : null);
+            if (searchFn) {
                 try {
-                    const semRes = await semanticaClient.searchMemory({
+                    const semRes = await searchFn({
                         userId,
                         query,
                         limit,

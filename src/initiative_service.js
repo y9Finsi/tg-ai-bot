@@ -131,117 +131,162 @@ async function resolveState(anchor, dialogue) {
 export async function enqueuePersonalInitiatives(queue) {
     const latestEvents = await getInitiativeSchedulerUsers();
     const routingSettings = await getRoutingSettings();
-    for (const latest of latestEvents) {
-        try {
-            if (latest.is_blocked || await getActiveMute(latest.user_id)) continue;
-            const newMoscowDay = isNewMoscowDay(latest);
-            const latestMeta = eventMetadata(latest);
-            if (!newMoscowDay && latestMeta.kind === 'cold_start') continue;
-            const clock = getMoscowClock();
-            const hourMsk = Number(clock.hour);
-            const isColdStart = !latest.id || !latest.occurred_at;
+    const clock = getMoscowClock();
+    const hourMsk = Number(clock.hour);
+    const todayDate = `${clock.year}-${clock.month}-${clock.day}`;
 
-            if (isColdStart) {
-                // Разрешаем первое касание в дневное время с 11:00 до 21:00 МСК
-                if (hourMsk < 11 || hourMsk >= 21) continue;
-                // Не раньше 5 минут после регистрации / очистки диалога
-                if (Number(latest.age_seconds || 0) < 300) continue;
+    // Быстрая предварительная фильтрация кандидатов в памяти без лишних SQL-запросов
+    const candidates = [];
+    for (const latest of latestEvents) {
+        if (latest.is_blocked) continue;
+        const newMoscowDay = isNewMoscowDay(latest);
+        const latestMeta = eventMetadata(latest);
+        if (!newMoscowDay && latestMeta.kind === 'cold_start') continue;
+        const isColdStart = !latest.id || !latest.occurred_at;
+
+        if (isColdStart) {
+            if (hourMsk < 11 || hourMsk >= 21) continue;
+            if (Number(latest.age_seconds || 0) < 300) continue;
+            candidates.push({ latest, isColdStart: true, newMoscowDay: false, latestMeta });
+            continue;
+        }
+
+        if (newMoscowDay && hourMsk < NEW_DAY_START_HOUR_MSK) continue;
+
+        if (!newMoscowDay) {
+            const ageSec = Number(latest.age_seconds || 0);
+            const hasIgnoredKind = ['ignore_1', 'ignore_2', 'ignore_4d'].includes(latestMeta.kind);
+            // Если нет специального статуса игнора, а тайминг не попадает в окна ignore_1 (15м-2ч) или ignore_4d (4д+),
+            // то инициатива заведомо не сработает.
+            if (!hasIgnoredKind) {
+                const isIgnore1Window = (ageSec >= 900 && ageSec <= 7200);
+                const isIgnore4dWindow = (ageSec >= 345600);
+                if (!isIgnore1Window && !isIgnore4dWindow) continue;
+            }
+        }
+
+        candidates.push({ latest, isColdStart: false, newMoscowDay, latestMeta });
+    }
+
+    if (candidates.length === 0) return;
+
+    // Батчим параллельную обработку кандидатов, чтобы не вызывать залповую нагрузку на БД
+    const BATCH_SIZE = 10;
+    for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+        const batch = candidates.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async ({ latest, isColdStart, newMoscowDay, latestMeta }) => {
+            try {
+                if (await getActiveMute(latest.user_id)) return;
+
+                if (isColdStart) {
+                    const [counts, stageKinds] = await Promise.all([
+                        getInitiativeDailyCounts(latest.user_id),
+                        getInitiativeStages(latest.user_id, 0)
+                    ]);
+                    const initiativeLimit = getEffectiveInitiativeLimit(latest, routingSettings);
+                    if (counts.initiatives >= initiativeLimit) return;
+
+                    const kind = chooseInitiativeKind({
+                        ageSeconds: Number(latest.age_seconds || 0),
+                        state: 'CLOSED',
+                        latestEvent: null,
+                        counts,
+                        dialogueHasContent: false,
+                        contentAvailable: false,
+                        stageKinds,
+                        newMoscowDay: false,
+                        initiativeLimit,
+                        isColdStart: true
+                    });
+                    if (!kind) return;
+
+                    await queue.add('initiative', {
+                        userId: Number(latest.user_id),
+                        chatId: Number(latest.user_id),
+                        anchorEventId: 0,
+                        initiativeKind: 'cold_start',
+                        contentCandidateIds: []
+                    }, {
+                        jobId: `initiative-${latest.user_id}-0-cold_start`,
+                        attempts: 3
+                    });
+                    return;
+                }
+
+                const ignoredAnchorId = ['ignore_1', 'ignore_2', 'ignore_4d'].includes(latestMeta.kind)
+                    ? Number(latestMeta.anchor_event_id)
+                    : null;
+                const anchor = ignoredAnchorId
+                    ? await getCompletedEvent(ignoredAnchorId, latest.user_id)
+                    : latest;
+                if (!anchor) return;
+
+                const ageSeconds = Math.max(0, Math.floor((Date.now() - new Date(anchor.occurred_at).getTime()) / 1000));
+                if (!newMoscowDay) {
+                    const isIgnore1Window = (ageSeconds >= 900 && ageSeconds <= 7200);
+                    const isIgnore4dWindow = (ageSeconds >= 345600);
+                    if (!isIgnore1Window && !isIgnore4dWindow) return;
+                }
 
                 const counts = await getInitiativeDailyCounts(latest.user_id);
                 const initiativeLimit = getEffectiveInitiativeLimit(latest, routingSettings);
-                const stageKinds = await getInitiativeStages(latest.user_id, 0);
+                if (counts.initiatives >= initiativeLimit) return;
+
+                const [dialogue, stageKinds, activeOpenThread] = await Promise.all([
+                    (!newMoscowDay && anchor.role !== 'user') ? getActiveDialogueEvents(latest.user_id, anchor.occurred_at) : Promise.resolve([]),
+                    getInitiativeStages(latest.user_id, anchor.id),
+                    newMoscowDay ? getActiveOpenThread(latest.user_id) : Promise.resolve(null)
+                ]);
+
+                const state = newMoscowDay
+                    ? 'CLOSED'
+                    : anchor.role === 'user' ? 'CLOSED' : await resolveState(anchor, dialogue);
+
+                const openThreadAgeSeconds = activeOpenThread
+                    ? Math.max(0, Math.floor((Date.now() - new Date(activeOpenThread.created_at).getTime()) / 1000))
+                    : 0;
 
                 const kind = chooseInitiativeKind({
-                    ageSeconds: Number(latest.age_seconds || 0),
-                    state: 'CLOSED',
-                    latestEvent: null,
+                    ageSeconds,
+                    state,
+                    latestEvent: latest,
                     counts,
-                    dialogueHasContent: false,
-                    contentAvailable: false,
                     stageKinds,
-                    newMoscowDay: false,
+                    newMoscowDay,
                     initiativeLimit,
-                    isColdStart: true
+                    hasActiveOpenThread: Boolean(activeOpenThread),
+                    openThreadAgeSeconds
                 });
-                if (!kind) continue;
+                if (!kind) return;
+                if (kind === 'open_thread' && (hourMsk < 12 || hourMsk >= 20)) return;
+                if (['content_4h', 'idle_4h'].includes(kind) && (hourMsk < 11 || hourMsk >= 21)) return;
+
+                let candidateIds = [];
+                if (kind === 'content_4h' || (kind === 'open' && !dialogue.some(event => event.event_type === 'CONTENT') && counts.content < CONTENT_LIMIT)) {
+                    const contentCandidates = await getContentCandidates(latest.user_id, 'initiative', 4);
+                    candidateIds = contentCandidates.map(item => Number(item.id));
+                }
 
                 await queue.add('initiative', {
                     userId: Number(latest.user_id),
                     chatId: Number(latest.user_id),
-                    anchorEventId: 0,
-                    initiativeKind: 'cold_start',
-                    contentCandidateIds: []
+                    anchorEventId: Number(anchor.id),
+                    initiativeKind: kind,
+                    openThreadId: activeOpenThread?.id || null,
+                    openThreadTopic: activeOpenThread?.payload?.topic || null,
+                    contentCandidateIds: candidateIds
                 }, {
-                    jobId: `initiative-${latest.user_id}-0-cold_start`,
+                    jobId: kind === 'open_thread'
+                        ? `initiative-${latest.user_id}-${todayDate}-open_thread`
+                        : newMoscowDay
+                            ? `initiative-${latest.user_id}-${todayDate}-new_day`
+                            : `initiative-${latest.user_id}-${anchor.id}-${kind}`,
                     attempts: 3
                 });
-                continue;
+            } catch (error) {
+                console.warn(`[INITIATIVE SCHEDULER] user ${latest.user_id}:`, error.message);
             }
-
-            if (newMoscowDay && Number(clock.hour) < NEW_DAY_START_HOUR_MSK) continue;
-            const ignoredAnchorId = ['ignore_1', 'ignore_2', 'ignore_4d'].includes(latestMeta.kind)
-                ? Number(latestMeta.anchor_event_id)
-                : null;
-            const anchor = ignoredAnchorId
-                ? await getCompletedEvent(ignoredAnchorId, latest.user_id)
-                : latest;
-            if (!anchor) continue;
-            const ageSeconds = Math.max(0, Math.floor((Date.now() - new Date(anchor.occurred_at).getTime()) / 1000));
-            const dialogue = await getActiveDialogueEvents(latest.user_id, anchor.occurred_at);
-            const counts = await getInitiativeDailyCounts(latest.user_id);
-            const initiativeLimit = getEffectiveInitiativeLimit(latest, routingSettings);
-            const state = newMoscowDay
-                ? 'CLOSED'
-                : anchor.role === 'user' ? 'CLOSED' : await resolveState(anchor, dialogue);
-            const contentCandidates = !newMoscowDay && counts.content < CONTENT_LIMIT
-                ? await getContentCandidates(latest.user_id, 'initiative', 4)
-                : [];
-            const stageKinds = await getInitiativeStages(latest.user_id, anchor.id);
-            const activeOpenThread = newMoscowDay ? await getActiveOpenThread(latest.user_id) : null;
-            const openThreadAgeSeconds = activeOpenThread
-                ? Math.max(0, Math.floor((Date.now() - new Date(activeOpenThread.created_at).getTime()) / 1000))
-                : 0;
-
-            const kind = chooseInitiativeKind({
-                ageSeconds,
-                state,
-                latestEvent: latest,
-                counts,
-                dialogueHasContent: dialogue.some(event => event.event_type === 'CONTENT'),
-                contentAvailable: contentCandidates.length > 0,
-                stageKinds,
-                newMoscowDay,
-                initiativeLimit,
-                hasActiveOpenThread: Boolean(activeOpenThread),
-                openThreadAgeSeconds
-            });
-            if (!kind) continue;
-            if (kind === 'open_thread' && (hourMsk < 12 || hourMsk >= 20)) continue;
-            if (['content_4h', 'idle_4h'].includes(kind) && (hourMsk < 11 || hourMsk >= 21)) continue;
-            const candidates = kind === 'content_4h'
-                || (kind === 'open' && !dialogue.some(event => event.event_type === 'CONTENT') && counts.content < CONTENT_LIMIT)
-                ? contentCandidates
-                : [];
-            const todayDate = `${clock.year}-${clock.month}-${clock.day}`;
-            await queue.add('initiative', {
-                userId: Number(latest.user_id),
-                chatId: Number(latest.user_id),
-                anchorEventId: Number(anchor.id),
-                initiativeKind: kind,
-                openThreadId: activeOpenThread?.id || null,
-                openThreadTopic: activeOpenThread?.payload?.topic || null,
-                contentCandidateIds: candidates.map(item => Number(item.id))
-            }, {
-                jobId: kind === 'open_thread'
-                    ? `initiative-${latest.user_id}-${todayDate}-open_thread`
-                    : newMoscowDay
-                        ? `initiative-${latest.user_id}-${todayDate}-new_day`
-                        : `initiative-${latest.user_id}-${anchor.id}-${kind}`,
-                attempts: 3
-            });
-        } catch (error) {
-            console.warn(`[INITIATIVE SCHEDULER] user ${latest.user_id}:`, error.message);
-        }
+        }));
     }
 }
 

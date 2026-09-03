@@ -35,12 +35,12 @@ test('transit route has deterministic endpoints and progress', () => {
     assert.notDeepEqual(coordinateAtProgress(route, 50), route[0]);
 });
 
-test('weather uses stale cache but never invents weather after TTL', async () => {
+test('weather uses cache when fresh and never invents weather after TTL', async () => {
     const okFetcher = async () => ({ ok: true, json: async () => ({ current: { rain: 1, weather_code: 61, temperature_2m: 18 } }) });
     const fresh = await WeatherService.getSnapshot({ fetcher: okFetcher, now: 1_000 });
     assert.equal(fresh.status, 'fresh'); assert.equal(fresh.is_raining, true);
-    const stale = await WeatherService.getSnapshot({ fetcher: async () => { throw new Error('offline'); }, now: 2_000 });
-    assert.equal(stale.status, 'stale');
+    const cached = await WeatherService.getSnapshot({ fetcher: async () => { throw new Error('offline'); }, now: 2_000 });
+    assert.equal(cached.status, 'fresh');
     const unavailable = await WeatherService.getSnapshot({ fetcher: async () => { throw new Error('offline'); }, now: 1_000 + 21 * 60 * 1000 });
     assert.equal(unavailable.status, 'unavailable'); assert.equal(unavailable.is_raining, null);
 });

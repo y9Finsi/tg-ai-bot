@@ -8,7 +8,7 @@ import {
     getActiveDialogueEvents, getContentCandidates,
     getLeraProfile, formatConversationGap, toLocalDateString,
     getLeraContent, getActiveOpenThread, deactivateOpenThread
-} from './database.js';
+} from './db/database.js';
 import { getRoutedSystemPrompt } from './prompts.js';
 import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX } from './constants/intents.js';
 import { requestLlmCompletion } from './ai/llm_client.js';
@@ -27,7 +27,7 @@ import { createContextRetriever } from './ai/context_retriever.js';
 import { buildMemoryRetrievalQuery } from './ai/memory_query.js';
 import { shouldPersistToolObservation } from './ai/tool_observation_policy.js';
 import { memoryRepository } from './memory/memory_repository.js';
-import { enqueueFollowupPromise, getPendingFollowup } from './queue.js';
+import { enqueueFollowupPromise, getPendingFollowup } from './services/followup_service.js';
 import { maybeScheduleFollowupPromise } from './ai/followup_interceptor.js';
 // --- 1. КОНСТАНТЫ И ДИНАМИЧЕСКИЙ КЛИЕНТ ИИ ---
 
@@ -356,7 +356,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     const productionIntentConfig = getModeIntentConfig(routingMode, productionRoutingSettings);
     const conversationEventsPromise = isPublic
         ? getRecentScopeConversationEvents(chatId || userId, threadId, 10).catch(() => [])
-        : getRecentConversationEvents(userId, 10).catch(() => []);
+        : getRecentConversationEvents(userId, 10, user?.chat_history_cleared_at).catch(() => []);
 
     const [baseSystemPromptText, conversationEvents] = await Promise.all([
         getRoutedSystemPrompt(routingMode, productionIntentConfig),
@@ -1225,12 +1225,13 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     }];
     const judgeConversation = messages.slice();
     const judgeSettings = routingSettings;
+    const activeJudgeMode = isInitiative ? judgeSettings.initiativeJudgeMode : judgeSettings.judgeMode;
     // A valid media-only reply has no prose for the judge to evaluate. It must
     // reach Telegram instead of being rejected solely because the IMAGE tag was removed.
     const isMediaOnlyReply = Boolean(photo) && !text;
     const shouldJudge = !isInitiative && Boolean(userText);
     const shouldJudgeChat = Boolean(userText) && !isMediaOnlyReply;
-    const shouldJudgeSurface = isInitiative || shouldJudgeChat;
+    const shouldJudgeSurface = (isInitiative || shouldJudgeChat) && activeJudgeMode === 'ENFORCE';
     let judgeResult = shouldJudgeSurface
         ? await judgeLeraReply({
             userId,
@@ -1280,7 +1281,6 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         recentReplies: recentReplyTexts
     }).violations;
     const needsQualityRetry = !isInitiative && requiresReplyRetry(qualityIssues);
-    const activeJudgeMode = isInitiative ? judgeSettings.initiativeJudgeMode : judgeSettings.judgeMode;
     const judgeNeedsRetry = activeJudgeMode === 'ENFORCE' && judgeResult.passed === false;
     let blockedByJudge = false;
     if ((isInitiative && judgeNeedsRetry) || (!isInitiative && userText && (
@@ -1376,7 +1376,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             usage: retry.usage || {}
         });
         const isRetryMediaOnlyReply = Boolean(photo) && !text;
-        if (shouldJudgeSurface && !isRetryMediaOnlyReply && activeJudgeMode !== 'OFF') {
+        if (shouldJudgeSurface && !isRetryMediaOnlyReply && activeJudgeMode === 'ENFORCE') {
             const retryJudge = await judgeLeraReply({
                 userId,
                 mode: routingMode,
@@ -1411,6 +1411,18 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                     photo = null;
                     photoCaption = null;
                     finalRecPost = null;
+                } else if (retryJudge.code === 'SYSTEM_LEAK' || String(retryJudge.verdict).includes('SYSTEM_LEAK')) {
+                    text = getQualityFallback(routingMode, {
+                        reason: 'JUDGE_SYSTEM_LEAK',
+                        userText,
+                        recentReplies: recentReplyTexts,
+                        lastAssistantText: lastLeraText
+                    });
+                    generationTrace.push({
+                        step: 'second_attempt_rejected_leak',
+                        reason: ['judge_SYSTEM_LEAK'],
+                        response: text
+                    });
                 } else {
                     text = cleanResponseText(text || rawText);
                     generationTrace.push({

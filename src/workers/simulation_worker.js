@@ -12,7 +12,7 @@ import { dailyCommitmentTemplates, rankCommitments, commitmentStatusAt, commitme
 import { buildCommitmentChain } from '../radiant/commitment_planner.js';
 import { selectRandomEvent, applyRandomConsequences, RANDOM_EVENTS } from '../radiant/random_events.js';
 import { normalizePersonality } from '../radiant/personality.js';
-import { getSetting } from '../db/database.js';
+import { getSetting, getSettingsByPrefix } from '../db/database.js';
 import { applyTaskEffects, FOOD_PRICE_RUBLES } from '../radiant/task_catalog.js';
 import { randomUUID } from 'node:crypto';
 import { memoryRepository } from '../memory/memory_repository.js';
@@ -214,8 +214,9 @@ export class SimulationWorker {
             const interrupts = [...npc.interrupts, ...sleepInterrupts];
             const randomHistory = await StateRepository.getRandomEventHistory(client, new Date(tickAt.getTime() - 48 * 3600000));
             const disabledRandomEvents = [];
+            const randomEventSettings = await getSettingsByPrefix('random_event_enabled_');
             for (const eventId of RANDOM_EVENT_IDS) {
-                if ((await getSetting(`random_event_enabled_${eventId}`, 'true')) === 'false') disabledRandomEvents.push(eventId);
+                if (randomEventSettings[`random_event_enabled_${eventId}`] === 'false') disabledRandomEvents.push(eventId);
             }
             const randomEvent = selectRandomEvent({
                 now: tickAt,
@@ -522,7 +523,7 @@ export class SimulationWorker {
             });
 
             const current = await StateRepository.getLockedState(client);
-            const forecast = await StateRepository.getLatestForecast(ForecastService.dateFor(tickAt));
+            const forecast = await StateRepository.getLatestForecast(ForecastService.dateFor(tickAt), client);
             const significant = interrupts.length > 0 || observerEligible || executable?.status === 'COMPLETED';
             const tickHour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Moscow', hour: '2-digit', hour12: false }).format(tickAt));
             if ((forecast ? significant : tickHour >= 6)) {
