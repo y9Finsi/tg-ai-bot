@@ -3,6 +3,8 @@
  * Хранит реестр доступных действий, валидирует контракт и предоставляет схемы для Router/Needle.
  */
 
+import { isToolAllowed } from '../../ai/profile/surface_policy.js';
+
 class ActionRegistry {
     constructor() {
         this.actions = new Map();
@@ -27,6 +29,9 @@ class ActionRegistry {
         }
         if (typeof action.execute !== 'function') {
             throw new Error(`[ACTION REGISTRY] Отсутствует функция execute у action: ${action.name}`);
+        }
+        if (action.surfaces !== undefined && !Array.isArray(action.surfaces)) {
+            throw new Error(`[ACTION REGISTRY] surfaces должен быть массивом у action: ${action.name}`);
         }
     }
 
@@ -85,6 +90,9 @@ class ActionRegistry {
 
         return {
             ...action,
+            surfaces: Array.isArray(action.surfaces) ? action.surfaces : ['CHAT', 'GROUP', 'CHANNEL', 'COMMENTS', 'INITIATIVE'],
+            sideEffect: action.sideEffect || (['send_photo', 'send_voice', 'send_content', 'set_reaction', 'schedule_followup', 'schedule_reminder', 'record_open_thread'].includes(name) ? 'send' : 'read'),
+            sandbox: action.sandbox || (['send_photo', 'send_voice', 'send_content', 'set_reaction', 'schedule_followup', 'schedule_reminder', 'record_open_thread'].includes(name) ? 'mock' : 'safe'),
             enabled: override.enabled !== undefined ? override.enabled : (action.enabled !== false),
             timeoutMs: override.timeoutMs || action.timeoutMs || 10000,
             config: {
@@ -102,6 +110,8 @@ class ActionRegistry {
         for (const [name] of this.actions) {
             const runtimeAction = this.getActionRuntime(name);
             if (!runtimeAction || !runtimeAction.enabled) continue;
+            if (context.surface && !runtimeAction.surfaces.includes(String(context.surface).toUpperCase())) continue;
+            if (context.surface && !isToolAllowed(name, context.surface, context)) continue;
 
             // Если у действия есть собственная функция доступности по контексту
             if (typeof runtimeAction.isAvailable === 'function') {
@@ -125,6 +135,9 @@ class ActionRegistry {
             title: action.title,
             description: action.description,
             inputSchema: action.inputSchema
+            , surfaces: action.surfaces
+            , sideEffect: action.sideEffect
+            , sandbox: action.sandbox
         }));
     }
 

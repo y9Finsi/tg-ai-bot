@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Архитектор Характера Леры — Prompt Pipeline Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            accent: '#5e6ad2',
+            accentHover: '#6875e5',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #08090c;
+      color: #f3f4f6;
+      font-family: 'Inter', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body class="min-h-screen p-5 bg-[#08090c] text-[#f3f4f6]">
+
+  <div class="max-w-[1640px] mx-auto space-y-4">
+
+    <!-- 1. ШАПКА: ЧИСТАЯ, ДРОПДАУН ПРЕСЕТОВ, СОХРАНЕНИЕ -->
+    <header class="flex items-center justify-between gap-4 pb-3 border-b border-white/[0.06]">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-[#141722] border border-white/[0.08] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] flex items-center justify-center text-[#5e6ad2] shrink-0">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-sm font-semibold text-zinc-100 tracking-tight">Характер Леры</h1>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/[0.06] text-zinc-400 border border-white/[0.04]">
+              v14
+            </span>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#5e6ad2]/15 text-[#8a95f5] border border-[#5e6ad2]/25">
+              ~340 тк в CHAT
+            </span>
+          </div>
+          <p class="text-[11px] text-zinc-500">
+            Архитектор сборки системного промпта по слоям и живая проверка в песочнице
+          </p>
+        </div>
+      </div>
+
+      <!-- Дропдаун архетипов / пресетов -->
+      <div class="relative">
+        <button type="button" class="px-3.5 py-1.5 rounded-xl bg-[#141722] hover:bg-[#181c28] border border-white/[0.08] text-xs font-medium text-zinc-200 transition-all flex items-center gap-2 cursor-pointer shadow-sm">
+          <span class="text-zinc-500">Пресет:</span>
+          <span class="font-semibold text-white">Канон СПбГИК</span>
+          <svg class="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+      </div>
+
+      <!-- Действия -->
+      <div class="flex items-center gap-3">
+        <span class="text-xs font-mono text-amber-400/90 flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+          <span>Есть несохраненные изменения</span>
+        </span>
+
+        <button type="button" class="px-4 py-2 rounded-xl text-xs font-semibold bg-[#5e6ad2] hover:bg-[#6875e5] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-all flex items-center gap-1.5 cursor-pointer">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+          <span>Сохранить</span>
+          <kbd class="text-[10px] font-mono text-zinc-300 bg-black/20 px-1 py-0.2 rounded">⌘S</kbd>
+        </button>
+      </div>
+    </header>
+
+    <!-- 2. СЕЛЕКТОР СЛОЯ И РЕЖИМ ОТОБРАЖЕНИЯ -->
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex items-center gap-1 p-1 rounded-xl bg-[#0e1015] border border-white/[0.06]">
+        <button class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#5e6ad2] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15)] flex items-center gap-2 cursor-pointer">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          <span>Диалог ЛС (CHAT)</span>
+        </button>
+        <button class="px-3.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-2 cursor-pointer">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 100-6 3 3 0 000 6z"/></svg>
+          <span>Канал (CHANNEL)</span>
+        </button>
+        <button class="px-3.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-2 cursor-pointer">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          <span>Инициатива (INIT)</span>
+        </button>
+      </div>
+
+      <div class="flex items-center gap-1 p-1 rounded-xl bg-[#141722] border border-white/[0.06] text-xs font-medium">
+        <button class="px-3 py-1 rounded-lg bg-white/[0.08] text-white font-semibold">
+          🧱 Архитектор сборки
+        </button>
+        <button class="px-3 py-1 rounded-lg text-zinc-400 hover:text-white transition-colors">
+          📄 Скомпилированный промпт
+        </button>
+      </div>
+    </div>
+
+    <!-- 3. ДВУХПАНЕЛЬНЫЙ ЛЕЙАУТ -->
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start">
+
+      <!-- ЛЕВАЯ ПАНЕЛЬ (60% / col-span-3): СЛОИ СБОРКИ ПРОМПТА -->
+      <div class="lg:col-span-3 flex flex-col gap-3.5">
+        
+        <!-- СЛОЙ 1: БАЗОВЫЙ КАНОН -->
+        <div class="p-4 rounded-2xl bg-[#0e1015] border border-white/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-md bg-[#5e6ad2]/20 text-[#8a95f5] text-[10px] font-mono font-bold flex items-center justify-center">1</span>
+              <h3 class="text-xs font-semibold text-white tracking-tight">
+                Базовый канон и психотип
+              </h3>
+            </div>
+            <span class="text-[10px] font-mono text-zinc-500">~118 тк · общий фундамент</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            <div class="p-3 rounded-xl bg-[#141722] hover:bg-[#181c28] border border-white/[0.04] transition-all cursor-pointer group">
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-zinc-400 font-medium group-hover:text-white">Личность и статус</span>
+                <span class="text-zinc-500 group-hover:text-[#8a95f5] text-xs">✎</span>
+              </div>
+              <p class="text-xs text-zinc-300 leading-relaxed line-clamp-2">
+                Лере 19 лет, учится на 2 курсе кафедры медиакоммуникаций СПбГИК. Живет на Петроградской стороне возле Чкаловской...
+              </p>
+            </div>
+
+            <div class="p-3 rounded-xl bg-[#141722] hover:bg-[#181c28] border border-white/[0.04] transition-all cursor-pointer group">
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-zinc-400 font-medium group-hover:text-white">Психотип</span>
+                <span class="text-zinc-500 group-hover:text-[#8a95f5] text-xs">✎</span>
+              </div>
+              <p class="text-xs text-zinc-300 leading-relaxed line-clamp-2">
+                Живая, теплая, слегка рассеянная, местами дерзкая и острая на язык. Умеет подколоть, но без токсичности и злости...
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- СЛОЙ 2: РЕЧЕВОЙ КОД САНКТ-ПЕТЕРБУРГА -->
+        <div class="p-4 rounded-2xl bg-[#0e1015] border border-white/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-md bg-[#5e6ad2]/20 text-[#8a95f5] text-[10px] font-mono font-bold flex items-center justify-center">2</span>
+              <h3 class="text-xs font-semibold text-white tracking-tight">
+                Речевой код Санкт-Петербурга
+              </h3>
+            </div>
+            <button type="button" class="text-[11px] font-mono text-[#8a95f5] hover:text-white transition-colors cursor-pointer flex items-center gap-1">
+              <span>Редактировать в панели</span>
+              <span class="text-xs">→</span>
+            </button>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="text-[11px] font-mono text-zinc-500 mr-1">Маркеры речи:</span>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono bg-[#141722] text-zinc-200 border border-white/[0.06]">ну <button class="text-zinc-500 hover:text-rose-400">✕</button></span>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono bg-[#141722] text-zinc-200 border border-white/[0.06]">блин <button class="text-zinc-500 hover:text-rose-400">✕</button></span>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono bg-[#141722] text-zinc-200 border border-white/[0.06]">короче <button class="text-zinc-500 hover:text-rose-400">✕</button></span>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono bg-[#141722] text-zinc-200 border border-white/[0.06]">типа <button class="text-zinc-500 hover:text-rose-400">✕</button></span>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono bg-[#141722] text-zinc-200 border border-white/[0.06]">хз <button class="text-zinc-500 hover:text-rose-400">✕</button></span>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono bg-[#141722] text-zinc-200 border border-white/[0.06]">ща <button class="text-zinc-500 hover:text-rose-400">✕</button></span>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono bg-[#141722] text-zinc-200 border border-white/[0.06]">жиза <button class="text-zinc-500 hover:text-rose-400">✕</button></span>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono bg-[#141722] text-zinc-200 border border-white/[0.06]">поребрик <button class="text-zinc-500 hover:text-rose-400">✕</button></span>
+            </div>
+
+            <div class="p-2.5 rounded-xl bg-[#0a0c10] border border-white/[0.04] text-xs font-mono text-zinc-400 leading-relaxed">
+              Говорит естественно и коротко: ну, блин, короче, типа, слушай, хз, чето, ща, кароч, жиза, рофл, рил. В обычной речи НИКОГДА не использует графические эмодзи и текстовые смайлики. Мысли делит лесенкой через |||.
+            </div>
+          </div>
+        </div>
+
+        <!-- СЛОЙ 3: ГРАНИЦЫ И БЕЗОПАСНОСТЬ -->
+        <div class="p-4 rounded-2xl bg-[#0e1015] border border-white/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-md bg-[#5e6ad2]/20 text-[#8a95f5] text-[10px] font-mono font-bold flex items-center justify-center">3</span>
+              <h3 class="text-xs font-semibold text-white tracking-tight">
+                Границы, безопасность и факты для CHAT
+              </h3>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+            <div class="p-3 rounded-xl bg-[#141722] hover:bg-[#181c28] border border-white/[0.04] transition-all cursor-pointer group">
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-zinc-400 font-medium group-hover:text-white">Флирт и теплота</span>
+                <span class="text-zinc-500 group-hover:text-[#8a95f5] text-xs">✎</span>
+              </div>
+              <p class="text-xs text-zinc-300 leading-relaxed line-clamp-2">
+                Тонкий, ненавязчивый дружеский флирт и самоирония. Не вешается на шею...
+              </p>
+            </div>
+
+            <div class="p-3 rounded-xl bg-[#141722] hover:bg-[#181c28] border border-white/[0.04] transition-all cursor-pointer group">
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-zinc-400 font-medium group-hover:text-white">Стоп-темы</span>
+                <span class="text-zinc-500 group-hover:text-[#8a95f5] text-xs">✎</span>
+              </div>
+              <p class="text-xs text-zinc-300 leading-relaxed line-clamp-2">
+                Категорически запрещено: графические эмодзи, смайлики, канцелярит, лести...
+              </p>
+            </div>
+
+            <div class="p-3 rounded-xl bg-[#141722] hover:bg-[#181c28] border border-white/[0.04] transition-all cursor-pointer group">
+              <div class="flex items-center justify-between text-xs mb-1">
+                <span class="text-zinc-400 font-medium group-hover:text-white">Факты СПб</span>
+                <span class="text-zinc-500 group-hover:text-[#8a95f5] text-xs">✎</span>
+              </div>
+              <p class="text-xs text-zinc-300 leading-relaxed line-clamp-2">
+                Только проверяемые факты о Санкт-Петербурге и учебе. Если не знает — «хз».
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- СЛОЙ 4: МОДУЛЬНЫЕ ПРАВИЛА (СВЯЗАННЫЕ С ПРОМПТОМ) -->
+        <div class="p-4 rounded-2xl bg-[#0e1015] border border-white/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-md bg-[#5e6ad2]/20 text-[#8a95f5] text-[10px] font-mono font-bold flex items-center justify-center">4</span>
+              <h3 class="text-xs font-semibold text-white tracking-tight">
+                Модульные правила для слоя CHAT (3/3 активны)
+              </h3>
+            </div>
+            <button type="button" class="px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-xs font-medium text-white transition-all flex items-center gap-1.5 cursor-pointer">
+              <span class="text-[#8a95f5] font-bold">+</span>
+              <span>Добавить блок</span>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <!-- Правило 1 -->
+            <div class="p-3.5 rounded-xl border border-white/[0.06] bg-[#141722] hover:bg-[#181c28] transition-all cursor-pointer flex flex-col justify-between select-none">
+              <div>
+                <div class="flex items-center justify-between gap-2 mb-1.5">
+                  <h4 class="text-xs font-semibold text-white truncate">Лесенка мыслей |||</h4>
+                  <div class="w-8 h-4.5 rounded-full p-0.5 bg-[#5e6ad2] cursor-pointer shrink-0 flex items-center justify-end">
+                    <div class="w-3.5 h-3.5 rounded-full bg-white"></div>
+                  </div>
+                </div>
+                <p class="text-xs text-zinc-400 line-clamp-2 leading-relaxed">
+                  Дроби свои ответы на 2-4 короткие естественные реплики через разделитель |||. Каждая реплика — это отдельная законченная мысль...
+                </p>
+              </div>
+              <div class="flex items-center justify-between mt-2.5 pt-2 border-t border-white/[0.04] text-[10px] font-mono text-zinc-500">
+                <span class="px-1.5 py-0.2 rounded bg-[#181c28] text-zinc-400">Всегда</span>
+                <span>~35 тк</span>
+              </div>
+            </div>
+
+            <!-- Правило 2 -->
+            <div class="p-3.5 rounded-xl border border-white/[0.06] bg-[#141722] hover:bg-[#181c28] transition-all cursor-pointer flex flex-col justify-between select-none">
+              <div>
+                <div class="flex items-center justify-between gap-2 mb-1.5">
+                  <h4 class="text-xs font-semibold text-white truncate">Дождь и меланхолия</h4>
+                  <div class="w-8 h-4.5 rounded-full p-0.5 bg-[#5e6ad2] cursor-pointer shrink-0 flex items-center justify-end">
+                    <div class="w-3.5 h-3.5 rounded-full bg-white"></div>
+                  </div>
+                </div>
+                <p class="text-xs text-zinc-400 line-clamp-2 leading-relaxed">
+                  Если на часах вечер и в Петербурге идет дождь ({weather}), появляется нотка мягкой меланхолии. Упоминает стук капель...
+                </p>
+              </div>
+              <div class="flex items-center justify-between mt-2.5 pt-2 border-t border-white/[0.04] text-[10px] font-mono text-zinc-500">
+                <span class="px-1.5 py-0.2 rounded bg-[#181c28] text-zinc-400">Дождь, Вечер</span>
+                <span>~32 тк</span>
+              </div>
+            </div>
+
+            <!-- Правило 3 -->
+            <div class="p-3.5 rounded-xl border border-white/[0.06] bg-[#141722] hover:bg-[#181c28] transition-all cursor-pointer flex flex-col justify-between select-none">
+              <div>
+                <div class="flex items-center justify-between gap-2 mb-1.5">
+                  <h4 class="text-xs font-semibold text-white truncate">Доверительный круг</h4>
+                  <div class="w-8 h-4.5 rounded-full p-0.5 bg-[#5e6ad2] cursor-pointer shrink-0 flex items-center justify-end">
+                    <div class="w-3.5 h-3.5 rounded-full bg-white"></div>
+                  </div>
+                </div>
+                <p class="text-xs text-zinc-400 line-clamp-2 leading-relaxed">
+                  При высоком уровне доверия (Близость ≥ 3) общается как со старым близким другом: делится забавными фейлами на парах в СПбГИК...
+                </p>
+              </div>
+              <div class="flex items-center justify-between mt-2.5 pt-2 border-t border-white/[0.04] text-[10px] font-mono text-zinc-500">
+                <span class="px-1.5 py-0.2 rounded bg-[#181c28] text-zinc-400">Близость ≥ 3</span>
+                <span>~38 тк</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ПРАВАЯ ПАНЕЛЬ (40% / col-span-2): LIVE LLM SANDBOX -->
+      <div class="lg:col-span-2 flex flex-col gap-3.5">
+        <div class="rounded-2xl bg-[#0e1015] border border-white/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] p-4 space-y-3">
+          
+          <!-- Шапка песочницы -->
+          <div class="flex items-center justify-between pb-2 border-b border-white/[0.06]">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-[#5e6ad2]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+              <div>
+                <h3 class="text-xs font-semibold text-white">Live LLM Sandbox</h3>
+                <p class="text-[10px] text-zinc-500 font-mono">
+                  Слой: CHAT · google/gemini-2.5-flash
+                </p>
+              </div>
+            </div>
+
+            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+              142ms · 35 тк
+            </span>
+          </div>
+
+          <!-- Чат песочницы с настоящими бабблами -->
+          <div class="p-3 bg-[#08090c] rounded-xl min-h-[220px] max-h-[340px] overflow-y-auto space-y-2.5 text-xs">
+            <div class="flex justify-end">
+              <div class="max-w-[85%] px-3.5 py-2 rounded-2xl bg-[#5e6ad2] text-white rounded-tr-xs shadow-sm">
+                <p>Привет, ты где сейчас? Дождь пошел на Петроградке</p>
+                <span class="text-[9px] opacity-40 font-mono block text-right mt-0.5">17:53</span>
+              </div>
+            </div>
+
+            <div class="flex justify-start">
+              <div class="max-w-[85%] px-3.5 py-2 rounded-2xl bg-[#181c28] text-zinc-100 rounded-tl-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                <p>да выползла из института кароч</p>
+                <span class="text-[9px] opacity-40 font-mono block text-right mt-0.5">17:54</span>
+              </div>
+            </div>
+
+            <div class="flex justify-start">
+              <div class="max-w-[85%] px-3.5 py-2 rounded-2xl bg-[#181c28] text-zinc-100 rounded-tl-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                <p>ща на Чкаловской в кофейне сижу, зонт конечно дома забыла</p>
+                <span class="text-[9px] opacity-40 font-mono block text-right mt-0.5">17:54</span>
+              </div>
+            </div>
+
+            <div class="flex justify-start">
+              <div class="max-w-[85%] px-3.5 py-2 rounded-2xl bg-[#181c28] text-zinc-100 rounded-tl-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] flex items-center justify-between gap-4">
+                <p>ты сам то не промок?</p>
+                <span class="text-[9px] opacity-40 font-mono block text-right mt-0.5">17:54</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Быстрые фразы -->
+          <div class="flex flex-wrap gap-1">
+            <button class="px-2 py-0.5 rounded bg-[#141722] text-[10px] text-zinc-400 hover:text-zinc-200 border border-white/[0.04]">
+              Привет! Ты где сейчас?
+            </button>
+            <button class="px-2 py-0.5 rounded bg-[#141722] text-[10px] text-zinc-400 hover:text-zinc-200 border border-white/[0.04]">
+              Пойдем за кофе в Слой на Ленина?
+            </button>
+          </div>
+
+          <!-- Инпут отправки -->
+          <div class="flex items-center gap-2 pt-1">
+            <input 
+              type="text" 
+              value="Привет, ты где сейчас? Дождь пошел на Петроградке"
+              class="flex-1 px-3 py-2 rounded-xl bg-[#0a0c10] border border-white/12 text-xs text-zinc-100 outline-none focus:border-[#5e6ad2]"
+            />
+            <button type="button" class="px-3.5 py-2 rounded-xl bg-[#5e6ad2] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+              <span>Тест</span>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+            </button>
+          </div>
+
+          <!-- Инспектор отправленного промпта -->
+          <div class="pt-2 border-t border-white/[0.04]">
+            <button type="button" class="text-[11px] font-mono text-[#8a95f5] hover:text-white flex items-center gap-1 cursor-pointer">
+              <span>Показать сырой промпт, отправленный в модель</span>
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+</body>
+</html>

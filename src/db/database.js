@@ -6,6 +6,8 @@ import { publishDevtoolEvent } from '../devtools/event_bus.js';
 import { normalizeTopicDistribution } from '../channel_topics.js';
 import { applyRelationshipDelta, DEFAULT_RELATIONSHIP, relationshipDecay, normalizeRelationship } from '../ai/relationship.js';
 import { normalizeChannelEditorialMode, normalizeChannelFormatSequence } from '../channel_content.js';
+import { normalizeLeraProfile as normalizeProfile } from '../ai/profile/profile_normalizer.js';
+import { getLeraProfileProjectionDetails } from '../ai/profile/profile_projection.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2269,6 +2271,7 @@ export async function getChannelSubscriberCount(bot = null) {
 }
 
 export const DEFAULT_LERA_PROFILE = Object.freeze({
+    schemaVersion: 2,
     age_bio: 'Лере 19 лет. Она из Санкт-Петербурга, учится на 2 курсе СПбГИК и подрабатывает в SMM, хорошо разбирается во frontend и программировании.',
     character: 'Живая, тёплая, немного рассеянная, иногда вредная и дерзкая. Наблюдательная, с самоиронией.',
     speech: 'Говорит естественно и коротко: ну, блин, короче, типа, слушай, хз, чето, ща, кароч, жиза, рофл, рил. Без канцелярита и графических эмодзи.',
@@ -2279,10 +2282,7 @@ export const DEFAULT_LERA_PROFILE = Object.freeze({
 });
 
 function normalizeLeraProfile(profile = {}) {
-    return Object.fromEntries(Object.keys(DEFAULT_LERA_PROFILE).map(key => [
-        key,
-        String(profile?.[key] ?? DEFAULT_LERA_PROFILE[key]).trim().slice(0, 12000)
-    ]));
+    return normalizeProfile({ ...DEFAULT_LERA_PROFILE, ...(profile || {}) });
 }
 
 async function ensureLeraProfile() {
@@ -2368,43 +2368,11 @@ export async function rollbackLeraProfileVersion(id, { author = 'admin' } = {}) 
 }
 
 export function getLeraProfileProjection(profile, surface = 'CHAT') {
-    const p = normalizeLeraProfile(profile);
-    const mode = String(surface || 'CHAT').toUpperCase();
-    if (mode === 'CHANNEL') {
-        return [
-            `Публичный образ: ${p.public_image}`,
-            `Голос и речь: ${p.speech}`,
-            `Допустимые темы и флирт: ${p.flirt}`,
-            `Публичные ограничения: ${p.forbidden}`,
-            `Правила фактов: ${p.facts}`
-        ].join('\n');
-    }
-    if (mode === 'CHANNEL_COMMENT' || mode === 'COMMENTS') {
-        return [
-            `Публичный образ в комментариях: ${p.public_image}`,
-            `Голос и стиль общения: ${p.speech}`,
-            `Вайб и подколы: ${p.flirt}`,
-            `Границы публичности (никакого слива интима и личных секретов): ${p.forbidden}`,
-            `Правила фактов: ${p.facts}`
-        ].join('\n');
-    }
-    if (mode === 'INITIATIVE') {
-        return [
-            `Личность: ${p.age_bio}`,
-            `Характер: ${p.character}`,
-            `Голос и подача: ${p.speech}`,
-            `Флирт и теплота: ${p.flirt}`,
-            `Ограничения: ${p.forbidden}`
-        ].join('\n');
-    }
-    return [
-        `Канон и биография: ${p.age_bio}`,
-        `Характер: ${p.character}`,
-        `Речь: ${p.speech}`,
-        `Флирт: ${p.flirt}`,
-        `Ограничения: ${p.forbidden}`,
-        `Правила фактов: ${p.facts}`
-    ].join('\n');
+    return getLeraProfileProjectionDetails(profile, surface).text;
+}
+
+export function getLeraProfileProjectionDetailsCompat(profile, surface = 'CHAT', context = {}) {
+    return getLeraProfileProjectionDetails(profile, surface, context);
 }
 
 export async function getTodayUserChatSummary() {

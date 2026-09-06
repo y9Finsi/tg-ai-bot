@@ -7,7 +7,7 @@
 ## 1. О проекте в двух словах
 - **Название:** `tg-ai-bot` (Telegram AI Companion & Channel Manager with Payments)
 - **Стек:** Node.js (ESM), Express 5, Telegraf 4, PostgreSQL 15, Redis 7 + BullMQ, React 19 + Vite + Tailwind CSS v4, Python (`semantica-service`).
-- **Суть:** Умный Telegram-бот компаньон (персонаж Лера) с интеграцией LLM/генерации изображений/голоса, поддержкой Radiant AI (симуляция суточного цикла, потребностей, погоды), семантической памятью, автопостингом в Telegram-каналы, платными тарифами (Platega) и веб-админкой (`admin-v2`).
+- **Суть:** Умный Telegram-бот компаньон (персонаж Лера) с интеграцией LLM/генерации изображений/голоса, поддержкой Radiant AI (симуляция суточного цикла, потребностей, погоды), семантической памятью, автопостингом в Telegram-каналы, платными тарифами (Platega) и легковесным дашбордом (`admin-linear`).
 
 ---
 
@@ -21,7 +21,7 @@ npm run dev        # node --env-file=.env src/bot.js
 npm test           # node --test --test-force-exit test/*.test.js
 
 # Сборка веб-админки
-npm run admin:build # vite build --config admin-v2/vite.config.js
+npm run admin:build # vite build --config admin-linear/vite.config.js
 
 # Запуск стека через Docker Compose
 docker compose up -d
@@ -38,7 +38,7 @@ docker compose up -d
 │   ├── index.md            # Индекс и маршрутизация по памяти
 │   ├── architecture.md     # Общая топология и потоки данных
 │   ├── backend.md          # Сервер, бот, базы данных, очереди, Radiant
-│   ├── frontend.md         # Админка admin-v2 (React 19, Tailwind, компоненты)
+│   ├── frontend.md         # Дашборд admin-linear (React 19, Tailwind, Linear UI)
 │   ├── payments.md         # Интеграция Platega, подписки, балансы
 │   ├── gotchas.md          # Грабли, лимиты, костыли, тонкие места
 │   └── domain.md           # Глоссарий предметной области и бизнес-правила
@@ -52,8 +52,8 @@ docker compose up -d
 │   ├── bot.js              # Точка входа Telegram бота
 │   ├── server.js           # Express API сервер (порт 3000)
 │   └── queue.js            # BullMQ очереди и воркеры
-├── admin-v2/               # Фронтенд админ-панели (Vite + React 19)
-│   └── src/features/       # Модули: CRM, Channel, Content, Providers, Studio...
+├── admin-linear/           # Легковесный дашборд Леры в стиле Linear UI (Vite + React 19)
+├── deprecated/             # Архив устаревших модулей (admin-v2)
 ├── semantica-service/      # Python сервис семантической памяти (порт 8081)
 └── test/                   # Тесты на Node.js test runner
 ```

@@ -210,7 +210,8 @@ export class StateRepository {
      */
     static async equipClothing(client, itemId) {
         const target = await this.getInventoryItem(client, itemId);
-        if (!target || target.item_type !== 'clothes' || Number(target.quantity) <= 0) return null;
+        const isWearable = target && (target.item_type === 'clothes' || (target.properties?.slot && target.properties.slot !== 'none'));
+        if (!target || !isWearable || Number(target.quantity) <= 0) return null;
 
         const slot = target.properties?.slot || 'top';
 
@@ -221,8 +222,7 @@ export class StateRepository {
         await client.query(`
             UPDATE sim_inventory
             SET is_equipped = FALSE
-            WHERE item_type = 'clothes'
-              AND is_equipped = TRUE
+            WHERE is_equipped = TRUE
               AND COALESCE(properties->>'slot', 'top') = ANY($1::text[])
               AND item_id <> $2
         `, [conflictingSlots, itemId]);
@@ -237,13 +237,14 @@ export class StateRepository {
     }
 
     /**
-     * Unequips a single clothing item.
+     * Unequips a single clothing/wearable item.
      */
     static async unequipClothing(client, itemId) {
         const target = await this.getInventoryItem(client, itemId);
-        if (!target || target.item_type !== 'clothes') return null;
+        const isWearable = target && (target.item_type === 'clothes' || (target.properties?.slot && target.properties.slot !== 'none'));
+        if (!target || !isWearable) return null;
         const res = await client.query(
-            `UPDATE sim_inventory SET is_equipped = FALSE WHERE item_id = $1 AND item_type = 'clothes' RETURNING *`,
+            `UPDATE sim_inventory SET is_equipped = FALSE WHERE item_id = $1 RETURNING *`,
             [itemId]
         );
         return res.rows[0] || null;

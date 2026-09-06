@@ -210,7 +210,8 @@ export async function getRoutedSystemPrompt(mode = 'CASUAL', config = {}) {
     blocks.push(RESPONSE_FORMAT_CONTRACT);
     try {
         const profile = await getLeraProfile();
-        blocks.unshift(`[КАНОНИЧЕСКИЙ ПРОФИЛЬ ЛЕРЫ · ВЕРСИЯ ${profile.version}]\n${getLeraProfileProjection(profile.profile, 'CHAT')}`);
+        const surface = config.surface || (config.isPublicContext ? 'GROUP' : 'CHAT');
+        blocks.unshift(`[КАНОНИЧЕСКИЙ ПРОФИЛЬ ЛЕРЫ · ВЕРСИЯ ${profile.version} · ${surface}]\n${getLeraProfileProjection(profile.profile, surface)}`);
     } catch {
         // Runtime keeps the file-based prompt fallback if DB profile is unavailable.
     }

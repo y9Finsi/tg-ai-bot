@@ -5,6 +5,7 @@
  */
 
 import { actionRegistry } from './registry.js';
+import { assertToolAllowed } from '../../ai/profile/surface_policy.js';
 import crypto from 'crypto';
 
 /**
@@ -108,6 +109,20 @@ export async function executeAction({ name, args = {}, context = {}, callId = nu
                 message: `Действие '${name}' не зарегистрировано в RADIANT`
             }
         };
+    }
+
+    // Policy is a runtime security boundary; prompt filtering alone is insufficient.
+    try {
+        if (context.surface) assertToolAllowed({ toolName: name, surface: context.surface, context });
+    } catch (error) {
+        return { action: name, callId: actionCallId, status: 'error', data: null, meta: { durationMs: Date.now() - start, cached: false, provider: 'policy', execution: 'blocked' }, error: { code: error.code || 'TOOL_NOT_ALLOWED', message: error.message } };
+    }
+
+    if (context.mode === 'sandbox' && action.sandbox === 'forbidden') {
+        return { action: name, callId: actionCallId, status: 'error', data: null, meta: { durationMs: Date.now() - start, cached: false, provider: 'sandbox', execution: 'blocked' }, error: { code: 'SANDBOX_SIDE_EFFECT_BLOCKED', message: `Действие '${name}' запрещено в sandbox` } };
+    }
+    if (context.mode === 'sandbox' && action.sandbox === 'mock') {
+        return { action: name, callId: actionCallId, status: 'success', data: { mocked: true, action: name, args }, meta: { durationMs: Date.now() - start, cached: false, provider: 'sandbox', execution: 'mocked' }, error: null };
     }
 
     // 2. Проверка доступности (enabled)

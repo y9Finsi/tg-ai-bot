@@ -115,11 +115,25 @@ src/
 Сервер слушает порт `ADMIN_PORT` (по умолчанию `3000`):
 - `GET /health` — healthcheck для Docker / оркестратора.
 - `POST /webhook/platega` — вебхук подтверждения оплат от платежного сервиса Platega.
-- `/api/admin/*` — REST эндпоинты для веб-админки `admin-v2` (авторизация по `ADMIN_WEB_KEY` или токену):
+- `/api/admin/*` — REST эндпоинты для веб-админки `admin-linear` (авторизация по `ADMIN_WEB_KEY` или токену):
   - Пользователи, статистика, переопределение настроек.
   - Radiant симуляция (форсирование событий, изменение потребностей).
+  - Инвентарь и экипировка Леры:
+    - `GET /api/admin/inventory` — список предметов, экипировка, активность.
+    - `POST /api/admin/inventory/add` — добавление предмета (свойства, модификаторы, количество, слоты).
+    - `POST /api/admin/inventory/equip` — экипировка предметов со слотом (`outerwear`, `top`, `bottom`, `shoes`, `accessory`).
+    - `POST /api/admin/inventory/unequip` — снятие экипированного предмета.
+    - `POST /api/admin/inventory/use` — использование предметов (многоразовые/расходники, применение модификаторов к `sim_state.needs`, фиксация факта `ITEM_USED`).
+    - `POST /api/admin/inventory/consume` — списание расходников с применением дельт к потребностям.
   - Контент и публикации Telegram-канала.
   - Управление провайдерами моделей AI Matrix.
+  - Канонический профиль характера Леры и Live Sandbox:
+    - `GET /api/admin/lera-profile` — текущий профиль, 50 последних версий и параметры сэмплинга (`temperature`, `max_tokens`, `typing_delay`).
+    - `POST /api/admin/lera-profile` — сохранение новой версии профиля (`lera_profile_versions`) и синхронизация сэмплинга в `settings`.
+    - `GET /api/admin/lera-profile/versions/:id` — получение исторической версии.
+    - `POST /api/admin/lera-profile/rollback/:id` — откат к выбранной версии профиля.
+    - `POST /api/admin/lera-profile/preview` — компиляция проекции (`CHAT`, `CHANNEL`, `INITIATIVE`).
+    - `POST /api/admin/llm-sandbox` — боевой Dry-Run через активный первичный LLM-провайдер с замером латентности, токенов, разделением на бабблы по `|||` и скорингом AI-Судьи.
 
 ---
 
@@ -155,4 +169,17 @@ src/
   - `schedule_reminder` и `schedule_followup`: проверяют наличие диалога в ЛС (`PM_NOT_STARTED`), планируют доставку в ЛС.
   - Поддержка `ctx.replyWithPhoto`, `ctx.replyWithVoice` с авто-фоллбэком на текст при запретах в группе.
   - В гостевом режиме ответ отправляется через `answerGuestQuery`.
+
+---
+
+## 6. Radiant In-Memory Fallbacks и управление инвентарем
+
+- **Локальный режим без БД:** При недоступности PostgreSQL/Redis (локальная разработка без поднятого Docker), `src/server.js` прозрачно переключается на in-memory симуляцию (`inMemorySimState`, `inMemoryActiveTask`, `inMemoryQueue`, `inMemoryInventory`).
+- **Инвентарь и мутации:**
+  - `GET /api/admin/inventory`: отдает список предметов (`inMemoryInventory`), текущий аутфит и каталог.
+  - `POST /api/admin/inventory/equip` / `unequip`: экипирует/снимает одежду с валидацией слота и обновлением состояния.
+  - `POST /api/admin/inventory/consume` / `use`: расходует предмет, списывает количество, применяет дельты к потребностям (`needs: hunger, fatigue, horny, etc.`) и обновляет `inMemoryInventory`.
+  - `POST /api/admin/inventory/add`: добавляет предмет в инвентарь или увеличивает количество.
+  - `POST /api/admin/radiant/mutate`: поддерживает прямое обновление массива `inventory` в теле запроса.
+  - `GET /api/admin/radiant/overview`: возвращает полный снэпшот состояния, включая актуальный `inventory`.
 

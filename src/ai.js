@@ -354,12 +354,13 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     const isPublic = Boolean(isPublicContext || (chatId && String(chatId) !== String(userId)));
     const productionRoutingSettings = await getRoutingSettings();
     const productionIntentConfig = getModeIntentConfig(routingMode, productionRoutingSettings);
+    const surface = isInitiative ? 'INITIATIVE' : (isPublic ? (chatId ? 'GROUP' : 'CHANNEL') : 'CHAT');
     const conversationEventsPromise = isPublic
         ? getRecentScopeConversationEvents(chatId || userId, threadId, 10).catch(() => [])
         : getRecentConversationEvents(userId, 10, user?.chat_history_cleared_at).catch(() => []);
 
     const [baseSystemPromptText, conversationEvents] = await Promise.all([
-        getRoutedSystemPrompt(routingMode, productionIntentConfig),
+        getRoutedSystemPrompt(routingMode, { ...productionIntentConfig, surface, isPublicContext: isPublic }),
         conversationEventsPromise
     ]);
 
@@ -901,6 +902,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         climaxState, isPublicContext, chatId, threadId, senderName, replyingTo
     });
     const effectivePhotoRequest = isPhotoRequest || Boolean(sendPhoto);
+    const surface = isInitiative ? 'INITIATIVE' : (isPublicContext ? (chatId ? 'GROUP' : 'CHANNEL') : 'CHAT');
     persistMemoryRetrieval(userId, memoryRetrieval);
     const routingSettings = await getRoutingSettings();
     const generationParams = getModeGenerationParams(routingMode, routingSettings);
@@ -944,14 +946,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     // 1.5. Формирование динамических схем инструментов для Native Tool Calling
     let formattedTools = [];
     try {
-        const activeSchemas = actionRegistry.getSchemas({ userId });
+        const activeSchemas = actionRegistry.getSchemas({ userId, surface, isInitiative, isPublicContext: Boolean(isPublicContext), chatId, mode: 'production' });
         formattedTools = activeSchemas
-            .filter(s => {
-                if (s.name === 'schedule_followup' || s.name === 'schedule_reminder') {
-                    if (isInitiative) return false;
-                }
-                return true;
-            })
             .map(s => ({
                 type: 'function',
                 function: {
@@ -1022,6 +1018,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                     currentContext: leraState,
                     radiantContext,
                     routingMode,
+                    surface,
+                    mode: 'production',
                     isPublicContext: Boolean(isPublicContext),
                     chatId: chatId || null,
                     threadId: threadId || null,
