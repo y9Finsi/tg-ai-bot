@@ -277,6 +277,7 @@ export function AiSettingsTab({ toast }) {
                         surfaces: ['CHAT'],
                         mode: 'CASUAL',
                         enabled: true,
+                        content: 'Обычно отвечай одной короткой репликой либо лесенкой через |||. Опирайся на факты из памяти и контекст дня. Запрещено подыгрывать фантазиям о совместном быте (холодильник, совместная комната) и выдумывать чужие темы.',
                         attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual'],
                         max_tokens: 200,
                         temperature: 0.68,
@@ -290,6 +291,7 @@ export function AiSettingsTab({ toast }) {
                         surfaces: ['CHAT'],
                         mode: 'EROTIC',
                         enabled: true,
+                        content: 'СТРОЖАЙШИЙ ЗАПРЕТ на отговорки про сон и усталость («я усну», «я сонная», «устала»). СТРОЖАЙШИЙ ЗАПРЕТ на шаблонный смех («ахах», «хихи»). Полная вовлечённость в процесс, живость ощущений, отклик на действия партнёра без нытья.',
                         attachedPromptIds: ['prompt_character', 'routing_erotic', 'prompt_flirt'],
                         max_tokens: 240,
                         temperature: 0.75,
@@ -303,6 +305,7 @@ export function AiSettingsTab({ toast }) {
                         surfaces: ['INITIATIVE'],
                         mode: 'ALL',
                         enabled: true,
+                        content: 'Пиши живо, коротко и естественно от лица Леры. После длинной паузы начинай с чистого листа без продолжения старых обид. Запрещено выдумывать чужие темы, обещания или сериалы.',
                         attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech'],
                         max_tokens: 200,
                         temperature: 0.72,
@@ -316,6 +319,7 @@ export function AiSettingsTab({ toast }) {
                         surfaces: ['CHANNEL'],
                         mode: 'ALL',
                         enabled: true,
+                        content: 'Публичный образ петербургской студентки: личные наблюдения, ирония, настроение и вопросы подписчикам. Без раскрытия приватных переписок и секретов из лички.',
                         attachedPromptIds: ['prompt_bio', 'prompt_speech'],
                         max_tokens: 230,
                         temperature: 0.70,
@@ -331,6 +335,7 @@ export function AiSettingsTab({ toast }) {
                     surface: r.surface || 'CHAT',
                     surfaces: Array.isArray(r.surfaces) && r.surfaces.length ? r.surfaces : [r.surface || 'CHAT'],
                     mode: r.mode || (r.conditions?.find(c => c.field === 'mode')?.value) || 'ALL',
+                    content: r.content || '',
                     conditions: Array.isArray(r.conditions) ? r.conditions : [],
                     enabled: r.enabled !== false,
                     attachedPromptIds: Array.isArray(r.attachedPromptIds) ? r.attachedPromptIds : ['prompt_bio'],
@@ -369,9 +374,9 @@ export function AiSettingsTab({ toast }) {
                 if (pr.id === 'prompt_flirt') baseProfile.flirt = pr.content;
             });
 
-            // Custom prompt modules
+            // Custom prompt modules (filter out core canonical and routing modules)
             const customPromptBlocks = updatedPrompts
-                .filter(pr => !pr.id.startsWith('prompt_'))
+                .filter(pr => !pr.id.startsWith('prompt_') && !pr.id.startsWith('routing_') && !pr.is_routing_module)
                 .map(pr => ({
                     id: pr.id,
                     title: pr.title,
@@ -410,7 +415,7 @@ export function AiSettingsTab({ toast }) {
                     temperature: r.temperature,
                     provider_id: r.provider_id ? Number(r.provider_id) : null,
                     fallback_provider_ids: Array.isArray(r.fallback_provider_ids) ? r.fallback_provider_ids.map(Number).filter(Boolean) : [],
-                    content: promptInstructions
+                    content: r.content || promptInstructions
                 };
             });
 
@@ -635,23 +640,31 @@ export function AiSettingsTab({ toast }) {
             setRawPromptCopied(false);
             setRawPromptTab('full');
 
+            const ruleSurface = (Array.isArray(rule.surfaces) && rule.surfaces.length)
+                ? (rule.surfaces.includes(activeSurface) ? activeSurface : rule.surfaces[0])
+                : (rule.surface || activeSurface);
+
+            const ruleMode = (rule.mode && rule.mode !== 'ALL')
+                ? rule.mode
+                : (ruleSurface === 'CHAT' ? 'CASUAL' : 'ALL');
+
             const res = await api('/api/admin/raw-prompt-preview', {
                 method: 'POST',
                 body: JSON.stringify({
                     ruleId: rule.id,
-                    surface: activeSurface,
-                    mode: rule.routing_mode || 'CASUAL'
+                    surface: ruleSurface,
+                    mode: ruleMode
                 })
             });
 
             if (res && res.success) {
                 setRawPromptData(res);
             } else {
-                toast?.error?.('Не удалось сформировать сырой промпт');
+                if (toast) toast('Не удалось сформировать сырой промпт', 'error');
             }
         } catch (err) {
             console.error('[RAW PROMPT FETCH ERROR]', err);
-            toast?.error?.(err.message || 'Ошибка загрузки сырого промпта');
+            if (toast) toast(err.message || 'Ошибка загрузки сырого промпта', 'error');
         } finally {
             setRawPromptLoading(false);
         }
@@ -661,7 +674,7 @@ export function AiSettingsTab({ toast }) {
         if (!textToCopy) return;
         navigator.clipboard?.writeText(textToCopy);
         setRawPromptCopied(true);
-        toast?.success?.('Сырой промпт скопирован в буфер');
+        if (toast) toast('Сырой промпт скопирован в буфер', 'success');
         setTimeout(() => setRawPromptCopied(false), 2000);
     };
 
@@ -1154,6 +1167,15 @@ export function AiSettingsTab({ toast }) {
                                             )}
                                         </div>
 
+                                        {/* Rule Content / Directive Preview */}
+                                        {rule.content && (
+                                            <div className="px-2 pb-1">
+                                                <p className="text-[13px] text-white/70 line-clamp-2 leading-relaxed">
+                                                    {rule.content}
+                                                </p>
+                                            </div>
+                                        )}
+
                                         {/* Rule Content Row (Frame 199) */}
                                         <div className="flex items-stretch gap-2">
                                             {/* Left Sub-card: Инструкции (Frame 193, width: 288px) */}
@@ -1176,38 +1198,48 @@ export function AiSettingsTab({ toast }) {
                                                 {/* Attached Prompts List (Frame 112) */}
                                                 <div className="flex flex-col gap-1.5 overflow-hidden">
                                                     {attachedPrompts.length > 0 ? (
-                                                        attachedPrompts.slice(0, 3).map((ap) => (
-                                                            <div
-                                                                key={ap.id}
-                                                                className="w-full bg-[#171616] border border-white/[0.07] rounded-[16px] p-2 flex flex-col gap-1"
-                                                            >
-                                                                <div className="flex items-center justify-between">
-                                                                    <div className="flex items-center gap-2 overflow-hidden">
-                                                                        <img 
-                                                                            src="/assets/icon_dots9.svg" 
-                                                                            alt="" 
-                                                                            className="w-3.5 h-3.5 opacity-80 flex-shrink-0" 
-                                                                        />
-                                                                        <span className="text-[15px] font-medium text-[#bdbdbd] truncate select-none">
-                                                                            {ap.title}
-                                                                        </span>
+                                                        <>
+                                                            {attachedPrompts.slice(0, 3).map((ap) => (
+                                                                <div
+                                                                    key={ap.id}
+                                                                    className="w-full bg-[#171616] border border-white/[0.07] rounded-[16px] p-2 flex flex-col gap-1"
+                                                                >
+                                                                    <div className="flex items-center justify-between">
+                                                                        <div className="flex items-center gap-2 overflow-hidden">
+                                                                            <img 
+                                                                                src="/assets/icon_dots9.svg" 
+                                                                                alt="" 
+                                                                                className="w-3.5 h-3.5 opacity-80 flex-shrink-0" 
+                                                                            />
+                                                                            <span className="text-[15px] font-medium text-[#bdbdbd] truncate select-none">
+                                                                                {ap.title}
+                                                                            </span>
+                                                                        </div>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                setEditingPrompt(ap);
+                                                                                setPromptModalOpen(true);
+                                                                            }}
+                                                                            className="p-1 opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
+                                                                        >
+                                                                            <Pencil className="w-3 h-3 text-white stroke-[1.5]" />
+                                                                        </button>
                                                                     </div>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            setEditingPrompt(ap);
-                                                                            setPromptModalOpen(true);
-                                                                        }}
-                                                                        className="p-1 opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
-                                                                    >
-                                                                        <Pencil className="w-3 h-3 text-white stroke-[1.5]" />
-                                                                    </button>
+                                                                    <p className="text-[14px] text-white/50 truncate px-1 select-none">
+                                                                        {ap.content || 'Пустой текст'}
+                                                                    </p>
                                                                 </div>
-                                                                <p className="text-[14px] text-white/50 truncate px-1 select-none">
-                                                                    {ap.content || 'Пустой текст'}
-                                                                </p>
-                                                            </div>
-                                                        ))
+                                                            ))}
+                                                            {attachedPrompts.length > 3 && (
+                                                                <div 
+                                                                    onClick={() => setAttachModalRuleId(rule.id)}
+                                                                    className="text-[12px] text-[#8693ff] hover:text-[#a8b3ff] px-2 py-0.5 cursor-pointer select-none transition-colors"
+                                                                >
+                                                                    + ещё {attachedPrompts.length - 3} {attachedPrompts.length - 3 === 1 ? 'инструкция' : 'инструкции'}
+                                                                </div>
+                                                            )}
+                                                        </>
                                                     ) : (
                                                         <div 
                                                             onClick={() => setAttachModalRuleId(rule.id)}
@@ -1488,7 +1520,8 @@ export function AiSettingsTab({ toast }) {
                                     enabled: editingRule?.enabled !== false,
                                     attachedPromptIds: ruleSelectedPromptIds.length ? ruleSelectedPromptIds : (promptsList.length ? [promptsList[0].id] : ['prompt_bio']),
                                     max_tokens: Number(formData.get('max_tokens')) || 230,
-                                    temperature: Number(formData.get('temperature')) || 0.7
+                                    temperature: Number(formData.get('temperature')) || 0.7,
+                                    content: formData.get('content') || ''
                                 });
                             }}
                             className="flex flex-col gap-4"
@@ -1501,6 +1534,21 @@ export function AiSettingsTab({ toast }) {
                                     placeholder="например, Вечер / тг канал"
                                     required
                                     className="bg-[#202020] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-[#8693ff]/50"
+                                />
+                            </div>
+
+                            {/* Директива / боевой текст правила */}
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-xs text-white/60 font-medium flex items-center justify-between">
+                                    <span>Текст директивы / правила</span>
+                                    <span className="text-[11px] text-white/40">Канонический текст боевого правила</span>
+                                </label>
+                                <textarea
+                                    name="content"
+                                    defaultValue={editingRule?.content || ''}
+                                    rows={3}
+                                    placeholder="Инструкции, ограничения и поведение для этого правила..."
+                                    className="bg-[#202020] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-[#8693ff]/50 font-mono leading-relaxed resize-y"
                                 />
                             </div>
 
@@ -1930,16 +1978,21 @@ export function AiSettingsTab({ toast }) {
                                     <Eye className="w-5 h-5 stroke-[2]" />
                                 </div>
                                 <div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                         <h3 className="text-base font-semibold text-white">
                                             Сырой промпт при запросе
                                         </h3>
+                                        {rawPromptData?.surface && (
+                                            <span className="text-[11px] px-2.5 py-0.5 rounded-md bg-[#252525] border border-white/10 text-white font-medium">
+                                                {SURFACES.find(s => s.id === rawPromptData.surface)?.label || rawPromptData.surface}
+                                            </span>
+                                        )}
                                         {rawPromptData?.rule?.title && (
                                             <span className="text-xs px-2.5 py-0.5 rounded-full bg-white/[0.08] border border-white/10 text-white/80">
                                                 {rawPromptData.rule.title}
                                             </span>
                                         )}
-                                        {rawPromptData?.mode && (
+                                        {rawPromptData?.mode && rawPromptData.mode !== 'ALL' && (
                                             <span className={`text-[11px] font-semibold uppercase px-2 py-0.5 rounded-md ${
                                                 rawPromptData.mode === 'EROTIC'
                                                     ? 'bg-[#ff5588]/15 text-[#ff88aa] border border-[#ff5588]/30'

@@ -194,11 +194,20 @@ src/
 
 ## 7. Верификация контрактов и эндпоинтов админки (Test Suite)
 
-- **Тест-сьют:** `test/admin_endpoints_verification.test.js` (31 интеграционный тест на базе live Express app, реального PostgreSQL и Redis).
+- **Тест-сьют:** `test/admin_endpoints_verification.test.js` (35 интеграционных тестов на базе live Express app, реального PostgreSQL и Redis).
 - **Покрытие 100% активных эндпоинтов:**
   - Auth: `GET /api/admin/session`, `POST /api/admin/login`, `POST /api/admin/logout` (куки HttpOnly, заголовок `x-admin-key`).
   - Radiant: `GET /api/admin/radiant/overview`, `GET /api/admin/radiant/day`, `POST /api/admin/radiant/tick`, `POST /api/admin/radiant/god-mode`, `POST /api/admin/radiant/mutate`, `POST /api/admin/radiant/queue/push`, `DELETE /api/admin/queue/:id`.
   - Инвентарь: `POST /api/admin/inventory/add`, `POST /api/admin/inventory/equip`, `POST /api/admin/inventory/unequip`, `POST /api/admin/inventory/consume`, `POST /api/admin/inventory/use`.
   - Провайдеры и профиль: `GET /api/admin/providers`, `POST /api/admin/providers`, `PUT /api/admin/providers/:id`, `PATCH /api/admin/providers/:id`, `POST /api/admin/providers/:id/activate`, `PATCH /api/admin/providers/:id/priority`, `DELETE /api/admin/providers/:id`, `GET /api/admin/lera-profile`, `POST /api/admin/lera-profile`.
+  - **Инспектор сырого промпта (`POST /api/admin/raw-prompt-preview`):**
+    - Принимает `{ ruleId, surface, mode, sampleUserId, userText }`.
+    - Резолвит правило из `blocks` или `DEFAULT_LERA_COMBAT_RULES`.
+    - Динамически генерирует проекцию промпта под поверхность:
+      * `CHAT Casual`: канонический профиль Леры + роутинг casual + директива правила + 200 токенов, temp 0.68.
+      * `CHAT Erotic`: канонический профиль Леры + роутинг erotic + 18+ директива правила + 240 токенов, temp 0.75.
+      * `CHANNEL`: публичная персона канала Леры + контент-директива + 230 токенов, temp 0.70.
+      * `INITIATIVE`: директивы самостоятельной инициативы Леры + триггер + 200 токенов, temp 0.72.
+    - Возвращает `{ success, rule, surface, mode, systemPrompt, radiantContext, messages, generationParams }`.
 
 

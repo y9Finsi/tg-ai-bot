@@ -480,7 +480,7 @@ test('Admin Linear Endpoints Integration Verification Suite', { concurrency: 1 }
         assert.ok(res.data.profile.profile.blocks.some(b => b.id === 'rule_verification_test'), 'Updated rule block must be present');
     });
 
-    await t.test('5.9 POST /api/admin/raw-prompt-preview returns full prompt with Radiant, history, and params', async () => {
+    await t.test('5.9 POST /api/admin/raw-prompt-preview returns casual chat prompt with accurate tokens and routing', async () => {
         const res = await adminFetch('/api/admin/raw-prompt-preview', {
             method: 'POST',
             headers: { 'x-admin-key': ADMIN_KEY },
@@ -494,15 +494,82 @@ test('Admin Linear Endpoints Integration Verification Suite', { concurrency: 1 }
 
         assert.equal(res.status, 200);
         assert.equal(res.data.success, true);
-        assert.ok(res.data.systemPrompt, 'Must contain assembled systemPrompt');
+        assert.equal(res.data.surface, 'CHAT');
+        assert.equal(res.data.mode, 'CASUAL');
+        assert.ok(res.data.rule, 'Must find rule_chat_casual');
+        assert.equal(res.data.rule.id, 'rule_chat_casual');
+        assert.equal(res.data.generationParams.temperature, 0.68);
+        assert.equal(res.data.generationParams.max_tokens, 200);
+        assert.ok(res.data.systemPrompt.includes('КАНОНИЧЕСКИЙ ПРОФИЛЬ ЛЕРЫ'), 'Must contain canonical profile header');
+        assert.ok(res.data.systemPrompt.includes('CHAT'), 'Must specify CHAT surface');
+        assert.ok(res.data.systemPrompt.includes('АКТИВНОЕ ПРАВИЛО: Личка / Casual'), 'Must include active rule title');
         assert.ok(res.data.radiantContext, 'Must contain Radiant context');
-        assert.ok(res.data.radiantLayers, 'Must contain radiantLayers object');
         assert.ok(Array.isArray(res.data.messages), 'Must contain messages array');
-        assert.ok(res.data.messages.some(m => m.role === 'system'), 'Messages must have system role');
-        assert.ok(res.data.messages.some(m => m.role === 'user'), 'Messages must have user role');
-        assert.ok(res.data.generationParams, 'Must contain generationParams');
-        assert.ok(typeof res.data.generationParams.temperature === 'number', 'Temperature must be number');
-        assert.ok(typeof res.data.generationParams.max_tokens === 'number', 'Max tokens must be number');
+    });
+
+    await t.test('5.10 POST /api/admin/raw-prompt-preview returns erotic chat prompt with 18+ tokens, temp and content', async () => {
+        const res = await adminFetch('/api/admin/raw-prompt-preview', {
+            method: 'POST',
+            headers: { 'x-admin-key': ADMIN_KEY },
+            body: {
+                ruleId: 'rule_chat_erotic',
+                surface: 'CHAT',
+                mode: 'EROTIC'
+            }
+        });
+
+        assert.equal(res.status, 200);
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.surface, 'CHAT');
+        assert.equal(res.data.mode, 'EROTIC');
+        assert.ok(res.data.rule, 'Must find rule_chat_erotic');
+        assert.equal(res.data.rule.id, 'rule_chat_erotic');
+        assert.equal(res.data.generationParams.temperature, 0.75);
+        assert.equal(res.data.generationParams.max_tokens, 240);
+        assert.ok(res.data.systemPrompt.includes('АКТИВНОЕ ПРАВИЛО: Личка / Erotic 18+'), 'Must include erotic rule title');
+        assert.ok(res.data.systemPrompt.includes('СТРОЖАЙШИЙ ЗАПРЕТ на отговорки про сон'), 'Must include erotic rule content');
+    });
+
+    await t.test('5.11 POST /api/admin/raw-prompt-preview returns channel post prompt with persona and 230 tokens', async () => {
+        const res = await adminFetch('/api/admin/raw-prompt-preview', {
+            method: 'POST',
+            headers: { 'x-admin-key': ADMIN_KEY },
+            body: {
+                ruleId: 'rule_evening_channel',
+                surface: 'CHANNEL'
+            }
+        });
+
+        assert.equal(res.status, 200);
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.surface, 'CHANNEL');
+        assert.ok(res.data.rule, 'Must find rule_evening_channel');
+        assert.equal(res.data.rule.id, 'rule_evening_channel');
+        assert.equal(res.data.generationParams.temperature, 0.70);
+        assert.equal(res.data.generationParams.max_tokens, 230);
+        assert.ok(res.data.systemPrompt.includes('Telegram-канал Леры'), 'Must include channel persona');
+        assert.ok(res.data.systemPrompt.includes('Публичный образ петербургской студентки'), 'Must include channel rule content');
+    });
+
+    await t.test('5.12 POST /api/admin/raw-prompt-preview returns initiative prompt with trigger and 200 tokens', async () => {
+        const res = await adminFetch('/api/admin/raw-prompt-preview', {
+            method: 'POST',
+            headers: { 'x-admin-key': ADMIN_KEY },
+            body: {
+                ruleId: 'rule_morning_initiative',
+                surface: 'INITIATIVE'
+            }
+        });
+
+        assert.equal(res.status, 200);
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.surface, 'INITIATIVE');
+        assert.ok(res.data.rule, 'Must find rule_morning_initiative');
+        assert.equal(res.data.rule.id, 'rule_morning_initiative');
+        assert.equal(res.data.generationParams.temperature, 0.72);
+        assert.equal(res.data.generationParams.max_tokens, 200);
+        assert.ok(res.data.systemPrompt.includes('САМОСТОЯТЕЛЬНАЯ ИНИЦИАТИВА ЛЕРЫ'), 'Must include initiative directives');
+        assert.ok(res.data.systemPrompt.includes('Пиши живо, коротко и естественно'), 'Must include initiative rule content');
     });
 
     // =========================================================================
