@@ -98,10 +98,16 @@ src/
 
 4. **Кэширование статистики и постов канала (`src/db/database.js`):**
    - `getChannelSubscriberCount` — in-memory кэш с TTL 30 минут.
-   - `getLatestPublishedChannelPost` — in-memory кэш с TTL 5 минут.
+   - `getRecentChannelPosts` — кэширование последних постов канала.
+
+5. **Боевые модульные правила (`DEFAULT_LERA_COMBAT_RULES`, `profile.blocks` & `rule_evaluator.js`):**
+   - Правила профиля (`Личка / Casual`, `Личка / Erotic 18+`, `Инициатива`, `Тг-канал`) напрямую управляют генерацией ответа.
+   - В `src/ai.js` перед обращением к LLM движок запускает `evaluateRules(profile.blocks, { surface, mode: routingMode })`.
+   - Найденное активное правило динамически задает `generationParams.maxTokens`, `generationParams.temperature` и персональный пул провайдеров (`generationParams.providers`).
+   - Сами тексты правил и прикрепленных модулей промптов честно проецируются в системный промпт через `getLeraProfileProjection`.
    - Автоматическая инвалидация кэша (`invalidateLatestChannelPostCache`) при сохранении, публикации или удалении постов.
 
-5. **Оптимизация нагрузки на PostgreSQL и кэширование (Этап 2):**
+6. **Оптимизация нагрузки на PostgreSQL и кэширование (Этап 2):**
    - **Глобальный Radiant Snapshot Cache (`src/ai/context_builder.js`):** `ContextBuilder.buildSnapshot` кэширует глобальное состояние Леры (sim_state, inventory, queue, facts, observer batches, weather, channel stats, commitments) в памяти на 20 секунд (`SNAPSHOT_CACHE_TTL_MS = 20000`). Снимает 10-12 SQL-запросов на каждую входящую реплику. Экспортирует `invalidateSnapshotCache()`.
    - **Кэширование префиксов настроек (`src/db/database.js`):** `getSettingsByPrefix` использует in-memory кэш `prefixCache` (TTL 30с). Инвалидируется при `setSetting` и `invalidateSettingsCache(key)`.
    - **Оптимизация истории диалога (`src/db/database.js` & `src/ai.js`):** `getRecentConversationEvents(userId, limit, chatHistoryClearedAt)` принимает опциональный `chatHistoryClearedAt` параметром, полностью убирая correlated subquery к таблице `users` при генерации реплик.
