@@ -207,3 +207,50 @@ test('DEFAULT_LERA_COMBAT_RULES attaches radiant, memory and tools by default', 
     assert.ok(casual.attachedPromptIds.includes('prompt_memory'));
     assert.ok(casual.attachedPromptIds.includes('prompt_tools'));
 });
+
+test('prompt_radiant renders full rich context including relationship, day events and channel stats', async () => {
+    const radiantRule = {
+        id: 'rule_radiant_rich',
+        title: 'Rich Radiant Rule',
+        surface: 'CHAT',
+        mode: 'CASUAL',
+        attachedPromptIds: ['prompt_radiant']
+    };
+    const profile = { blocks: [] };
+    const context = {
+        user_name: 'Богдан',
+        location: 'дома на Петроградке',
+        time: 'Вторник, 08.09.2026, 01:30 (Москва/Питер)',
+        status: 'Отдыхает дома',
+        needs: 'Чувствует себя нормально, в целом всё нормально',
+        outfit: 'Oversized футболка',
+        weather: 'Санкт-Петербург, переменная облачность, +17°C, без осадков',
+        channel_stats: '1240 подписчиков (актуальное число) | Реальный последний пост в канале: «Питер прекрасен»',
+        day_events: '- Лера выпила фильтр-кофе в «Слое»\n- В плане: пост в канал',
+        relationship: '[ОТНОШЕНИЯ И НАСТРОЙ К СОБЕСЕДНИКУ: доверие 57%, симпатия 91%, раздражение 0%]\n• ВАЙБ: приятная симпатия и легкий флирт, дружелюбная открытость.'
+    };
+
+    const res = await resolveModularRulePrompt(radiantRule, profile, context);
+    const text = String(res);
+
+    assert.match(text, /Собеседник:\s+Богдан/);
+    assert.match(text, /Ты находишься:\s+в Санкт-Петербурге \(дома на Петроградке\)/);
+    assert.match(text, /доверие 57%, симпатия 91%, раздражение 0%/);
+    assert.match(text, /ВАЙБ: приятная симпатия и легкий флирт/);
+    assert.match(text, /Время:\s+Вторник, 08\.09\.2026/);
+    assert.match(text, /Telegram-канал \(ТГК Леры\):\s+1240 подписчиков/);
+    assert.match(text, /ГЛАВНЫЕ СОБЫТИЯ ЗА ДЕНЬ/);
+    assert.match(text, /Лера выпила фильтр-кофе в «Слое»/);
+    assert.match(text, /ПРАВИЛА ИСПОЛЬЗОВАНИЯ КОНТЕКСТА/);
+});
+
+test('renderPromptTemplate expands radiant_context variable directly', () => {
+    const template = 'КОНТЕКСТ:\n{{radiant_context}}';
+    const context = {
+        radiantContext: '=== АНАЛИТИКА ДНЯ ===\nЛера дома на Петроградке'
+    };
+
+    const rendered = renderPromptTemplate(template, context);
+    assert.equal(rendered, 'КОНТЕКСТ:\n=== АНАЛИТИКА ДНЯ ===\nЛера дома на Петроградке');
+});
+

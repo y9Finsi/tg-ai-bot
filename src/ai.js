@@ -458,17 +458,27 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
 
     // Подготовка контекста для модульного шаблонизатора (переменные {{time}}, {{weather}}, {{needs}}, ...)
     const templateContext = {
+        ...(detailedContext?.templateVariables || {}),
         currentTime,
-        time: detailedContext?.snapshot?.currentTime ? formatContextDate(detailedContext.snapshot.currentTime) : 'день, Санкт-Петербург',
-        location: detailedContext?.snapshot?.location?.name ? humanizeLocation(detailedContext.snapshot.location.name) : 'Петроградка',
-        weather: detailedContext?.snapshot?.weather ? humanizeWeather(detailedContext.snapshot.weather) : 'Санкт-Петербург, переменная облачность',
-        needs: detailedContext?.wellbeing || 'сытость 80%, бодрость 85%',
-        outfit: detailedContext?.outfitText || 'домашняя оверсайз футболка',
-        status: detailedContext?.currentStatus || 'отдыхает дома',
+        time: detailedContext?.templateVariables?.time || (detailedContext?.snapshot?.currentTime ? formatContextDate(detailedContext.snapshot.currentTime) : 'день, Санкт-Петербург'),
+        location: detailedContext?.templateVariables?.location || (detailedContext?.snapshot?.location?.name ? humanizeLocation(detailedContext.snapshot.location.name) : 'Петроградка'),
+        weather: detailedContext?.templateVariables?.weather || (detailedContext?.snapshot?.weather ? humanizeWeather(detailedContext.snapshot.weather) : 'Санкт-Петербург, переменная облачность'),
+        needs: detailedContext?.templateVariables?.wellbeing || detailedContext?.wellbeing || 'сытость 80%, бодрость 85%',
+        wellbeing: detailedContext?.templateVariables?.wellbeing || detailedContext?.wellbeing || 'сытость 80%, бодрость 85%',
+        outfit: detailedContext?.templateVariables?.outfit || detailedContext?.outfitText || 'домашняя оверсайз футболка',
+        status: detailedContext?.templateVariables?.status || detailedContext?.currentStatus || 'отдыхает дома',
+        channelStats: detailedContext?.templateVariables?.channel_stats,
+        channel_stats: detailedContext?.templateVariables?.channel_stats,
+        dayEvents: detailedContext?.templateVariables?.day_events,
+        day_events: detailedContext?.templateVariables?.day_events,
+        relationship: detailedContext?.templateVariables?.relationship,
+        radiantContext: detailedContext?.analysis || radiantContext,
+        radiant_context: detailedContext?.analysis || radiantContext,
         channelSubscribers: detailedContext?.snapshot?.channelSubscribers,
         memories,
         memoryFacts: memories.length > 0 ? memories.map(m => `- ${m.text || m.fact || m.normalizedText || ''}`).join('\n') : 'Пока нет подтверждённых фактов о пользователе.',
-        userName: user?.first_name || 'Собеседник'
+        userName: user?.first_name || 'Собеседник',
+        user_name: user?.first_name || 'Собеседник'
     };
 
     const baseSystemPromptText = await getRoutedSystemPrompt(routingMode, {

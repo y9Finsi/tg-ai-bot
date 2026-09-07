@@ -119,10 +119,14 @@ export class ContextBuilder {
         const actionPrompt = options.actionResult ? this.formatActionResultPrompt(options.actionResult) : '';
         const baseText = this.toPrompt(snapshot);
         const fullText = actionPrompt ? `${baseText}\n\n${actionPrompt}` : baseText;
+        const analysis = this.toAnalysis(snapshot);
+        const templateVariables = this.buildTemplateVariables(snapshot);
         return {
             text: fullText,
-            analysis: this.toAnalysis(snapshot),
+            analysis,
             actionResultPrompt: actionPrompt,
+            snapshot,
+            templateVariables,
             layers: {
                 physics: { needs: snapshot.state.needs, physiology: snapshot.state.physiology, active_modifiers: snapshot.state.active_modifiers || [], mood: snapshot.mood },
                 location: snapshot.location,
@@ -139,6 +143,58 @@ export class ContextBuilder {
                 relationship: snapshot.relationship,
                 actionResult: options.actionResult || null
             }
+        };
+    }
+
+    static buildTemplateVariables(snapshot) {
+        if (!snapshot) return {};
+        const isErotic = snapshot.routingMode === 'EROTIC';
+        const needs = snapshot.state?.needs || {};
+        const task = snapshot.activeTask;
+        const facts = uniqueLines((snapshot.facts || []).map(humanizeFact)).filter(Boolean).slice(0, 4);
+        const plans = uniqueLines((snapshot.commitments || []).map(humanizePlan)).filter(Boolean).slice(0, 2);
+        const events = uniqueLines([...facts, ...plans]).slice(0, 5);
+        const dayEvents = events.length ? events.join('\n') : '- Значимых подтверждённых событий пока нет.';
+        const sleepGuidance = !isErotic && isSleepingTask(task)
+            ? '\n• Состояние сна: можно коротко сказать, что спала/проснулась, если вы только начали диалог. Но в активной переписке НЕ зацикливайся на сне и лени в каждом ответе — общайся живо по теме пользователя. Не имитируй голос, слух, шёпот, дыхание или звуки; не используй многоточия в начале фразы.'
+            : '';
+        const currentStatus = isErotic && isSleepingTask(task)
+            ? 'Дома'
+            : humanizeCurrentStatus(task, snapshot.transit);
+        const wellbeing = isErotic
+            ? 'Чувствует себя хорошо, возбуждена и готова к близости'
+            : humanizeWellbeing(snapshot.mood, needs, snapshot.state?.physiology);
+        const userName = snapshot.user?.first_name || snapshot.user?.username || 'пользователь';
+        const userSituationText = snapshot.userSituation
+            ? `\n• Текущая обстановка собеседника: ${snapshot.userSituation}`
+            : '';
+        const locationStr = humanizeLocation(snapshot.location?.name);
+        const timeStr = formatContextDate(snapshot.currentTime);
+        const weatherStr = `${humanizeWeather(snapshot.weather)}${sleepGuidance}`;
+        const outfitStr = humanizeOutfit(snapshot.outfitText || this.describeOutfit(snapshot.inventory, task).text);
+        const channelStats = `${snapshot.channelSubscribers !== null && snapshot.channelSubscribers !== undefined ? `${snapshot.channelSubscribers} подписчиков (актуальное число)` : 'ведёт личный ТГК'}${snapshot.latestChannelPost?.text ? ` | Реальный последний пост в канале: «${String(snapshot.latestChannelPost.text).slice(0, 100).replace(/\n+/g, ' ').trim()}»` : ''}`;
+        const relationshipStr = relationshipToPrompt(snapshot.relationship || {});
+        const situationStr = `• Собеседник: ${userName} (общаетесь на «ты» в личном Telegram-чате).\n• Формат общения: Дистанционная переписка в Telegram. Вы НЕ находитесь в одном физическом помещении/машине.\n• Ты находишься: в Санкт-Петербурге (${locationStr}).${userSituationText}`;
+        const analysisStr = this.toAnalysis(snapshot);
+
+        return {
+            time: timeStr,
+            location: locationStr,
+            status: currentStatus,
+            current_status: currentStatus,
+            wellbeing,
+            needs: wellbeing,
+            outfit: outfitStr,
+            weather: weatherStr,
+            channel_stats: channelStats,
+            channelSubscribers: snapshot.channelSubscribers,
+            day_events: dayEvents,
+            relationship: relationshipStr,
+            situation: situationStr,
+            user_name: userName,
+            userName,
+            radiant_context: analysisStr,
+            radiant_analysis: analysisStr
         };
     }
 

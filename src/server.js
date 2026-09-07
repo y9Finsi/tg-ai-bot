@@ -2880,12 +2880,15 @@ export function createAdminApp(bot = null) {
             // 2. Radiant Realtime Context (weather, location, needs, outfit, time)
             let radiantContextText = '';
             let radiantLayers = {};
+            let templateVars = {};
+            let detailedContext = null;
             try {
-                const detailedContext = await ContextBuilder.buildTelegramContextDetailed(targetUserId, {
+                detailedContext = await ContextBuilder.buildTelegramContextDetailed(targetUserId, {
                     overrides: { routingMode: normMode, surface: normSurface }
                 });
                 radiantContextText = detailedContext.text;
                 radiantLayers = detailedContext.layers || {};
+                templateVars = detailedContext.templateVariables || {};
             } catch (err) {
                 radiantContextText = `=== СОСТОЯНИЕ ЛЕРЫ (RADIANT) ===\nЛокация: Петроградка, Большой пр.\nПогода: Санкт-Петербург, малооблачно, +17°C\nПотребности: сытость 80%, бодрость 85%, чистота 90%, социал 70%`;
             }
@@ -2922,16 +2925,26 @@ export function createAdminApp(bot = null) {
 
             // 5. Build system prompt purely from attached prompt modules (or canonical fallback)
             const templateContext = {
+                ...templateVars,
                 currentTime: new Date(),
-                time: radiantLayers.time?.formatted ? formatContextDate(radiantLayers.time.formatted) : 'день, Санкт-Петербург',
-                location: radiantLayers.location?.name ? humanizeLocation(radiantLayers.location.name) : 'Петроградка',
-                weather: radiantLayers.weather?.summary ? humanizeWeather(radiantLayers.weather.summary) : 'Санкт-Петербург, переменная облачность',
-                needs: radiantLayers.wellbeing || 'сытость 80%, бодрость 85%',
-                outfit: radiantLayers.outfit?.description || 'домашняя оверсайз футболка',
-                status: radiantLayers.activity?.current || 'отдыхает дома',
+                time: templateVars.time || (radiantLayers.time?.formatted ? formatContextDate(radiantLayers.time.formatted) : 'день, Санкт-Петербург'),
+                location: templateVars.location || (radiantLayers.location?.name ? humanizeLocation(radiantLayers.location.name) : 'Петроградка'),
+                weather: templateVars.weather || (radiantLayers.weather?.summary ? humanizeWeather(radiantLayers.weather.summary) : 'Санкт-Петербург, переменная облачность'),
+                needs: templateVars.wellbeing || radiantLayers.wellbeing || 'сытость 80%, бодрость 85%',
+                wellbeing: templateVars.wellbeing || radiantLayers.wellbeing || 'сытость 80%, бодрость 85%',
+                outfit: templateVars.outfit || (radiantLayers.outfit?.description || 'домашняя оверсайз футболка'),
+                status: templateVars.status || (radiantLayers.activity?.current || 'отдыхает дома'),
+                channelStats: templateVars.channel_stats || '1240 подписчиков (актуальное число)',
+                channel_stats: templateVars.channel_stats || '1240 подписчиков (актуальное число)',
+                dayEvents: templateVars.day_events || '- Лера выпила фильтр-кофе в «Слое»\n- В плане: пост в канал',
+                day_events: templateVars.day_events || '- Лера выпила фильтр-кофе в «Слое»\n- В плане: пост в канал',
+                relationship: templateVars.relationship || '[ОТНОШЕНИЯ И НАСТРОЙ К СОБЕСЕДНИКУ: доверие 57%, симпатия 91%, раздражение 0%]\n• ВАЙБ: приятная симпатия и легкий флирт, дружелюбная открытость.\n(Используй это как внутреннее настроение и тональность реплик, не называй эти цифры напрямую).',
+                radiantContext: detailedContext?.analysis || radiantContextText,
+                radiant_context: detailedContext?.analysis || radiantContextText,
                 channelSubscribers: 1240,
                 memoryFacts: memoryText,
-                userName: sampleUser?.first_name || 'Пользователь'
+                userName: sampleUser?.first_name || 'Богдан',
+                user_name: sampleUser?.first_name || 'Богдан'
             };
 
             const modularPromptResult = await getRoutedSystemPrompt(normMode, {

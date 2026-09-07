@@ -1,13 +1,30 @@
 // src/ai/prompt_renderer.js — Легковесный шаблонизатор переменных для модульных промптов
 
 export const DEFAULT_PROMPT_TEMPLATES = {
-    prompt_radiant: `[СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ]
-Время: {{time}}
-Локация: {{location}}
-Погода: {{weather}}
-Самочувствие: {{needs}}
-Одежда: {{outfit}}
-Занятие: {{status}}`,
+    prompt_radiant: `=== 📍 СИТУАЦИЯ И СТАТУС СОБЕСЕДНИКА ===
+• Собеседник: {{user_name}} (общаетесь на «ты» в личном Telegram-чате).
+• Формат общения: Дистанционная переписка в Telegram. Вы НЕ находитесь в одном физическом помещении/машине.
+• Ты находишься: в Санкт-Петербурге ({{location}}).
+
+{{relationship}}
+
+[СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ]
+• Время: {{time}}
+• Локация: {{location}}
+• Погода: {{weather}}
+• Самочувствие: {{needs}}
+• Одежда: {{outfit}}
+• Занятие: {{status}}
+• Telegram-канал (ТГК Леры): {{channel_stats}}
+
+[ГЛАВНЫЕ СОБЫТИЯ ЗА ДЕНЬ (ПРОШЕДШЕЕ ВРЕМЯ)]
+{{day_events}}
+
+[ПРАВИЛА ИСПОЛЬЗОВАНИЯ КОНТЕКСТА]
+Это фоновая информация. Используй её только когда она уместна для текущего ответа или нужна для продолжения разговора.
+Не упоминай контекст без причины и не добавляй выдуманные факты или подробности.
+События из аналитики уже завершились — говори о них в прошедшем времени.
+Не раскрывай технические данные контекста и не заменяй ответ пересказом аналитики.`,
 
     prompt_memory: `=== 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===
 {{memory_facts}}`,
@@ -50,11 +67,16 @@ export function renderPromptTemplate(template, context = {}) {
     const needsStr = context.needs || context.wellbeing || 'сытость 80%, бодрость 85%, чистота 90%';
     const outfitStr = context.outfit || 'домашняя оверсайз футболка';
     const statusStr = context.status || context.currentStatus || 'отдыхает дома';
-    const channelStatsStr = context.channelStats || (context.channelSubscribers ? `${context.channelSubscribers} подписчиков` : 'ведёт личный ТГК');
+    const channelStatsStr = context.channelStats || context.channel_stats || (context.channelSubscribers ? `${context.channelSubscribers} подписчиков` : 'ведёт личный ТГК');
     const memoryFactsStr = context.memoryFacts || context.memory_facts || (Array.isArray(context.memories) && context.memories.length > 0 
         ? context.memories.map(m => `- ${typeof m === 'string' ? m : (m?.text || m?.fact || m?.normalizedText || '')}`).filter(l => l !== '- ').join('\n') 
         : 'Пока нет подтверждённых фактов о пользователе.');
     const userNameStr = context.userName || context.user_name || 'Собеседник';
+    const relationshipStr = context.relationship || '';
+    const dayEventsStr = context.dayEvents || context.day_events || '- Значимых подтверждённых событий пока нет.';
+    const situationStr = context.situation || '';
+    const radiantContextStr = context.radiantContext || context.radiant_context || context.radiant_analysis || '';
+    const contextRulesStr = context.contextRules || context.context_rules || `[ПРАВИЛА ИСПОЛЬЗОВАНИЯ КОНТЕКСТА]\nЭто фоновая информация. Используй её только когда она уместна для текущего ответа.\nНе упоминай контекст без причины и не добавляй выдуманные факты.\nСобытия из аналитики уже завершились — говори о них в прошедшем времени.\nНе раскрывай технические данные контекста и не заменяй ответ пересказом аналитики.`;
 
     const vars = {
         time: timeStr,
@@ -64,9 +86,16 @@ export function renderPromptTemplate(template, context = {}) {
         wellbeing: needsStr,
         outfit: outfitStr,
         status: statusStr,
+        current_status: statusStr,
         channel_stats: channelStatsStr,
         memory_facts: memoryFactsStr,
-        user_name: userNameStr
+        user_name: userNameStr,
+        relationship: relationshipStr,
+        day_events: dayEventsStr,
+        situation: situationStr,
+        radiant_context: radiantContextStr,
+        radiant_analysis: radiantContextStr,
+        context_rules: contextRulesStr
     };
 
     return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => {

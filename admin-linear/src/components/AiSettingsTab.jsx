@@ -330,7 +330,7 @@ export function AiSettingsTab({ toast }) {
                 category_label: 'Контекст',
                 style: 'style-b',
                 is_system: true,
-                content: llmPrompts.prompt_radiant || `[СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ]\nВремя: {{time}}\nЛокация: {{location}}\nПогода: {{weather}}\nСамочувствие: {{needs}}\nОдежда: {{outfit}}\nЗанятие: {{status}}`
+                content: llmPrompts.prompt_radiant || `=== 📍 СИТУАЦИЯ И СТАТУС СОБЕСЕДНИКА ===\n• Собеседник: {{user_name}} (общаетесь на «ты» в личном Telegram-чате).\n• Формат общения: Дистанционная переписка в Telegram. Вы НЕ находитесь в одном физическом помещении/машине.\n• Ты находишься: в Санкт-Петербурге ({{location}}).\n\n{{relationship}}\n\n[СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ]\n• Время: {{time}}\n• Локация: {{location}}\n• Погода: {{weather}}\n• Самочувствие: {{needs}}\n• Одежда: {{outfit}}\n• Занятие: {{status}}\n• Telegram-канал (ТГК Леры): {{channel_stats}}\n\n[ГЛАВНЫЕ СОБЫТИЯ ЗА ДЕНЬ (ПРОШЕДШЕЕ ВРЕМЯ)]\n{{day_events}}\n\n[ПРАВИЛА ИСПОЛЬЗОВАНИЯ КОНТЕКСТА]\nЭто фоновая информация. Используй её только когда она уместна для текущего ответа или нужна для продолжения разговора.\nНе упоминай контекст без причины и не добавляй выдуманные факты или подробности.\nСобытия из аналитики уже завершились — говори о них в прошедшем времени.\nНе раскрывай технические данные контекста и не заменяй ответ пересказом аналитики.`
             });
 
             rawPrompts.push({
@@ -1824,14 +1824,21 @@ export function AiSettingsTab({ toast }) {
                             </label>
 
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-xs text-white/60 font-medium">Текст системной инструкции</label>
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs text-white/60 font-medium">Текст системной инструкции</label>
+                                    {editingPrompt?.id === 'prompt_radiant' && (
+                                        <span className="text-[10px] text-[#8693ff]/80 font-mono">
+                                            Шаблоны: &#123;&#123;user_name&#125;&#125;, &#123;&#123;relationship&#125;&#125;, &#123;&#123;time&#125;&#125;, &#123;&#123;channel_stats&#125;&#125;, &#123;&#123;day_events&#125;&#125;
+                                        </span>
+                                    )}
+                                </div>
                                 <textarea
                                     name="content"
                                     defaultValue={editingPrompt?.content || ''}
                                     placeholder="Опишите инструкции для персонажа..."
-                                    rows={6}
+                                    rows={10}
                                     required
-                                    className="bg-[#202020] border border-white/10 rounded-xl p-3.5 text-sm text-white leading-relaxed focus:outline-none focus:border-[#8693ff]/50 resize-y"
+                                    className="bg-[#202020] border border-white/10 rounded-xl p-3.5 text-xs font-mono text-white leading-relaxed focus:outline-none focus:border-[#8693ff]/50 resize-y"
                                 />
                             </div>
 
