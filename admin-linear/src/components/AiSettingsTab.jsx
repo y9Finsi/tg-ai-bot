@@ -223,9 +223,20 @@ export function AiSettingsTab({ toast }) {
     };
 
     // Provider actions
-    const handleToggleProvider = (id) => {
-        setProviders(prev => prev.map(p => p.id === id ? { ...p, is_active: !p.is_active } : p));
-        toast?.('Статус провайдера обновлен', 'success');
+    const handleToggleProvider = async (id) => {
+        const target = providers.find(p => p.id === id);
+        if (!target) return;
+        const nextActive = !target.is_active;
+        try {
+            await api(`/api/admin/providers/${id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ is_active: nextActive, is_enabled: nextActive })
+            });
+            setProviders(prev => prev.map(p => p.id === id ? { ...p, is_active: nextActive, is_enabled: nextActive } : p));
+            toast?.('Статус провайдера сохранен в БД', 'success');
+        } catch (err) {
+            toast?.(err?.message || 'Ошибка обновления провайдера', 'error');
+        }
     };
 
     const handleMovePriority = (id, direction) => {
@@ -306,7 +317,10 @@ export function AiSettingsTab({ toast }) {
 
         if (editingProviderId) {
             setProviders(prev => prev.map(p => p.id === editingProviderId ? { ...p, ...providerForm } : p));
-            toast?.('Провайдер сохранен', 'success');
+            api(`/api/admin/providers/${editingProviderId}`, {
+                method: 'PATCH',
+                body: JSON.stringify(providerForm)
+            }).then(() => toast?.('Провайдер сохранен в БД', 'success')).catch(err => toast?.(err.message, 'error'));
         } else {
             const newId = Date.now();
             setProviders(prev => [...prev, {
@@ -314,7 +328,20 @@ export function AiSettingsTab({ toast }) {
                 id: newId,
                 priority: prev.length + 1
             }]);
-            toast?.('Провайдер добавлен', 'success');
+            api('/api/admin/providers', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name: providerForm.name,
+                    model_name: providerForm.model_name,
+                    base_url: providerForm.base_url,
+                    api_key: providerForm.api_key
+                })
+            }).then(res => {
+                if (res?.provider) {
+                    setProviders(prev => prev.map(p => p.id === newId ? res.provider : p));
+                }
+                toast?.('Провайдер добавлен в БД', 'success');
+            }).catch(err => toast?.(err.message, 'error'));
         }
         setProviderModalOpen(false);
     };
