@@ -123,7 +123,8 @@ export function AiSettingsTab({ toast }) {
                 }),
                 loadProviders()
             ]);
-            const p = profileData?.profile || {};
+            const rawProfile = profileData?.profile || {};
+            const p = (rawProfile.profile && typeof rawProfile.profile === 'object') ? rawProfile.profile : rawProfile;
             setProfile(p);
 
             if (profileData?.sampling) {
@@ -425,7 +426,8 @@ export function AiSettingsTab({ toast }) {
             });
 
             if (res.profile) {
-                setProfile(res.profile);
+                const savedProfile = res.profile?.profile && typeof res.profile.profile === 'object' ? res.profile.profile : res.profile;
+                setProfile(savedProfile);
             }
             if (toast) toast('Настройки сохранены на сервере', 'success');
         } catch (err) {
