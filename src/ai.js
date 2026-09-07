@@ -14,7 +14,7 @@ import { getRoutedSystemPrompt } from './prompts.js';
 import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX } from './constants/intents.js';
 import { requestLlmCompletion } from './ai/llm_client.js';
 import { extractFactsInBackground } from './ai/memory_extractor.js';
-import { ContextBuilder } from './ai/context_builder.js';
+import { ContextBuilder, formatContextDate, humanizeWeather, humanizeLocation } from './ai/context_builder.js';
 import { validateUserCommand } from './ai/command_gate.js';
 import { evaluateLeraReply, getQualityFallback, requiresReplyRetry } from './ai/response_quality.js';
 import { classifyIntent, getModeGenerationParams, getModeIntentConfig, getRoutingSettings } from './ai/intent_router.js';
@@ -360,10 +360,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         ? getRecentScopeConversationEvents(chatId || userId, threadId, 10).catch(() => [])
         : getRecentConversationEvents(userId, 10, user?.chat_history_cleared_at).catch(() => []);
 
-    const [baseSystemPromptText, conversationEvents] = await Promise.all([
-        getRoutedSystemPrompt(routingMode, { ...productionIntentConfig, surface, isPublicContext: isPublic }),
-        conversationEventsPromise
-    ]);
+    const conversationEvents = await conversationEventsPromise;
 
     const mediaLogInstruction = "\n\nПометки вида [Лера отправила личное фото: ...] в истории диалога — это служебные логи отправленных медиафайлов. Никогда не повторяй текст этих пометок в своих ответах! Не присылай несвязанное фото сама по себе.";
 
@@ -436,8 +433,9 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     let tamagotchiInstruction = "";
     let radiantContextText = "";
     let radiantLayers = {};
+    let detailedContext = null;
     try {
-        const detailedContext = await ContextBuilder.buildTelegramContextDetailed(userId, {
+        detailedContext = await ContextBuilder.buildTelegramContextDetailed(userId, {
             overrides: { preMessageGapSeconds: gapSeconds, previousActivityAt: lastEvent?.occurred_at, currentTime, routingMode, isPublicContext: isPublic, chatId },
             actionResult,
             routingMode
@@ -457,6 +455,28 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     } catch (tamagotchiErr) {
         console.error("⚠️ Ошибка формирования контекста Леры:", tamagotchiErr.message);
     }
+
+    // Подготовка контекста для модульного шаблонизатора (переменные {{time}}, {{weather}}, {{needs}}, ...)
+    const templateContext = {
+        currentTime,
+        time: detailedContext?.snapshot?.currentTime ? formatContextDate(detailedContext.snapshot.currentTime) : 'день, Санкт-Петербург',
+        location: detailedContext?.snapshot?.location?.name ? humanizeLocation(detailedContext.snapshot.location.name) : 'Петроградка',
+        weather: detailedContext?.snapshot?.weather ? humanizeWeather(detailedContext.snapshot.weather) : 'Санкт-Петербург, переменная облачность',
+        needs: detailedContext?.wellbeing || 'сытость 80%, бодрость 85%',
+        outfit: detailedContext?.outfitText || 'домашняя оверсайз футболка',
+        status: detailedContext?.currentStatus || 'отдыхает дома',
+        channelSubscribers: detailedContext?.snapshot?.channelSubscribers,
+        memories,
+        memoryFacts: memories.length > 0 ? memories.map(m => `- ${m.text || m.fact || m.normalizedText || ''}`).join('\n') : 'Пока нет подтверждённых фактов о пользователе.',
+        userName: user?.first_name || 'Собеседник'
+    };
+
+    const baseSystemPromptText = await getRoutedSystemPrompt(routingMode, {
+        ...productionIntentConfig,
+        surface,
+        isPublicContext: isPublic,
+        context: templateContext
+    });
 
     // Формируем историю предыдущих сообщений для multi-turn контекста (включая контент)
     const chatHistoryEvents = priorEvents.filter(ev =>
@@ -522,8 +542,13 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
 
     const userRepetition = !isInitiative && userText ? analyzeUserRepetitions(userText, priorEvents) : { isRepeated: false };
     const assistantRepetition = analyzeAssistantRepetitions(priorEvents);
-    const systemPrompt = baseSystemPromptText + mediaLogInstruction + tamagotchiInstruction + modeInstruction;
-    const messages = [{ role: 'system', content: systemPrompt }];
+    let systemPrompt = '';
+    if (baseSystemPromptText?.isModular) {
+        systemPrompt = String(baseSystemPromptText || '').trim();
+    } else {
+        systemPrompt = (baseSystemPromptText + mediaLogInstruction + tamagotchiInstruction + modeInstruction).trim();
+    }
+    const messages = systemPrompt ? [{ role: 'system', content: systemPrompt }] : [{ role: 'system', content: '' }];
 
     function sanitizeHistoryContent(raw) {
         let text = String(raw || '').trim();
@@ -584,8 +609,9 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         }
     }
 
-    if (userRepetition.isRepeated && routingMode !== 'EROTIC' && !isPublic) {
-        const repetitionDirective = `⚠️ ПОЛЬЗОВАТЕЛЬ ПОВТОРЯЕТСЯ: он уже писал ровно это («${userText}») недавно в этом диалоге (${userRepetition.repeatCount}-й раз подряд).
+    if (!baseSystemPromptText?.isModular) {
+        if (userRepetition.isRepeated && routingMode !== 'EROTIC' && !isPublic) {
+            const repetitionDirective = `⚠️ ПОЛЬЗОВАТЕЛЬ ПОВТОРЯЕТСЯ: он уже писал ровно это («${userText}») недавно в этом диалоге (${userRepetition.repeatCount}-й раз подряд).
 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО отвечать так, будто это новое сообщение, здороваться заново или выдавать новую бытовую сводку!
 Отреагируй дерзко, с подколом или удивлением в характере Леры:
 - «?? ты уже это писал»
@@ -593,71 +619,74 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
 - «че? ты писал уже»
 - «тебя заклинило ахах?» / «пластинку заело?»
 - «ты робот что ли?»`;
-        messages.push({ role: 'system', content: repetitionDirective });
-    }
+            messages.push({ role: 'system', content: repetitionDirective });
+        }
 
-    if (assistantRepetition.hasRepetition) {
-        const antiRepDirective = `⚠️ АНТИПОВТОР СТАРТА ФРАЗЫ: Твои недавние сообщения уже начинались со слов «${assistantRepetition.forbiddenStarters.join(', ')}».
+        if (assistantRepetition.hasRepetition) {
+            const antiRepDirective = `⚠️ АНТИПОВТОР СТАРТА ФРАЗЫ: Твои недавние сообщения уже начинались со слов «${assistantRepetition.forbiddenStarters.join(', ')}».
 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО начинать следующее сообщение с этих заезженных слов! Начни фразу свежо — сразу с прямого ответа, действия, вопроса или другой реакции.`;
-        messages.push({ role: 'system', content: antiRepDirective });
+            messages.push({ role: 'system', content: antiRepDirective });
+        }
     }
 
     if (isInitiative) {
-        let initiativeDirective = '';
-        if (initiativeKind === 'ignore_4d') {
-            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: СОБЕСЕДНИК ИГНОРИЛ ТЕБЯ 4 ДНЯ!
+        if (!baseSystemPromptText?.isModular) {
+            let initiativeDirective = '';
+            if (initiativeKind === 'ignore_4d') {
+                initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: СОБЕСЕДНИК ИГНОРИЛ ТЕБЯ 4 ДНЯ!
 Задача Леры: собеседник не отвечал 4 дня подряд. Напиши возмущенно, дерзко и с характерным подколом (1-2 короткие фразы лесенкой):
 - Например: «дурак ты что ли, 4 дня игноришь? ты живой ваще?», «4 дня молчишь, ты нормальный ваще?», «ты че там, помер? 4 дня молчишь уже», «алоо, 4 дня игнора это че за прикол ваще?».
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: вежливо извиняться или писать длинные занудные тексты.`;
-        } else if (initiativeKind === 'ignore_1' || initiativeKind === 'ignore_2') {
-            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: СОБЕСЕДНИК ПРОИГНОРИЛ ТВОЮ РЕПЛИКУ И ЗАМОЛЧАЛ!
+            } else if (initiativeKind === 'ignore_1' || initiativeKind === 'ignore_2') {
+                initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: СОБЕСЕДНИК ПРОИГНОРИЛ ТВОЮ РЕПЛИКУ И ЗАМОЛЧАЛ!
 Задача Леры: напиши короткий, живой и слегка возмущенный или подкалывающий пинг (15 минут молчания):
 - Напрямую спроси или подколи за игнор: «ты че игноришь?», «алоо ты куда пропал?», «ты че слился?», «аууу», «э», «че молчишь?», «ты тут ваще?», «куда исчез?»
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: использовать унылые фразы вроде «ну ты и залип», «я залипла»!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: продолжать старый спор, оправдываться или объяснять что-то длинно. Нужен именно короткий пинг за молчание.`;
-        } else if (initiativeKind === 'new_day') {
-            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: НАСТУПИЛ НОВЫЙ ДЕНЬ!
+            } else if (initiativeKind === 'new_day') {
+                initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: НАСТУПИЛ НОВЫЙ ДЕНЬ!
 Задача Леры: сегодня вы ещё не общались. Прошлый ночной диалог закончен и закрыт.
 - Начни новый день легко и естественно: напиши, чем сейчас занята (проснулась, пью кофе, собираюсь по делам в Питере) или просто коротко спроси как спалось / как настрой («доброе/утречко/привет», «как спалось?», «ты как там?»).
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: мусолить ночную ссору, обижаться за вчерашнее, отвечать на старое ночное «споки» или привязываться к старым темам многодневной давности.`;
-        } else if (initiativeKind === 'idle_4h' || initiativeKind === 'content_4h') {
-            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ДНЕВНАЯ ПАУЗА (ПРОШЛО БОЛЬШЕ 4 ЧАСОВ)!
+            } else if (initiativeKind === 'idle_4h' || initiativeKind === 'content_4h') {
+                initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ДНЕВНАЯ ПАУЗА (ПРОШЛО БОЛЬШЕ 4 ЧАСОВ)!
 Задача Леры: с момента прошлого разговора прошло много времени.
 - Смени тему и поделись своим текущим моментом/вайбом из дня в Питере (кофейня на Петроградке, работа над постом, трек, погода) и ненавязчиво спроси как его день («ты как там?», «как день ваще?», «че делаешь?»).
 - Если хочешь отправить трек/мем/видео — сделай естественную подводку и вызови инструмент send_content. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать в тексте псевдо-теги вроде [ТЕГ: ...] или [ТИП: ...].
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: спрашивать собеседника про задачи Макса/шоурума («ты подумал над постом?», «как там правки?»), как будто это его работа. Собеседник — твой парень, он не решает твои задачи по СММ!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: выдумывать, что собеседник что-то скидывал, присылал ссылку или обещал, если этого нет прямо в тексте последних сообщений!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: продолжать старый конфликт или оправдываться за старые фразы.`;
-        } else if (initiativeKind === 'cold_start') {
-            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ПЕРВОЕ ЗНАКОМСТВО / НЕТ ИСТОРИИ ПЕРЕПИСКИ!
+            } else if (initiativeKind === 'cold_start') {
+                initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ПЕРВОЕ ЗНАКОМСТВО / НЕТ ИСТОРИИ ПЕРЕПИСКИ!
 Задача Леры: у вас с пользователем ещё нет переписки или она была очищена.
 - Напиши первой коротко, легко, по-питерски и в своём характере: поздоровайся, спроси как дела/чем занят или поделись своим текущим моментом («привет! ты как ваще?», «хей, чем занят? я тут кофе пью / собираюсь по делам», «привет! как твой день?»).
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: ссылаться на несуществующие прошлые разговоры или выдумывать, что вы уже о чем-договаривались. Пиши естественно с чистого листа.`;
-        } else if (initiativeKind === 'open') {
-            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ВОЗВРАТ К НЕЗАВЕРШЕННОЙ ТЕМЕ / ЮЗЕР ЗАМОЛЧАЛ!
+            } else if (initiativeKind === 'open') {
+                initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ВОЗВРАТ К НЕЗАВЕРШЕННОЙ ТЕМЕ / ЮЗЕР ЗАМОЛЧАЛ!
 Задача Леры: диалог прервался недавно на вопросе/просьбе или на полуслове, а собеседник завис.
 - Докинь мысль по теме вопроса или подколи за игнор/молчание: «ты че игноришь?», «алоо ты куда пропал?», «че молчишь?», «ты тут ваще?», «слился что ли?»
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: перекладывать на собеседника задачи Макса/шоурума («ты подумал над постом?») или требовать от него решений по твоей работе!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: использовать кринжовые фразы вроде «ну ты и залип», «я залипла», «да я чет залипла»!
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: выдумывать новые прошлые разговоры, обещания, видео/ссылки или сериалы («ты рассказывал про сериал», «ты скинул ссылку»), которых нет в памяти и истории переписки!`;
-        } else if (initiativeKind === 'open_thread') {
-            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: СОБЕСЕДНИК ОБЕЩАЛ ТЕБЕ ДЕЛО / НАПОМИНАНИЕ!
+            } else if (initiativeKind === 'open_thread') {
+                initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: СОБЕСЕДНИК ОБЕЩАЛ ТЕБЕ ДЕЛО / НАПОМИНАНИЕ!
 Повод: ${initiativeReason || 'собеседник обещал скинуть трек или сделать что-то для тебя'}
 Задача Леры:
 - Напиши первой в личку в своем характере: легко, живо, с легким подколом («кстааати)) ты мне трек обещал скинуть вообще-то, я все еще жду», «кстати, а где трек-то? делись давай ахах»).
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: душить, требовать как коллектор, обижаться или писать фразы робота («напоминаю по вашему поручению»). Только легкий человеческий интерес.`;
-        } else if (initiativeKind === 'followup_promise') {
-            initiativeDirective = `⚠️ ТЫ ВОЗВРАЩАЕШЬСЯ К СОБЕСЕДНИКУ: ВЫПОЛНЕНИЕ ОБЕЩАНИЯ / ОТЛОЖЕННОЕ ДЕЙСТВИЕ!
+            } else if (initiativeKind === 'followup_promise') {
+                initiativeDirective = `⚠️ ТЫ ВОЗВРАЩАЕШЬСЯ К СОБЕСЕДНИКУ: ВЫПОЛНЕНИЕ ОБЕЩАНИЯ / ОТЛОЖЕННОЕ ДЕЙСТВИЕ!
 Повод: ${initiativeReason || 'ты только что закончила дело, о котором обещала рассказать'}
 Задача Леры:
 - Напиши живую реплику от первого лица, как будто ты только что вернулась к телефону (например: «короче заварила», «доехала наконец-то», «смотри че вышло», «вышла из душа, кайф»).
 - Если тема подразумевает фото или обещано фото — обязательно вызови инструмент send_photo.
 - КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: писать шаблонные фразы вроде «я вернулась как и обещала». Пиши естественно, по-питерски, как живая 19-летняя девушка.`;
-        } else {
-            initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ${initiativeReason || 'естественное продолжение разговора'}\nКАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдумывать прошлые реплики собеседника или спрашивать его про чужие рабочие задачи (Макс, шоурум).`;
-        }
+            } else {
+                initiativeDirective = `⚠️ ТЫ ПИШЕШЬ ПЕРВОЙ: ${initiativeReason || 'естественное продолжение разговора'}\nКАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО выдумывать прошлые реплики собеседника или спрашивать его про чужие рабочие задачи (Макс, шоурум).`;
+            }
 
-        messages.push({ role: 'system', content: initiativeDirective });
+            messages.push({ role: 'system', content: initiativeDirective });
+        }
         messages.push({
             role: 'user',
             content: `[СИСТЕМНОЕ СОБЫТИЕ: ${initiativeReason || 'Напиши сообщение первой в соответствии с инструкцией выше'}]`
@@ -666,19 +695,23 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
 
     // Напоминание о висящем обещании, если собеседник написал раньше времени
     if (!isInitiative && !isPublic) {
-        const pendingPromise = getPendingFollowup(userId);
-        if (pendingPromise?.topic) {
-            const pendingDirective = `⚠️ У ТЕБЯ ВИСИТ ОБЕЩАНИЕ СОБЕСЕДНИКУ: ты недавно обещала: "${pendingPromise.topic}".
+        if (!baseSystemPromptText?.isModular) {
+            const pendingPromise = getPendingFollowup(userId);
+            if (pendingPromise?.topic) {
+                const pendingDirective = `⚠️ У ТЕБЯ ВИСИТ ОБЕЩАНИЕ СОБЕСЕДНИКУ: ты недавно обещала: "${pendingPromise.topic}".
 Если собеседник спросил об этом или уместно — выполни обещание или скажи, что ещё в процессе. Если диалог ушел в другую сторону — общайся естественно по новой теме.`;
-            messages.push({ role: 'system', content: pendingDirective });
+                messages.push({ role: 'system', content: pendingDirective });
+            }
         }
 
         const activeOpenThread = await getActiveOpenThread(userId).catch(() => null);
         if (activeOpenThread?.payload?.topic) {
             const threadTopic = activeOpenThread.payload.topic;
-            const threadDirective = `📌 СОБЕСЕДНИК ТЕБЕ ОБЕЩАЛ: "${threadTopic}".
+            if (!baseSystemPromptText?.isModular) {
+                const threadDirective = `📌 СОБЕСЕДНИК ТЕБЕ ОБЕЩАЛ: "${threadTopic}".
 Если в разговоре возникнет пауза, зайдёт речь о смежной теме или ты хочешь подколоть собеседника — можешь естественно припомнить ему это в своём стиле («кстааати, а ты обещал...»), легко, живо, без душноты и без давления. Не повторяй это, если уже спрашивала.`;
-            messages.push({ role: 'system', content: threadDirective });
+                messages.push({ role: 'system', content: threadDirective });
+            }
 
             const topic = String(threadTopic).toLowerCase();
             const textLower = String(userText || '').toLowerCase();
@@ -764,7 +797,9 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         systemPrompt,
         radiantContext: radiantContextText,
         judgeLeraRules: baseSystemPromptText,
-        leraState: tamagotchiInstruction ? radiantLayers : null
+        leraState: tamagotchiInstruction ? radiantLayers : null,
+        isModular: Boolean(baseSystemPromptText?.isModular),
+        toolsEnabled: baseSystemPromptText?.toolsEnabled ?? true
     };
 }
 
@@ -895,7 +930,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     const {
         messages, isPhotoRequest, recommendationPost, preselectedPhoto, lastLeraText,
         recentReplyTexts, memories, leraState, systemPrompt, radiantContext, judgeLeraRules,
-        hasRecentGreeting, memoryRetrieval
+        hasRecentGreeting, memoryRetrieval, isModular, toolsEnabled
     } = await buildMessagePayload(user, userId, {
         userText, photoUrls, isInitiative, routingMode, initiativeReason,
         initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds,
@@ -983,7 +1018,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                     parameters: s.inputSchema || { type: 'object', properties: {} }
                 }
             }));
-        if (formattedTools.length > 0) {
+        if (formattedTools.length > 0 && (!isModular || toolsEnabled)) {
             generationParams.tools = formattedTools;
         }
     } catch (e) {

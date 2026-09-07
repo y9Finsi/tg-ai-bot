@@ -321,6 +321,51 @@ export function AiSettingsTab({ toast }) {
                 content: llmPrompts.initiative_directive || ''
             });
 
+            // 5. Dynamic Context & Modular Templates (Style B)
+            rawPrompts.push({
+                id: 'prompt_radiant',
+                section_key: 'prompt_radiant',
+                is_system_section: true,
+                title: 'Состояние Леры и окружение (Radiant)',
+                category_label: 'Контекст',
+                style: 'style-b',
+                is_system: true,
+                content: llmPrompts.prompt_radiant || `[СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ]\nВремя: {{time}}\nЛокация: {{location}}\nПогода: {{weather}}\nСамочувствие: {{needs}}\nОдежда: {{outfit}}\nЗанятие: {{status}}`
+            });
+
+            rawPrompts.push({
+                id: 'prompt_memory',
+                section_key: 'prompt_memory',
+                is_system_section: true,
+                title: 'Долгосрочная память (Факты)',
+                category_label: 'Память',
+                style: 'style-b',
+                is_system: true,
+                content: llmPrompts.prompt_memory || `=== 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===\n{{memory_facts}}`
+            });
+
+            rawPrompts.push({
+                id: 'prompt_antirep',
+                section_key: 'prompt_antirep',
+                is_system_section: true,
+                title: 'Антиповторы и запреты',
+                category_label: 'Контракт',
+                style: 'style-b',
+                is_system: true,
+                content: llmPrompts.prompt_antirep || `[АНТИПОВТОРЫ И ЖИВАЯ РЕАКЦИЯ]\n- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО повторять однотипные приветствия и одинаковые фразы из прошлых сообщений.\n- Не начинай ответ с дежурных «ну», «слушай», «привет», если ты уже здоровалась.\n- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО цитировать системные логи отправленных фото или войсов.`
+            });
+
+            rawPrompts.push({
+                id: 'prompt_tools',
+                section_key: 'prompt_tools',
+                is_system_section: true,
+                title: 'Инструменты Леры (Tools Calling)',
+                category_label: 'Инструменты',
+                style: 'style-b',
+                is_system: true,
+                content: llmPrompts.prompt_tools || `[ИНСТРУМЕНТЫ И ДЕЙСТВИЯ ЛЕРЫ]\n- send_photo: отправка селфи или фото Леры в чат.\n- send_voice: отправка голосового сообщения.\n- schedule_reminder: постановка напоминания.\n- record_open_thread: фиксация открытой темы или обещания собеседника.\n- schedule_followup: обещание вернуться через время с выполненным делом.`
+            });
+
             // 5. Secondary/Modular prompts (Style B in Figma: gradient from #171717 to #232425/0)
             if (p.forbidden !== undefined || llmPrompts.lera_rules) {
                 rawPrompts.push({

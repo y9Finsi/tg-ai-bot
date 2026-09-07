@@ -266,10 +266,10 @@ const HIDDEN_MICRO_TASKS = new Set(['GO_TO_BATHROOM']);
 const LOCATION_LABELS = { petrogradka_home: 'дома на Петроградке', showroom_work: 'в рабочем месте', cafe_sloy: 'в кафе', vkusvill_lenina: 'в магазине', bar_rubinsteina: 'в баре на Рубинштейна' };
 const EVENT_LABELS = { WORK_REQUEST_CREATED: 'Макс прислал рабочую задачу', SOCIAL_MEETING_PROPOSED: 'Настя предложила встретиться', COMMITMENT_MISSED: 'Лера не успела выполнить план', RANDOM_EVENT: 'произошло неожиданное событие' };
 
-function humanizeTask(value) { return TASK_LABELS[value] || 'занимается делом'; }
-function humanizeCompletedTask(value) { return COMPLETED_TASK_LABELS[value] || 'закончила дела'; }
-function humanizeLocation(value) { return LOCATION_LABELS[value] || String(value || 'дома').replaceAll('_', ' '); }
-function formatContextDate(value) {
+export function humanizeTask(value) { return TASK_LABELS[value] || 'занимается делом'; }
+export function humanizeCompletedTask(value) { return COMPLETED_TASK_LABELS[value] || 'закончила дела'; }
+export function humanizeLocation(value) { return LOCATION_LABELS[value] || String(value || 'дома').replaceAll('_', ' '); }
+export function formatContextDate(value) {
     const date = parseContextDate(value);
     if (Number.isNaN(date.getTime())) return String(value || 'время не указано');
     const parts = new Intl.DateTimeFormat('ru-RU', {
@@ -279,25 +279,25 @@ function formatContextDate(value) {
     const weekday = get('weekday');
     return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}, ${get('day')}.${get('month')}.${get('year')}, ${get('hour')}:${get('minute')} (Москва/Питер)`;
 }
-function parseContextDate(value) {
+export function parseContextDate(value) {
     if (!value) return new Date();
     const text = String(value).trim();
     const mskText = text.match(/^(\d{4}-\d{2}-\d{2})[ ,T]+(\d{2}:\d{2})(?::\d{2})?\s*MSK$/i);
     if (mskText) return new Date(`${mskText[1]}T${mskText[2]}:00+03:00`);
     return new Date(value);
 }
-function humanizeWeather(weather = {}) {
+export function humanizeWeather(weather = {}) {
     const text = String(weather.text || '').trim();
     if (text) return text;
     if (weather.is_raining === true) return 'Идёт дождь';
     if (weather.is_raining === false) return 'Без осадков';
     return 'Погода неизвестна';
 }
-function humanizeOutfit(value) {
+export function humanizeOutfit(value) {
     const labels = { oversized_tshirt: 'Oversized футболка', oversized_t_shirt: 'Oversized футболка', pajama: 'пижама', pajamas: 'пижама', shorts: 'шорты' };
     return String(value || 'домашняя одежда').split(',').map(item => labels[item.trim()] || item.trim().replaceAll('_', ' ')).filter(Boolean).join(' / ');
 }
-function humanizeCurrentStatus(task, transit) {
+export function humanizeCurrentStatus(task, transit) {
     if (transit?.to) return `Едет в ${humanizeLocation(transit.to)}`;
     if (transit) return 'В дороге';
     if (!task) return 'Свободна';

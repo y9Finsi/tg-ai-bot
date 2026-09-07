@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { getSetting, setSetting, getLeraProfile, getLeraProfileProjection } from './db/database.js';
 import { ALL_PROMPT_SECTIONS, PROMPT_SECTIONS, ROUTING_PROMPT_SECTIONS, SYSTEM_CONTRACT_SECTIONS } from './prompt_sections.js';
+import { renderPromptTemplate, DEFAULT_PROMPT_TEMPLATES } from './ai/prompt_renderer.js';
 
 export { ALL_PROMPT_SECTIONS, PROMPT_SECTIONS, ROUTING_PROMPT_SECTIONS, SYSTEM_CONTRACT_SECTIONS };
 
@@ -109,6 +110,14 @@ export async function initPromptsFromDb() {
                 }
             }
         }
+        for (const [key, tpl] of Object.entries(DEFAULT_PROMPT_TEMPLATES)) {
+            const dbVal = await getSetting(`prompt_${key}`, null);
+            if (dbVal !== null && dbVal !== undefined && dbVal.trim() !== '') {
+                promptsCache[key] = dbVal;
+            } else if (!promptsCache[key]) {
+                promptsCache[key] = tpl;
+            }
+        }
         isDbInitialized = true;
     } catch (err) {
         console.error('[PROMPTS] Ошибка загрузки промптов из БД:', err.message);
@@ -169,15 +178,20 @@ export async function getLeraPrompts() {
 
 export async function updateLeraPrompts(promptsObj) {
     for (const [key, text] of Object.entries(promptsObj)) {
-        if (ALL_PROMPT_SECTIONS[key] !== undefined && typeof text === 'string') {
+        if (typeof text === 'string') {
             const cleanText = text.trim();
             promptsCache[key] = cleanText;
             await setSetting(`prompt_${key}`, cleanText);
             const filename = ALL_PROMPT_SECTIONS[key];
-            savePromptFile(filename, cleanText);
+            if (filename) {
+                savePromptFile(filename, cleanText);
+            }
         }
     }
-    return getLeraPrompts();
+    return {
+        prompts: { ...promptsCache },
+        fullPrompt: getCompiledFlirtHotPrompt()
+    };
 }
 
 export async function getRoutingPromptModules() {
@@ -192,12 +206,160 @@ export async function getRoutingPromptModules() {
     };
 }
 
+export class ModularPromptResult extends String {
+    constructor(prompt, meta = {}) {
+        super(prompt);
+        this.prompt = prompt;
+        this.isModular = meta.isModular ?? true;
+        this.rule = meta.rule || null;
+        this.toolsEnabled = meta.toolsEnabled ?? true;
+        this.attachedModules = meta.attachedModules || [];
+    }
+}
+
+export async function resolveModularRulePrompt(rule, profile, context = {}) {
+    if (!rule || !Array.isArray(rule.attachedPromptIds)) return null;
+
+    if (rule.attachedPromptIds.length === 0) {
+        return new ModularPromptResult('', {
+            isModular: true,
+            rule,
+            toolsEnabled: false,
+            attachedModules: []
+        });
+    }
+
+    const blocks = profile?.blocks || [];
+    const customModules = blocks.filter(b => b.category === 'prompt_module');
+    const renderedBlocks = [];
+    let toolsEnabled = false;
+
+    const deletedSet = new Set(Array.isArray(profile?.deletedPromptIds) ? profile.deletedPromptIds : []);
+    for (const pId of rule.attachedPromptIds) {
+        if (deletedSet.has(pId)) continue;
+        let content = '';
+        let isTool = false;
+
+        const custom = customModules.find(m => m.id === pId);
+        if (custom) {
+            content = custom.content || '';
+            if (custom.is_tool_module || custom.title?.toLowerCase().includes('инструмент')) isTool = true;
+        } else if (pId === 'prompt_bio') {
+            content = profile.age_bio || '';
+        } else if (pId === 'prompt_character') {
+            content = profile.character || '';
+        } else if (pId === 'prompt_speech') {
+            content = profile.speech || '';
+        } else if (pId === 'prompt_forbidden') {
+            content = profile.forbidden || '';
+        } else if (pId === 'prompt_facts') {
+            content = profile.facts || '';
+        } else if (pId === 'prompt_flirt') {
+            content = profile.flirt || '';
+        } else if (pId === 'prompt_radiant') {
+            content = promptsCache.prompt_radiant || DEFAULT_PROMPT_TEMPLATES.prompt_radiant;
+        } else if (pId === 'prompt_memory') {
+            content = promptsCache.prompt_memory || DEFAULT_PROMPT_TEMPLATES.prompt_memory;
+        } else if (pId === 'prompt_format') {
+            content = promptsCache.lera_format || promptsCache.prompt_format || DEFAULT_PROMPT_TEMPLATES.prompt_format;
+        } else if (pId === 'prompt_continuity') {
+            content = promptsCache.lera_continuity || promptsCache.prompt_continuity || DEFAULT_PROMPT_TEMPLATES.prompt_continuity;
+        } else if (pId === 'prompt_antirep') {
+            content = promptsCache.prompt_antirep || DEFAULT_PROMPT_TEMPLATES.prompt_antirep;
+        } else if (pId === 'prompt_tools') {
+            content = promptsCache.prompt_tools || DEFAULT_PROMPT_TEMPLATES.prompt_tools;
+            isTool = true;
+        } else if (pId === 'prompt_channel_persona') {
+            content = promptsCache.channel_persona || promptsCache.prompt_channel_persona || '';
+        } else if (pId === 'prompt_channel_rules') {
+            content = promptsCache.channel_rules || promptsCache.prompt_channel_rules || '';
+        } else if (pId === 'prompt_initiative') {
+            content = promptsCache.initiative_directive || promptsCache.prompt_initiative || '';
+        } else if (pId === 'prompt_context_rules') {
+            content = promptsCache.context_template || promptsCache.prompt_context_rules || '';
+        } else if (pId === 'routing_core') {
+            content = promptsCache.routing_core || (await getRoutingPromptModules()).core || '';
+        } else if (pId === 'routing_casual') {
+            content = promptsCache.routing_casual || (await getRoutingPromptModules()).casual || '';
+        } else if (pId === 'routing_erotic') {
+            content = promptsCache.routing_erotic || (await getRoutingPromptModules()).erotic || '';
+        } else if (pId === 'routing_common') {
+            content = promptsCache.routing_common || (await getRoutingPromptModules()).common || '';
+            isTool = true;
+        } else if (promptsCache[pId]) {
+            content = promptsCache[pId];
+            if (pId.includes('tool')) isTool = true;
+        }
+
+        if (isTool) toolsEnabled = true;
+
+        if (content) {
+            const rendered = renderPromptTemplate(content, context);
+            if (rendered) {
+                renderedBlocks.push(rendered);
+            }
+        }
+    }
+
+    return new ModularPromptResult(renderedBlocks.join('\n\n'), {
+        isModular: true,
+        rule,
+        toolsEnabled,
+        attachedModules: renderedBlocks
+    });
+}
+
 export async function getRoutedSystemPrompt(mode = 'CASUAL', config = {}) {
-    const modules = await getRoutingPromptModules();
     const normalizedMode = mode === 'EROTIC' ? 'EROTIC' : 'CASUAL';
+    const surface = config.surface || (config.isPublicContext ? 'GROUP' : 'CHAT');
+    const context = { mode: normalizedMode, routingMode: normalizedMode, surface, ...(config.context || {}) };
+
+    let profileRecord = null;
+    try {
+        profileRecord = await getLeraProfile();
+    } catch {}
+    const rawP = profileRecord?.profile || {};
+    const profile = (rawP.profile && typeof rawP.profile === 'object') ? rawP.profile : rawP;
+    const blocks = Array.isArray(profile.blocks) ? profile.blocks : [];
+
+    // 1. Поиск целевого активного правила
+    let targetRule = config.rule || null;
+    if (!targetRule) {
+        if (config.ruleId) {
+            targetRule = blocks.find(b => b.id === config.ruleId);
+        } else {
+            targetRule = blocks.find(b => {
+                if (b.category !== 'rule' || b.enabled === false) return false;
+                const surfaces = Array.isArray(b.surfaces) ? b.surfaces : (b.surface ? [b.surface] : []);
+                if (!surfaces.includes(surface)) return false;
+                const ruleMode = b.mode || 'ALL';
+                return ruleMode === 'ALL' || ruleMode === normalizedMode;
+            });
+        }
+    }
+
+    // 2. Если найдено правило с attachedPromptIds — собираем СТРОГО модули правила (чистое LEGO)
+    if (targetRule && Array.isArray(targetRule.attachedPromptIds)) {
+        const modularResult = await resolveModularRulePrompt(targetRule, profile, context);
+        if (modularResult !== null) {
+            if (config.systemOverlay || config.system_overlay) {
+                const overlay = String(config.systemOverlay || config.system_overlay).trim();
+                const combined = modularResult.prompt ? `${modularResult.prompt}\n\n[SYSTEM PROMPT OVERLAY]\n${overlay}` : overlay;
+                return new ModularPromptResult(combined, {
+                    isModular: true,
+                    rule: targetRule,
+                    toolsEnabled: modularResult.toolsEnabled
+                });
+            }
+            return modularResult;
+        }
+    }
+
+    // 3. Fallback (если правил в базе нет вообще)
+    const modules = await getRoutingPromptModules();
     const selected = normalizedMode === 'EROTIC' ? modules.erotic : modules.casual;
     const enabled = config.promptModules || config.prompt_modules || {};
-    const blocks = [
+    const fallbackBlocks = [
         enabled.core === false ? '' : modules.core,
         enabled.common === false ? '' : modules.common,
         enabled.intent === false ? '' : selected
@@ -205,23 +367,22 @@ export async function getRoutedSystemPrompt(mode = 'CASUAL', config = {}) {
     const continuity = config.continuityPrompt || promptsCache.lera_continuity || CONVERSATION_CONTINUITY_CONTRACT;
     const format = config.formatPrompt || promptsCache.lera_format || RESPONSE_FORMAT_CONTRACT;
     if (enabled.continuity !== false && continuity) {
-        blocks.push(continuity);
+        fallbackBlocks.push(continuity);
     }
     if (enabled.format !== false && format) {
-        blocks.push(format);
+        fallbackBlocks.push(format);
     }
-    try {
-        const profile = await getLeraProfile();
-        const surface = config.surface || (config.isPublicContext ? 'GROUP' : 'CHAT');
-        const context = { mode: normalizedMode, routingMode: normalizedMode, surface, ...(config.context || {}) };
-        blocks.unshift(`[КАНОНИЧЕСКИЙ ПРОФИЛЬ ЛЕРЫ · ВЕРСИЯ ${profile.version} · ${surface}]\n${getLeraProfileProjection(profile.profile, surface, context)}`);
-    } catch {
-        // Runtime keeps the file-based prompt fallback if DB profile is unavailable.
+    if (profileRecord) {
+        fallbackBlocks.unshift(`[КАНОНИЧЕСКИЙ ПРОФИЛЬ ЛЕРЫ · ВЕРСИЯ ${profileRecord.version} · ${surface}]\n${getLeraProfileProjection(profile, surface, context)}`);
     }
     if (config.systemOverlay || config.system_overlay) {
-        blocks.push(`[SYSTEM PROMPT OVERLAY]\n${String(config.systemOverlay || config.system_overlay).trim()}`);
+        fallbackBlocks.push(`[SYSTEM PROMPT OVERLAY]\n${String(config.systemOverlay || config.system_overlay).trim()}`);
     }
-    return blocks.join('\n\n');
+    return new ModularPromptResult(fallbackBlocks.join('\n\n'), {
+        isModular: false,
+        rule: null,
+        toolsEnabled: true
+    });
 }
 
 export function getContextPromptTemplate() {

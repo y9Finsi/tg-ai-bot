@@ -9,7 +9,7 @@ import { UtilitySelector } from './radiant/utility_selector.js';
 import { WeatherService } from './radiant/weather_service.js';
 import { MemorySummarizer } from './memory/summarizer.js';
 import { memoryRepository } from './memory/memory_repository.js';
-import { ContextBuilder } from './ai/context_builder.js';
+import { ContextBuilder, formatContextDate, humanizeWeather, humanizeLocation } from './ai/context_builder.js';
 import { generateLeraVoice } from './services/voice_generator.js';
 import {
     getModelMatrix,
@@ -2920,86 +2920,66 @@ export function createAdminApp(bot = null) {
                 ];
             }
 
-            // 5. Build system prompt purely from attached prompt modules (from the Prompts tab) in order
-            let assembledDirectives = targetRule && Array.isArray(targetRule.attachedPromptIds) && targetRule.attachedPromptIds.length > 0
-                ? resolveAttachedPromptDirectives(targetRule.attachedPromptIds, p, routingModules)
-                : '';
+            // 5. Build system prompt purely from attached prompt modules (or canonical fallback)
+            const templateContext = {
+                currentTime: new Date(),
+                time: radiantLayers.time?.formatted ? formatContextDate(radiantLayers.time.formatted) : 'день, Санкт-Петербург',
+                location: radiantLayers.location?.name ? humanizeLocation(radiantLayers.location.name) : 'Петроградка',
+                weather: radiantLayers.weather?.summary ? humanizeWeather(radiantLayers.weather.summary) : 'Санкт-Петербург, переменная облачность',
+                needs: radiantLayers.wellbeing || 'сытость 80%, бодрость 85%',
+                outfit: radiantLayers.outfit?.description || 'домашняя оверсайз футболка',
+                status: radiantLayers.activity?.current || 'отдыхает дома',
+                channelSubscribers: 1240,
+                memoryFacts: memoryText,
+                userName: sampleUser?.first_name || 'Пользователь'
+            };
 
-            // Fallback if rule has no attached prompts
-            if (!assembledDirectives) {
-                if (normSurface === 'CHANNEL') {
-                    assembledDirectives = resolveAttachedPromptDirectives(['prompt_bio', 'prompt_speech', 'prompt_channel_persona', 'prompt_channel_rules'], p, routingModules);
-                } else if (normSurface === 'INITIATIVE') {
-                    assembledDirectives = resolveAttachedPromptDirectives(['prompt_bio', 'prompt_character', 'prompt_speech', 'prompt_initiative'], p, routingModules);
-                } else if (normMode === 'EROTIC') {
-                    assembledDirectives = resolveAttachedPromptDirectives(['prompt_character', 'routing_erotic', 'prompt_flirt', 'prompt_format'], p, routingModules);
-                } else {
-                    assembledDirectives = resolveAttachedPromptDirectives(['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual', 'prompt_format', 'prompt_continuity'], p, routingModules);
-                }
-            }
+            const modularPromptResult = await getRoutedSystemPrompt(normMode, {
+                rule: targetRule,
+                ruleId: targetRule?.id,
+                surface: normSurface,
+                context: templateContext
+            });
+            const completeSystemPrompt = String(modularPromptResult || '').trim();
 
-            let completeSystemPrompt = '';
             let messages = [];
+            if (completeSystemPrompt) {
+                messages.push({ role: 'system', content: completeSystemPrompt });
+            } else {
+                messages.push({ role: 'system', content: '' });
+            }
 
             // 6. Surface-Specific Assembly
             if (normSurface === 'CHANNEL') {
-                const channelRadiantSummary = [
-                    `[ОКРУЖЕНИЕ И СОСТОЯНИЕ ЛЕРЫ В ПИТЕРЕ]`,
-                    `• Время: ${radiantLayers.time?.formatted || 'день'}`,
-                    `• Погода за окном: ${radiantLayers.weather?.summary || 'Без осадков'}`,
-                    `• Текущая локация: ${radiantLayers.location?.name || 'Санкт-Петербург'}`,
-                    `• Занятие сейчас: ${radiantLayers.activity?.current || 'Свободное время'}`
-                ].join('\n');
-
-                completeSystemPrompt = [
-                    assembledDirectives,
-                    channelRadiantSummary
-                ].filter(Boolean).join('\n\n');
-
                 const recentPostsRows = await getChannelPostHistory(5).catch(() => []);
                 const recentPosts = recentPostsRows
                     .map(r => ({ text: r.post_text || r.text || '' }))
                     .filter(r => r.text);
 
-                recentEvents = recentPosts.length > 0
+                const channelEvents = recentPosts.length > 0
                     ? recentPosts.map((post, idx) => ({ role: 'assistant', content: `[Пост #${idx + 1}]: ${post.text}` }))
                     : [{ role: 'assistant', content: '[Пост #1]: весна в питере это когда утром снег а вечером солнце и лужи по колено' }];
 
-                messages = [
-                    { role: 'system', content: completeSystemPrompt },
+                messages.push(
+                    ...channelEvents,
                     { role: 'user', content: userText || 'Напиши новый пост для личного Telegram-канала Леры на тему: спонтанная мысль или зарисовка о Петербурге' }
-                ];
+                );
 
             } else if (normSurface === 'INITIATIVE') {
-                completeSystemPrompt = [
-                    assembledDirectives,
-                    radiantContextText,
-                    memoryText ? `=== 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===\n${memoryText}` : ''
-                ].filter(Boolean).join('\n\n');
-
-                messages = [
-                    { role: 'system', content: completeSystemPrompt },
+                messages.push(
                     ...recentEvents,
                     { role: 'user', content: userText || '[СИСТЕМНЫЙ ТРИГГЕР: Пауза в диалоге более 4 часов. Напиши пользователю первой.]' }
-                ];
+                );
 
             } else {
-                // Surface: CHAT (or GROUP / COMMENTS fallback)
-                completeSystemPrompt = [
-                    assembledDirectives,
-                    radiantContextText,
-                    memoryText ? `=== 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===\n${memoryText}` : ''
-                ].filter(Boolean).join('\n\n');
-
                 const defaultChatPrompt = normMode === 'EROTIC'
                     ? 'ты такая красивая, поцелуй меня...'
                     : 'привет, че делаешь сейчас?';
 
-                messages = [
-                    { role: 'system', content: completeSystemPrompt },
+                messages.push(
                     ...recentEvents,
                     { role: 'user', content: userText || defaultChatPrompt }
-                ];
+                );
             }
 
             // 7. Generation Parameters and Provider
@@ -3023,7 +3003,9 @@ export function createAdminApp(bot = null) {
                 model: selectedProvider?.model_name || 'gpt-4o-mini',
                 fallback_providers: (targetRule?.fallback_provider_ids || [])
                     .map(fid => providers.find(p => Number(p.id) === Number(fid))?.name)
-                    .filter(Boolean)
+                    .filter(Boolean),
+                toolsEnabled: Boolean(modularPromptResult?.toolsEnabled),
+                isModular: Boolean(modularPromptResult?.isModular)
             };
 
             const fullPromptText = messages.map(m => `--- [ROLE: ${m.role.toUpperCase()}] ---\n${m.content}`).join('\n\n');
