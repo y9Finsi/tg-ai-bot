@@ -480,6 +480,31 @@ test('Admin Linear Endpoints Integration Verification Suite', { concurrency: 1 }
         assert.ok(res.data.profile.profile.blocks.some(b => b.id === 'rule_verification_test'), 'Updated rule block must be present');
     });
 
+    await t.test('5.9 POST /api/admin/raw-prompt-preview returns full prompt with Radiant, history, and params', async () => {
+        const res = await adminFetch('/api/admin/raw-prompt-preview', {
+            method: 'POST',
+            headers: { 'x-admin-key': ADMIN_KEY },
+            body: {
+                ruleId: 'rule_chat_casual',
+                surface: 'CHAT',
+                mode: 'CASUAL',
+                userText: 'привет, как дела на петроградке?'
+            }
+        });
+
+        assert.equal(res.status, 200);
+        assert.equal(res.data.success, true);
+        assert.ok(res.data.systemPrompt, 'Must contain assembled systemPrompt');
+        assert.ok(res.data.radiantContext, 'Must contain Radiant context');
+        assert.ok(res.data.radiantLayers, 'Must contain radiantLayers object');
+        assert.ok(Array.isArray(res.data.messages), 'Must contain messages array');
+        assert.ok(res.data.messages.some(m => m.role === 'system'), 'Messages must have system role');
+        assert.ok(res.data.messages.some(m => m.role === 'user'), 'Messages must have user role');
+        assert.ok(res.data.generationParams, 'Must contain generationParams');
+        assert.ok(typeof res.data.generationParams.temperature === 'number', 'Temperature must be number');
+        assert.ok(typeof res.data.generationParams.max_tokens === 'number', 'Max tokens must be number');
+    });
+
     // =========================================================================
     // 99. Teardown
     // =========================================================================

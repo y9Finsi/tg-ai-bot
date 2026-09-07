@@ -2770,6 +2770,161 @@ export function createAdminApp(bot = null) {
         }
     });
 
+    /**
+     * Raw Prompt Inspector for Rule Cards:
+     * Returns the exact assembled prompt, radiant context, long-term memory,
+     * conversation history, and generation parameters as sent to the LLM during live request.
+     */
+    app.post('/api/admin/raw-prompt-preview', async (req, res) => {
+        try {
+            const { ruleId, surface = 'CHAT', mode = 'CASUAL', userText = '' } = req.body || {};
+            const normSurface = normalizeSurface(surface);
+            const activeProfile = await getLeraProfile();
+            const rules = activeProfile?.profile?.rules || [];
+            const targetRule = rules.find(r => r.id === ruleId) || null;
+
+            // Find an active user to build live production context, or fallback to mock user
+            let targetUserId = req.body?.userId || null;
+            let sampleUser = null;
+            if (targetUserId) {
+                sampleUser = await getUser(targetUserId).catch(() => null);
+            }
+            if (!sampleUser) {
+                const recentUsers = await query(`
+                    SELECT telegram_id, username, first_name 
+                    FROM users 
+                    ORDER BY COALESCE(last_active_at, created_at) DESC 
+                    LIMIT 1
+                `).catch(() => ({ rows: [] }));
+                if (recentUsers.rows.length > 0) {
+                    targetUserId = recentUsers.rows[0].telegram_id;
+                    sampleUser = await getUser(targetUserId).catch(() => null);
+                }
+            }
+
+            // Fallback user if DB empty
+            if (!sampleUser) {
+                targetUserId = targetUserId || 999999999;
+                sampleUser = { telegram_id: targetUserId, username: 'sample_user', first_name: 'Пользователь' };
+            }
+
+            // 1. Radiant Realtime Context (weather, location, needs, outfit, time)
+            let radiantContextText = '';
+            let radiantLayers = {};
+            try {
+                const detailedContext = await ContextBuilder.buildTelegramContextDetailed(targetUserId, {
+                    overrides: { routingMode: mode, surface: normSurface }
+                });
+                radiantContextText = detailedContext.text;
+                radiantLayers = detailedContext.layers || {};
+            } catch (err) {
+                radiantContextText = `=== СОСТОЯНИЕ ЛЕРЫ (RADIANT) ===\nЛокация: Петроградка, Большой пр.\nПогода: Санкт-Петербург, малооблачно, +17°C\nПотребности: сытость 80%, бодрость 85%, чистота 90%, социал 70%`;
+            }
+
+            // 2. Long-term Memory Facts
+            let memoryFacts = [];
+            try {
+                memoryFacts = await getUserMemoriesAdmin(targetUserId, false).catch(() => []);
+            } catch {
+                memoryFacts = [];
+            }
+            const memoryText = memoryFacts.length > 0
+                ? memoryFacts.slice(0, 5).map(m => `- ${m.fact || m.text || ''}`).filter(Boolean).join('\n')
+                : '- Пользователь любит пить кофе на Петроградке\n- Общались вчера вечером';
+
+            // 3. Conversation Multi-turn History
+            let recentEvents = [];
+            try {
+                recentEvents = (await getRecentConversationEvents(targetUserId, 5).catch(() => []))
+                    .filter(ev => ev.status === 'COMPLETED' && ev.content && (ev.event_type === 'MESSAGE' || ev.event_type === 'INITIATIVE'))
+                    .map(ev => ({
+                        role: ev.role === 'lera' || ev.role === 'assistant' ? 'assistant' : 'user',
+                        content: ev.content
+                    }));
+            } catch {
+                recentEvents = [];
+            }
+            if (recentEvents.length === 0) {
+                recentEvents = [
+                    { role: 'user', content: 'привет, ты как там?' },
+                    { role: 'assistant', content: 'привет! да сижу на петроградке, кофе пью|||ты сам как?' }
+                ];
+            }
+
+            // 4. Base System Prompt for Mode/Surface + Profile Projection
+            const routedBase = await getRoutedSystemPrompt(mode === 'EROTIC' ? 'EROTIC' : 'CASUAL', {
+                surface: normSurface,
+                isPublicContext: normSurface === 'GROUP'
+            });
+
+            // Specific rule instructions block
+            let ruleBlock = '';
+            if (targetRule) {
+                const rulePrompts = (activeProfile?.profile?.prompts || []).filter(p => (targetRule.prompt_ids || []).includes(p.id));
+                const ruleDirectives = rulePrompts.map(p => `[${p.title}]: ${p.content}`).join('\n');
+                ruleBlock = `\n\n[АКТИВНОЕ ПРАВИЛО: ${targetRule.title}]\n${ruleDirectives || targetRule.description || ''}`;
+            }
+
+            // 5. Complete System Prompt (as assembled in src/ai.js)
+            const completeSystemPrompt = [
+                routedBase,
+                ruleBlock,
+                `\n\n${radiantContextText}`,
+                `\n\n=== 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===\n${memoryText}`
+            ].filter(Boolean).join('');
+
+            // 6. Complete Messages Array
+            const testUserText = userText || 'привет, че делаешь сейчас?';
+            const messages = [
+                { role: 'system', content: completeSystemPrompt },
+                ...recentEvents,
+                { role: 'user', content: testUserText }
+            ];
+
+            // 7. Generation Parameters and Provider
+            const providers = await getAiProviders();
+            let selectedProvider = null;
+            if (targetRule?.provider_id) {
+                selectedProvider = providers.find(p => Number(p.id) === Number(targetRule.provider_id));
+            }
+            if (!selectedProvider) {
+                selectedProvider = providers.find(p => p.is_active) || providers[0] || null;
+            }
+
+            const generationParams = {
+                temperature: targetRule?.temperature !== undefined ? targetRule.temperature : 0.7,
+                max_tokens: targetRule?.max_tokens || 230,
+                provider_id: selectedProvider?.id || null,
+                provider_name: selectedProvider?.name || 'Основной',
+                model: selectedProvider?.model_name || 'gpt-4o-mini',
+                fallback_providers: (targetRule?.fallback_provider_ids || [])
+                    .map(fid => providers.find(p => Number(p.id) === Number(fid))?.name)
+                    .filter(Boolean)
+            };
+
+            const fullPromptText = messages.map(m => `--- [ROLE: ${m.role.toUpperCase()}] ---\n${m.content}`).join('\n\n');
+
+            res.json({
+                success: true,
+                rule: targetRule,
+                surface: normSurface,
+                mode,
+                sampleUserId: targetUserId,
+                systemPrompt: completeSystemPrompt,
+                radiantContext: radiantContextText,
+                radiantLayers,
+                memories: memoryText,
+                history: recentEvents,
+                messages,
+                fullPromptText,
+                generationParams,
+                estimatedTokens: Math.ceil(fullPromptText.length / 3.4)
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
     // =========================================================================
     // LIVE LLM SANDBOX: Реальная проверка драфта характера через активный провайдер
     // =========================================================================

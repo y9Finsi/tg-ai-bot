@@ -81,5 +81,18 @@ test('Figma AI Settings (Настройка ИИ) Redesign - Node 13:1719 Contra
         assert.ok(source.includes('ruleSelectedFallbackIds'), 'Must manage ruleSelectedFallbackIds selection');
         assert.ok(source.includes('Цепочка фоллбэков'), 'Must have fallback chain selector');
     });
+
+    await t.test('12. Rule card renders Посмотреть сырой промпт button in right sub-card area', () => {
+        assert.ok(source.includes('Посмотреть сырой промпт'), 'Must have Посмотреть сырой промпт button');
+        assert.ok(source.includes('handleOpenRawPrompt'), 'Must wire click to handleOpenRawPrompt');
+        assert.ok(source.includes('/api/admin/raw-prompt-preview'), 'Must call /api/admin/raw-prompt-preview');
+    });
+
+    await t.test('13. Implements RawPromptModal with Radiant context, history, and full payload view', () => {
+        assert.ok(source.includes('rawPromptModalOpen'), 'Must manage rawPromptModalOpen state');
+        assert.ok(source.includes('Сырой промпт при запросе'), 'Must render modal title');
+        assert.ok(source.includes('rawPromptTab'), 'Must manage tab switching between full, system, radiant, history');
+        assert.ok(source.includes('handleCopyRawPrompt'), 'Must implement handleCopyRawPrompt');
+    });
 });
 

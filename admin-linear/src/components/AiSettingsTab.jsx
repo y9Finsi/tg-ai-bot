@@ -12,7 +12,9 @@ import {
     ArrowDown,
     Trash2,
     Server,
-    Zap
+    Zap,
+    Eye,
+    Copy
 } from 'lucide-react';
 import { api } from '@/lib/api.js';
 
@@ -89,6 +91,13 @@ export function AiSettingsTab({ toast }) {
 
     const [attachModalRuleId, setAttachModalRuleId] = useState(null);
     const [paramPopover, setParamPopover] = useState(null); 
+
+    // Raw prompt inspector modal state
+    const [rawPromptModalOpen, setRawPromptModalOpen] = useState(false);
+    const [rawPromptData, setRawPromptData] = useState(null);
+    const [rawPromptLoading, setRawPromptLoading] = useState(false);
+    const [rawPromptCopied, setRawPromptCopied] = useState(false);
+    const [rawPromptTab, setRawPromptTab] = useState('full'); // 'full' | 'system' | 'radiant' | 'history'
 
     // Load active providers list
     const loadProviders = useCallback(async () => {
@@ -613,6 +622,45 @@ export function AiSettingsTab({ toast }) {
         });
         setRulesList(nextRules);
         saveProfileChanges(promptsList, nextRules);
+    };
+
+    // Open raw prompt inspector for a specific rule
+    const handleOpenRawPrompt = async (rule) => {
+        try {
+            setRawPromptLoading(true);
+            setRawPromptModalOpen(true);
+            setRawPromptData(null);
+            setRawPromptCopied(false);
+            setRawPromptTab('full');
+
+            const res = await api('/api/admin/raw-prompt-preview', {
+                method: 'POST',
+                body: JSON.stringify({
+                    ruleId: rule.id,
+                    surface: activeSurface,
+                    mode: rule.routing_mode || 'CASUAL'
+                })
+            });
+
+            if (res && res.success) {
+                setRawPromptData(res);
+            } else {
+                toast?.error?.('Не удалось сформировать сырой промпт');
+            }
+        } catch (err) {
+            console.error('[RAW PROMPT FETCH ERROR]', err);
+            toast?.error?.(err.message || 'Ошибка загрузки сырого промпта');
+        } finally {
+            setRawPromptLoading(false);
+        }
+    };
+
+    const handleCopyRawPrompt = (textToCopy) => {
+        if (!textToCopy) return;
+        navigator.clipboard?.writeText(textToCopy);
+        setRawPromptCopied(true);
+        toast?.success?.('Сырой промпт скопирован в буфер');
+        setTimeout(() => setRawPromptCopied(false), 2000);
     };
 
     // Update single parameter (tokens or temperature)
@@ -1197,6 +1245,17 @@ export function AiSettingsTab({ toast }) {
                                                 >
                                                     <span>Темп: {rule.temperature !== undefined ? String(rule.temperature).replace('.', ',') : '0,7'}</span>
                                                     <ChevronRight className="w-4 h-4 text-white/50 stroke-[2]" />
+                                                </button>
+
+                                                {/* Card 3: Посмотреть сырой промпт (в пустой области под Токенами и Темпом) */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenRawPrompt(rule)}
+                                                    title="Посмотреть полный сформированный промпт со всеми данными Radiant"
+                                                    className="w-full py-2.5 px-3 rounded-[16px] bg-[#272727] hover:bg-[#323232] border border-white/[0.06] hover:border-white/15 text-[#9a9a9a] hover:text-white text-[13px] font-medium flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98 select-none group"
+                                                >
+                                                    <Eye className="w-4 h-4 text-[#8693ff] group-hover:scale-110 transition-transform stroke-[2]" />
+                                                    <span>Посмотреть сырой промпт</span>
                                                 </button>
 
                                                 {/* Parameter Popover */}
@@ -1852,6 +1911,272 @@ export function AiSettingsTab({ toast }) {
                                 className="px-5 py-2 rounded-full bg-[#292e5e] hover:bg-[#343b75] text-sm text-white font-medium cursor-pointer"
                             >
                                 Готово
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL: Просмотр сырого промпта (со всеми данными Radiant, памятью и историей) */}
+            {rawPromptModalOpen && (
+                <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                    <div className="w-full max-w-4xl max-h-[90vh] bg-[#151515] border border-white/10 rounded-[24px] flex flex-col overflow-hidden text-white shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+                        {/* Modal Header */}
+                        <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between bg-[#191919]">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-xl bg-[#8693ff]/10 text-[#8693ff] border border-[#8693ff]/20">
+                                    <Eye className="w-5 h-5 stroke-[2]" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-base font-semibold text-white">
+                                            Сырой промпт при запросе
+                                        </h3>
+                                        {rawPromptData?.rule?.title && (
+                                            <span className="text-xs px-2.5 py-0.5 rounded-full bg-white/[0.08] border border-white/10 text-white/80">
+                                                {rawPromptData.rule.title}
+                                            </span>
+                                        )}
+                                        {rawPromptData?.mode && (
+                                            <span className={`text-[11px] font-semibold uppercase px-2 py-0.5 rounded-md ${
+                                                rawPromptData.mode === 'EROTIC'
+                                                    ? 'bg-[#ff5588]/15 text-[#ff88aa] border border-[#ff5588]/30'
+                                                    : 'bg-[#8693ff]/15 text-[#a8b3ff] border border-[#8693ff]/30'
+                                            }`}>
+                                                {rawPromptData.mode}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-white/50 mt-0.5">
+                                        Честный снимок всего payload, уходящего в LLM в Telegram со всеми слоями Radiant и памятью
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                {rawPromptData && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const text = rawPromptTab === 'system'
+                                                ? rawPromptData.systemPrompt
+                                                : rawPromptTab === 'radiant'
+                                                ? rawPromptData.radiantContext
+                                                : rawPromptTab === 'history'
+                                                ? JSON.stringify(rawPromptData.history, null, 2)
+                                                : rawPromptData.fullPromptText;
+                                            handleCopyRawPrompt(text);
+                                        }}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-white/15 border border-white/10 text-xs font-medium text-white/80 hover:text-white transition-all cursor-pointer"
+                                    >
+                                        <Copy className="w-3.5 h-3.5 stroke-[2]" />
+                                        <span>{rawPromptCopied ? 'Скопировано' : 'Скопировать'}</span>
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setRawPromptModalOpen(false)}
+                                    className="p-1.5 rounded-xl text-white/40 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Top Parameters HUD Banner */}
+                        {rawPromptData?.generationParams && (
+                            <div className="px-6 py-2.5 bg-[#121212] border-b border-white/5 flex flex-wrap items-center justify-between text-xs text-white/60 gap-3">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-white/40">Провайдер:</span>
+                                        <span className="text-white font-medium">{rawPromptData.generationParams.provider_name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-white/40">Модель:</span>
+                                        <span className="text-[#a8b3ff] font-mono">{rawPromptData.generationParams.model}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-white/40">Температура:</span>
+                                        <span className="text-white font-medium">{rawPromptData.generationParams.temperature}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-white/40">Токены:</span>
+                                        <span className="text-white font-medium">{rawPromptData.generationParams.max_tokens}</span>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <span className="text-white/40">Оценка токенов payload:</span>
+                                    <span className="px-2 py-0.5 rounded-md bg-white/[0.08] text-white/90 font-mono text-[11px]">
+                                        ~{rawPromptData.estimatedTokens || 0} tok
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* View Tabs */}
+                        <div className="px-6 pt-3 bg-[#151515] border-b border-white/5 flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setRawPromptTab('full')}
+                                className={`px-3 py-1.5 text-xs font-medium rounded-t-lg transition-all cursor-pointer border-b-2 ${
+                                    rawPromptTab === 'full'
+                                        ? 'border-[#8693ff] text-white bg-white/[0.04]'
+                                        : 'border-transparent text-white/50 hover:text-white/80'
+                                }`}
+                            >
+                                Полный Payload ({rawPromptData?.messages?.length || 0} сообщений)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setRawPromptTab('system')}
+                                className={`px-3 py-1.5 text-xs font-medium rounded-t-lg transition-all cursor-pointer border-b-2 ${
+                                    rawPromptTab === 'system'
+                                        ? 'border-[#8693ff] text-white bg-white/[0.04]'
+                                        : 'border-transparent text-white/50 hover:text-white/80'
+                                }`}
+                            >
+                                Системный промпт
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setRawPromptTab('radiant')}
+                                className={`px-3 py-1.5 text-xs font-medium rounded-t-lg transition-all cursor-pointer border-b-2 ${
+                                    rawPromptTab === 'radiant'
+                                        ? 'border-[#8693ff] text-white bg-white/[0.04]'
+                                        : 'border-transparent text-white/50 hover:text-white/80'
+                                }`}
+                            >
+                                Сводка Radiant (СПб, Погода, Нужды)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setRawPromptTab('history')}
+                                className={`px-3 py-1.5 text-xs font-medium rounded-t-lg transition-all cursor-pointer border-b-2 ${
+                                    rawPromptTab === 'history'
+                                        ? 'border-[#8693ff] text-white bg-white/[0.04]'
+                                        : 'border-transparent text-white/50 hover:text-white/80'
+                                }`}
+                            >
+                                История и Память
+                            </button>
+                        </div>
+
+                        {/* Modal Body / Code Viewport */}
+                        <div className="flex-1 overflow-y-auto p-6 bg-[#0d0d0d] font-mono text-xs leading-relaxed select-text">
+                            {rawPromptLoading ? (
+                                <div className="h-64 flex flex-col items-center justify-center gap-3 text-white/50">
+                                    <Loader2 className="w-8 h-8 animate-spin text-[#8693ff]" />
+                                    <span>Собираем реальные данные Radiant и промпта...</span>
+                                </div>
+                            ) : rawPromptData ? (
+                                <>
+                                    {rawPromptTab === 'full' && (
+                                        <div className="flex flex-col gap-4">
+                                            {rawPromptData.messages?.map((m, idx) => (
+                                                <div 
+                                                    key={idx} 
+                                                    className={`p-4 rounded-xl border ${
+                                                        m.role === 'system'
+                                                            ? 'bg-[#14141c] border-[#8693ff]/20 text-[#d8dcff]'
+                                                            : m.role === 'user'
+                                                            ? 'bg-[#1b1915] border-amber-500/20 text-amber-100/90'
+                                                            : 'bg-[#141d17] border-emerald-500/20 text-emerald-100/90'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/5 text-[11px] font-semibold uppercase tracking-wider opacity-75">
+                                                        <span>Роль: {m.role}</span>
+                                                        <span className="text-[10px] lowercase opacity-50 font-normal">
+                                                            {m.content.length} символов
+                                                        </span>
+                                                    </div>
+                                                    <pre className="whitespace-pre-wrap font-mono text-[12px] leading-5 break-words">
+                                                        {m.content}
+                                                    </pre>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {rawPromptTab === 'system' && (
+                                        <div className="p-4 rounded-xl bg-[#14141c] border border-[#8693ff]/20 text-[#d8dcff]">
+                                            <pre className="whitespace-pre-wrap font-mono text-[12px] leading-5 break-words">
+                                                {rawPromptData.systemPrompt}
+                                            </pre>
+                                        </div>
+                                    )}
+
+                                    {rawPromptTab === 'radiant' && (
+                                        <div className="flex flex-col gap-4">
+                                            <div className="p-4 rounded-xl bg-[#171a22] border border-cyan-500/20 text-cyan-100/90">
+                                                <div className="text-[11px] font-semibold uppercase tracking-wider text-cyan-400 mb-2">
+                                                    Форматированный блок для модели:
+                                                </div>
+                                                <pre className="whitespace-pre-wrap font-mono text-[12px] leading-5 break-words">
+                                                    {rawPromptData.radiantContext}
+                                                </pre>
+                                            </div>
+
+                                            {rawPromptData.radiantLayers && (
+                                                <div className="p-4 rounded-xl bg-[#121212] border border-white/5 text-white/70">
+                                                    <div className="text-[11px] font-semibold uppercase tracking-wider text-white/50 mb-2">
+                                                        Сырые слои симуляции (JSON):
+                                                    </div>
+                                                    <pre className="whitespace-pre-wrap font-mono text-[11px] leading-4 text-white/60">
+                                                        {JSON.stringify(rawPromptData.radiantLayers, null, 2)}
+                                                    </pre>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {rawPromptTab === 'history' && (
+                                        <div className="flex flex-col gap-4">
+                                            <div className="p-4 rounded-xl bg-[#18161f] border border-purple-500/20 text-purple-100/90">
+                                                <div className="text-[11px] font-semibold uppercase tracking-wider text-purple-400 mb-2">
+                                                    === 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===
+                                                </div>
+                                                <pre className="whitespace-pre-wrap font-mono text-[12px] leading-5 break-words">
+                                                    {rawPromptData.memories}
+                                                </pre>
+                                            </div>
+
+                                            <div className="p-4 rounded-xl bg-[#121212] border border-white/5 text-white/80">
+                                                <div className="text-[11px] font-semibold uppercase tracking-wider text-white/50 mb-2">
+                                                    Последние реплики диалога (Multi-turn):
+                                                </div>
+                                                <div className="flex flex-col gap-2 mt-2">
+                                                    {rawPromptData.history?.map((h, i) => (
+                                                        <div key={i} className="flex items-start gap-2 text-xs">
+                                                            <span className="font-semibold text-white/50 uppercase w-20 flex-shrink-0">
+                                                                {h.role}:
+                                                            </span>
+                                                            <span className="text-white/90 break-words">{h.content}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="h-48 flex items-center justify-center text-white/30 italic">
+                                    Нет данных для отображения
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="px-6 py-3 bg-[#151515] border-t border-white/10 flex items-center justify-between">
+                            <span className="text-xs text-white/40">
+                                Эндпоинт: <span className="font-mono text-white/60">/api/admin/raw-prompt-preview</span>
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setRawPromptModalOpen(false)}
+                                className="px-5 py-2 rounded-full bg-[#292e5e] hover:bg-[#343b75] text-sm text-white font-medium cursor-pointer transition-all"
+                            >
+                                Закрыть
                             </button>
                         </div>
                     </div>
