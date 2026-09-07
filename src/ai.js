@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import {
     getUser, addApiCost,
-    getActiveAiProvider, getUserMemories, getMemorySettings,
+    getActiveAiProvider, getOrderedAiProviders, getUserMemories, getMemorySettings,
     getLeraPhotoCandidates, getSentPhotos,
     getRecentConversationEvents, getRecentScopeConversationEvents, formatConversationEvent, getRecentSimulationReflections,
     savePromptLog, applyUserRelationshipEvent, getInitiativeDailyCounts,
@@ -9,6 +9,7 @@ import {
     getLeraProfile, formatConversationGap, toLocalDateString,
     getLeraContent, getActiveOpenThread, deactivateOpenThread
 } from './db/database.js';
+import { evaluateRules } from './ai/profile/rule_evaluator.js';
 import { getRoutedSystemPrompt } from './prompts.js';
 import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX } from './constants/intents.js';
 import { requestLlmCompletion } from './ai/llm_client.js';
@@ -906,6 +907,32 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     persistMemoryRetrieval(userId, memoryRetrieval);
     const routingSettings = await getRoutingSettings();
     const generationParams = getModeGenerationParams(routingMode, routingSettings);
+
+    // Применение параметров и провайдера из боевого правила профиля Леры (если есть активное для surface + routingMode)
+    try {
+        const leraProfileData = await getLeraProfile();
+        const ruleEvaluation = evaluateRules(leraProfileData?.profile?.blocks || [], { surface, mode: routingMode, routingMode });
+        const matchedRule = ruleEvaluation.active?.[0];
+        if (matchedRule) {
+            if (Number.isFinite(matchedRule.max_tokens) && matchedRule.max_tokens > 0) {
+                generationParams.maxTokens = matchedRule.max_tokens;
+            }
+            if (Number.isFinite(matchedRule.temperature) && matchedRule.temperature >= 0) {
+                generationParams.temperature = matchedRule.temperature;
+            }
+            if (matchedRule.provider_id) {
+                const allProviders = await getOrderedAiProviders();
+                const primaryProv = allProviders.find(p => Number(p.id) === Number(matchedRule.provider_id));
+                if (primaryProv) {
+                    const fallbackIds = Array.isArray(matchedRule.fallback_provider_ids) ? matchedRule.fallback_provider_ids.map(Number) : [];
+                    const fallbackProvs = fallbackIds.map(fId => allProviders.find(p => Number(p.id) === fId)).filter(Boolean);
+                    generationParams.providers = [primaryProv, ...fallbackProvs];
+                }
+            }
+        }
+    } catch (ruleErr) {
+        console.warn('[RULE PARAMS OVERRIDE WARN]:', ruleErr.message);
+    }
 
     // Логирование вызова LLM в prompt_logs. Никогда не блокирует генерацию ответа.
     const writePromptLog = (extra = {}) => {

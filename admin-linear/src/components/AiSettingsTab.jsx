@@ -258,44 +258,57 @@ export function AiSettingsTab({ toast }) {
             const rawRules = (p.blocks || []).filter(b => b.category !== 'prompt_module');
 
             if (rawRules.length === 0) {
-                // Initialize default Figma rules if empty
+                // Initialize default combat rules matching live router
                 const initialRules = [
                     {
-                        id: 'rule_evening_channel',
-                        title: 'Вечер / тг канал',
-                        surface: 'CHANNEL',
-                        surfaces: ['CHANNEL'],
-                        mode: 'ALL',
-                        enabled: true,
-                        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech'],
-                        max_tokens: 230,
-                        temperature: 0.7,
-                        provider_id: null,
-                        fallback_provider_ids: []
-                    },
-                    {
                         id: 'rule_chat_casual',
-                        title: 'Быстрый ответ / личка',
+                        title: 'Личка / Casual (Повседневный диалог)',
                         surface: 'CHAT',
                         surfaces: ['CHAT'],
                         mode: 'CASUAL',
                         enabled: true,
-                        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech'],
-                        max_tokens: 250,
-                        temperature: 0.66,
+                        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual'],
+                        max_tokens: 200,
+                        temperature: 0.68,
+                        provider_id: null,
+                        fallback_provider_ids: []
+                    },
+                    {
+                        id: 'rule_chat_erotic',
+                        title: 'Личка / Erotic 18+ (Близость и вирт)',
+                        surface: 'CHAT',
+                        surfaces: ['CHAT'],
+                        mode: 'EROTIC',
+                        enabled: true,
+                        attachedPromptIds: ['prompt_character', 'routing_erotic', 'prompt_flirt'],
+                        max_tokens: 240,
+                        temperature: 0.75,
                         provider_id: null,
                         fallback_provider_ids: []
                     },
                     {
                         id: 'rule_morning_initiative',
-                        title: 'Утренняя инициатива',
+                        title: 'Инициатива (Когда Лера пишет первой)',
                         surface: 'INITIATIVE',
                         surfaces: ['INITIATIVE'],
-                        mode: 'CASUAL',
+                        mode: 'ALL',
                         enabled: true,
-                        attachedPromptIds: ['prompt_character', 'prompt_flirt'],
+                        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech'],
                         max_tokens: 200,
-                        temperature: 0.75,
+                        temperature: 0.72,
+                        provider_id: null,
+                        fallback_provider_ids: []
+                    },
+                    {
+                        id: 'rule_evening_channel',
+                        title: 'Тг-канал (Публичный постинг)',
+                        surface: 'CHANNEL',
+                        surfaces: ['CHANNEL'],
+                        mode: 'ALL',
+                        enabled: true,
+                        attachedPromptIds: ['prompt_bio', 'prompt_speech'],
+                        max_tokens: 230,
+                        temperature: 0.70,
                         provider_id: null,
                         fallback_provider_ids: []
                     }
@@ -1040,6 +1053,11 @@ export function AiSettingsTab({ toast }) {
                                                 {rule.mode === 'CASUAL' && (
                                                     <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#8693ff]/20 text-[#8693ff] font-medium select-none flex-shrink-0">
                                                         Casual
+                                                    </span>
+                                                )}
+                                                {(!rule.mode || rule.mode === 'ALL') && (
+                                                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/10 text-white/60 font-normal select-none flex-shrink-0">
+                                                        Все режимы
                                                     </span>
                                                 )}
                                             </div>
