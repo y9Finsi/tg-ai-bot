@@ -133,6 +133,7 @@ src/
     - `GET /api/admin/lera-profile/versions/:id` — получение исторической версии.
     - `POST /api/admin/lera-profile/rollback/:id` — откат к выбранной версии профиля.
     - `POST /api/admin/lera-profile/preview` — компиляция проекции (`CHAT`, `CHANNEL`, `INITIATIVE`).
+    - Модульные правила (`rule_evaluator.js`): поддержка условий по поверхностям (`surfaces: ['CHAT', 'CHANNEL', 'INITIATIVE']`) и режимам диалога (`mode: 'ALL' | 'CASUAL' | 'EROTIC'`). Выключенные (`enabled: false`) или несоответствующие режиму правила отсеиваются рантаймом.
     - `POST /api/admin/llm-sandbox` — боевой Dry-Run через активный первичный LLM-провайдер с замером латентности, токенов, разделением на бабблы по `|||` и скорингом AI-Судьи.
 
 ---
@@ -177,9 +178,21 @@ src/
 - **Локальный режим без БД:** При недоступности PostgreSQL/Redis (локальная разработка без поднятого Docker), `src/server.js` прозрачно переключается на in-memory симуляцию (`inMemorySimState`, `inMemoryActiveTask`, `inMemoryQueue`, `inMemoryInventory`).
 - **Инвентарь и мутации:**
   - `GET /api/admin/inventory`: отдает список предметов (`inMemoryInventory`), текущий аутфит и каталог.
-  - `POST /api/admin/inventory/equip` / `unequip`: экипирует/снимает одежду с валидацией слота и обновлением состояния.
-  - `POST /api/admin/inventory/consume` / `use`: расходует предмет, списывает количество, применяет дельты к потребностям (`needs: hunger, fatigue, horny, etc.`) и обновляет `inMemoryInventory`.
+  - `POST /api/admin/inventory/equip` / `unequip`: экипирует/снимает одежду с валидацией слота и возвращает свежий `inventory`.
+  - `POST /api/admin/inventory/consume` / `use`: расходует предмет, списывает количество, применяет дельты к потребностям (`needs: hunger, fatigue, horny, etc.`) и возвращает актуальный `inventory`.
   - `POST /api/admin/inventory/add`: добавляет предмет в инвентарь или увеличивает количество.
-  - `POST /api/admin/radiant/mutate`: поддерживает прямое обновление массива `inventory` в теле запроса.
-  - `GET /api/admin/radiant/overview`: возвращает полный снэпшот состояния, включая актуальный `inventory`.
+  - `POST /api/admin/radiant/mutate`: поддерживает `cancel_task_id`, дельты потребностей (`hygieneDelta`, `hungerDelta`, `fatigueDelta`, `energyDelta`, `rublesDelta`) и прямое обновление массива `inventory`.
+  - `GET /api/admin/radiant/overview`: возвращает полный снэпшот состояния, включая актуальный `inventory` и `is_paused`.
+
+---
+
+## 7. Верификация контрактов и эндпоинтов админки (Test Suite)
+
+- **Тест-сьют:** `test/admin_endpoints_verification.test.js` (31 интеграционный тест на базе live Express app, реального PostgreSQL и Redis).
+- **Покрытие 100% активных эндпоинтов:**
+  - Auth: `GET /api/admin/session`, `POST /api/admin/login`, `POST /api/admin/logout` (куки HttpOnly, заголовок `x-admin-key`).
+  - Radiant: `GET /api/admin/radiant/overview`, `GET /api/admin/radiant/day`, `POST /api/admin/radiant/tick`, `POST /api/admin/radiant/god-mode`, `POST /api/admin/radiant/mutate`, `POST /api/admin/radiant/queue/push`, `DELETE /api/admin/queue/:id`.
+  - Инвентарь: `POST /api/admin/inventory/add`, `POST /api/admin/inventory/equip`, `POST /api/admin/inventory/unequip`, `POST /api/admin/inventory/consume`, `POST /api/admin/inventory/use`.
+  - Провайдеры и профиль: `GET /api/admin/providers`, `POST /api/admin/providers`, `PUT /api/admin/providers/:id`, `PATCH /api/admin/providers/:id`, `POST /api/admin/providers/:id/activate`, `PATCH /api/admin/providers/:id/priority`, `DELETE /api/admin/providers/:id`, `GET /api/admin/lera-profile`, `POST /api/admin/lera-profile`.
+
 

@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { FastForward, RotateCw, Play, Pause } from 'lucide-react';
 import { api } from '@/lib/api.js';
 import { Header } from '@/components/Header.jsx';
 import { LeraStatusHero } from '@/components/LeraStatusHero.jsx';
 import { InventoryWidget } from '@/components/InventoryWidget.jsx';
 import { KanbanBoard } from '@/components/KanbanBoard.jsx';
 import { NeedsPanel } from '@/components/NeedsPanel.jsx';
-import { FriendsPanel } from '@/components/FriendsPanel.jsx';
-import { DecisionsHistoryPanel } from '@/components/DecisionsHistoryPanel.jsx';
 import { AiSettingsTab } from '@/components/AiSettingsTab.jsx';
 import { ZenlyMap } from '@/components/ZenlyMap.jsx';
 import { Toast } from '@/components/Toast.jsx';
@@ -219,80 +218,46 @@ export function App() {
     const weather = state?.weather || snapshot?.weather || null;
 
     return (
-        <div className="min-h-screen flex flex-col bg-[#08090a] text-[#f4f4f5]">
+        <div className="min-h-screen flex flex-col bg-[#0c0c0c] text-[#f4f4f5]">
             <Header
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
-                snapshot={snapshot}
-                isPaused={isPaused}
-                onTogglePause={handleTogglePause}
-                onTick={handleTick}
-                onRefresh={() => loadRadiantData()}
-                loading={loading}
-                autoRefresh={autoRefresh}
-                setAutoRefresh={setAutoRefresh}
             />
 
-            {/* TAB 1: OVERVIEW / PULSE (LINEAR COLUMN FLOW, MAX-W-[830PX], 6-COL SYSTEM) */}
+            {/* TAB 1: PULT — Figma frame 13:1910 */}
             {activeTab === 'overview' && (
-                <main className="flex-1 w-full max-w-[830px] mx-auto px-3 sm:px-4 py-5 animate-in fade-in duration-150">
-                    <div className="grid grid-cols-6 gap-3.5 items-start">
-                        {/* 1. Lera Status Hero (col-span-6) */}
-                        <div className="col-span-6">
-                            <LeraStatusHero
-                                snapshot={snapshot}
-                                activeTask={activeTask}
-                                onOpenMap={() => setActiveTab('map')}
-                            />
-                        </div>
+                <main className="flex-1 w-full max-w-[1042px] mx-auto pt-[10px] pb-[60px] animate-in fade-in duration-150">
+                    <div className="space-y-6">
+                        {/* 1. Lera Status Hero (Figma 15:2765) */}
+                        <LeraStatusHero
+                            snapshot={snapshot}
+                            activeTask={activeTask}
+                            onOpenMap={() => setActiveTab('map')}
+                        />
 
-                        {/* 2. Needs & Vitals (col-span-6) */}
-                        <div className="col-span-6">
-                            <NeedsPanel
-                                needs={needs}
-                                onNeedsChanged={() => loadRadiantData(true)}
-                                toast={toast}
-                            />
-                        </div>
+                        {/* 2. Needs & Vitals (Figma 13:2132) */}
+                        <NeedsPanel
+                            needs={needs}
+                            onNeedsChanged={() => loadRadiantData(true)}
+                            toast={toast}
+                        />
 
-                        {/* 3. Schedule & Tasks (col-span-6) */}
-                        <div className="col-span-6">
-                            <KanbanBoard
-                                pendingTasks={pendingTasks}
-                                activeTask={activeTask}
-                                completedTasks={completedTasks}
-                                cancelledTasks={cancelledTasks}
-                                onTasksChanged={() => loadRadiantData()}
-                                toast={toast}
-                            />
-                        </div>
+                        {/* 3. Schedule & Tasks (Figma 13:2135) */}
+                        <KanbanBoard
+                            pendingTasks={pendingTasks}
+                            activeTask={activeTask}
+                            completedTasks={completedTasks}
+                            cancelledTasks={cancelledTasks}
+                            onTasksChanged={() => loadRadiantData()}
+                            toast={toast}
+                        />
 
-                        {/* 4. Inventory & Equipment (col-span-6) */}
-                        <div className="col-span-6">
-                            <InventoryWidget
-                                snapshot={snapshot}
-                                onDataChanged={() => loadRadiantData()}
-                                toast={toast}
-                            />
-                        </div>
-
-                        {/* 4. Friends & Social Circle (col-span-6) */}
-                        <div className="col-span-6">
-                            <FriendsPanel
-                                npcs={npcs}
-                                onActionTriggered={() => loadRadiantData()}
-                                toast={toast}
-                            />
-                        </div>
-
-                        {/* 5. Decisions & History Log (col-span-6) */}
-                        <div className="col-span-6">
-                            <DecisionsHistoryPanel
-                                snapshot={snapshot}
-                                onRefresh={() => loadRadiantData()}
-                                toast={toast}
-                            />
-                        </div>
+                        {/* 4. Inventory & Equipment (Figma 14:2186) */}
+                        <InventoryWidget
+                            snapshot={snapshot}
+                            onDataChanged={() => loadRadiantData()}
+                            toast={toast}
+                        />
                     </div>
                 </main>
             )}
@@ -304,7 +269,7 @@ export function App() {
 
             {/* TAB 3: ZENLY INTERACTIVE MAP */}
             {activeTab === 'map' && (
-                <main className="flex-1 w-full h-[calc(100vh-52px)] overflow-hidden animate-in fade-in duration-150">
+                <main className="flex-1 w-full h-[calc(100vh-86px)] overflow-hidden animate-in fade-in duration-150">
                     <ZenlyMap
                         currentLocation={locId}
                         transit={transit}
@@ -317,6 +282,40 @@ export function App() {
                     />
                 </main>
             )}
+
+            {/* Floating Radiant Simulation Controls (Discreet HUD) */}
+            <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 p-1.5 rounded-full bg-[#1b1d22]/90 backdrop-blur-md border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+                <button
+                    type="button"
+                    onClick={handleTick}
+                    title="Шаг симуляции +15 минут (T)"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#292e5e] hover:bg-[#383f7d] text-white text-xs font-medium transition-all active:scale-95 cursor-pointer"
+                >
+                    <FastForward className="w-3.5 h-3.5 text-sky-400 stroke-[1.5]" />
+                    <span>+15м</span>
+                </button>
+
+                <button
+                    type="button"
+                    onClick={handleTogglePause}
+                    title={isPaused ? 'Возобновить симуляцию (Space)' : 'Поставить на паузу (Space)'}
+                    className={`p-2 rounded-full hover:bg-white/[0.08] transition-all active:scale-95 cursor-pointer ${
+                        isPaused ? 'text-amber-400' : 'text-white/70 hover:text-white'
+                    }`}
+                >
+                    {isPaused ? <Play className="w-3.5 h-3.5 fill-current" /> : <Pause className="w-3.5 h-3.5 fill-current" />}
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => loadRadiantData()}
+                    disabled={loading}
+                    title="Обновить состояние (R)"
+                    className="p-2 rounded-full hover:bg-white/[0.08] text-white/70 hover:text-white transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                >
+                    <RotateCw className={`w-3.5 h-3.5 stroke-[1.5] ${loading ? 'animate-spin text-sky-400' : ''}`} />
+                </button>
+            </div>
 
             <Toast notice={notice} onDismiss={() => setNotice(null)} />
         </div>

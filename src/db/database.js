@@ -36,43 +36,6 @@ export async function initDatabaseTables() {
     try {
         console.log("🛠️ [DB SCHEMA] Проверка и авто-создание таблиц PostgreSQL...");
 
-        const schemaV3Path = path.join(__dirname, 'schema_v3.sql');
-        if (fs.existsSync(schemaV3Path)) {
-            const schemaV3Sql = fs.readFileSync(schemaV3Path, 'utf8');
-            await query(schemaV3Sql);
-            console.log("⚡ [DB SCHEMA V3] Таблицы Radiant LERA Engine (sim_state, sim_inventory, sim_queue, sim_npc_state, sim_diary) применены!");
-        }
-
-        await query(`
-            CREATE TABLE IF NOT EXISTS schema_migrations (
-                version VARCHAR(128) PRIMARY KEY,
-                applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-        `);
-
-        const migrationDir = path.join(__dirname, 'migrations');
-        const migrationFiles = fs.existsSync(migrationDir)
-            ? fs.readdirSync(migrationDir).filter(file => file.endsWith('.sql')).sort()
-            : [];
-        for (const migrationFile of migrationFiles) {
-            const migrationVersion = migrationFile.replace(/\.sql$/i, '');
-            const applied = await query('SELECT 1 FROM schema_migrations WHERE version = $1', [migrationVersion]);
-            if (applied.rowCount > 0) continue;
-            const client = await pool.connect();
-            try {
-                await client.query('BEGIN');
-                await client.query(fs.readFileSync(path.join(migrationDir, migrationFile), 'utf8'));
-                await client.query('INSERT INTO schema_migrations (version) VALUES ($1)', [migrationVersion]);
-                await client.query('COMMIT');
-                console.log(`⚡ [DB MIGRATION] ${migrationFile} applied.`);
-            } catch (migrationError) {
-                await client.query('ROLLBACK');
-                throw migrationError;
-            } finally {
-                client.release();
-            }
-        }
-
         await query(`
             CREATE TABLE IF NOT EXISTS users (
                 telegram_id BIGINT PRIMARY KEY,
@@ -151,7 +114,39 @@ export async function initDatabaseTables() {
                 sampling_capabilities JSONB NOT NULL DEFAULT '{}'::jsonb,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+        `);
 
+        await query(`
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version VARCHAR(128) PRIMARY KEY,
+                applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        `);
+
+        const migrationDir = path.join(__dirname, 'migrations');
+        const migrationFiles = fs.existsSync(migrationDir)
+            ? fs.readdirSync(migrationDir).filter(file => file.endsWith('.sql')).sort()
+            : [];
+        for (const migrationFile of migrationFiles) {
+            const migrationVersion = migrationFile.replace(/\.sql$/i, '');
+            const applied = await query('SELECT 1 FROM schema_migrations WHERE version = $1', [migrationVersion]);
+            if (applied.rowCount > 0) continue;
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                await client.query(fs.readFileSync(path.join(migrationDir, migrationFile), 'utf8'));
+                await client.query('INSERT INTO schema_migrations (version) VALUES ($1)', [migrationVersion]);
+                await client.query('COMMIT');
+                console.log(`⚡ [DB MIGRATION] ${migrationFile} applied.`);
+            } catch (migrationError) {
+                await client.query('ROLLBACK');
+                throw migrationError;
+            } finally {
+                client.release();
+            }
+        }
+
+        await query(`
             CREATE TABLE IF NOT EXISTS user_memories (
                 id SERIAL PRIMARY KEY,
                 user_id BIGINT NOT NULL,
@@ -442,6 +437,13 @@ export async function initDatabaseTables() {
 
         for (const colQuery of paymentColumns) {
             await query(colQuery).catch(() => {});
+        }
+
+        const schemaV3Path = path.join(__dirname, 'schema_v3.sql');
+        if (fs.existsSync(schemaV3Path)) {
+            const schemaV3Sql = fs.readFileSync(schemaV3Path, 'utf8');
+            await query(schemaV3Sql);
+            console.log("⚡ [DB SCHEMA V3] Таблицы Radiant LERA Engine (sim_state, sim_inventory, sim_queue, sim_npc_state, sim_diary) применены!");
         }
 
         console.log("✅ [DB SCHEMA SUCCESS] Все таблицы и колонки PostgreSQL активны!");
@@ -2367,8 +2369,8 @@ export async function rollbackLeraProfileVersion(id, { author = 'admin' } = {}) 
     return saveLeraProfileVersion(version.profile, { author, source: `rollback:${id}` });
 }
 
-export function getLeraProfileProjection(profile, surface = 'CHAT') {
-    return getLeraProfileProjectionDetails(profile, surface).text;
+export function getLeraProfileProjection(profile, surface = 'CHAT', context = {}) {
+    return getLeraProfileProjectionDetails(profile, surface, context).text;
 }
 
 export function getLeraProfileProjectionDetailsCompat(profile, surface = 'CHAT', context = {}) {

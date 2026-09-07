@@ -14,9 +14,9 @@
 - **Когда читать:** работа с кодом в `src/`, изменения Telegram бота (`bot.js`), API роутов (`server.js`), репозиториев БД (`src/db/`), BullMQ очередей (`queue.js`), AI Matrix и движка NPC Radiant (`src/radiant/`).
 - **Содержит:** карту каталогов `src/`, таблицы БД и миграции, логику симуляции персонажа, контекстный пайплайн LLM.
 
-### 3. [frontend.md](file:///Users/bogdan/Desktop/Telegram-AI-bot-with-payments-main/memory/frontend.md) — Веб-админка (admin-v2)
+### 3. [frontend.md](file:///Users/bogdan/Desktop/Telegram-AI-bot-with-payments-main/memory/frontend.md) — Веб-админка (admin-linear)
 - **Когда читать:** верстка, добавление табов и экранов в админку, стилизация, UI-компоненты, интеграция с API сервера.
-- **Содержит:** стек React 19 + Tailwind v4 + Radix, структуру `admin-v2/src/features`, правила оформления стилей и дизайн-систему.
+- **Содержит:** стек React 19 + Tailwind v4 + Linear UI, структуру `admin-linear/src`, интерактивную карту Zenly и 3D комнату.
 
 ### 4. [payments.md](file:///Users/bogdan/Desktop/Telegram-AI-bot-with-payments-main/memory/payments.md) — Платежная система
 - **Когда читать:** работа с тарифами, пополнением баланса, подписками, интеграцией Platega, обработкой вебхуков оплаты и реферальной системой.

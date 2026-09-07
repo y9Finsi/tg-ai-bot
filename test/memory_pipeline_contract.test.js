@@ -9,24 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = new URL('..', import.meta.url);
-const read = relative => {
-    if (relative === 'admin-v2/src/main.jsx') {
-        const srcDir = fileURLToPath(new URL('admin-v2/src', root));
-        const collect = dir => {
-            let out = '';
-            for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
-                const full = path.join(dir, item.name);
-                if (item.isDirectory()) out += collect(full);
-                else if (item.name.endsWith('.jsx') || item.name.endsWith('.js')) {
-                    out += fs.readFileSync(full, 'utf8') + '\n';
-                }
-            }
-            return out;
-        };
-        return collect(srcDir);
-    }
-    return fs.readFileSync(new URL(relative, root), 'utf8');
-};
+const read = relative => fs.readFileSync(new URL(relative, root), 'utf8');
 
 test('memory retrieval query uses only topical user text', () => {
     assert.equal(
@@ -172,16 +155,6 @@ test('simulation merges active Semantica precedents before lexical Postgres fall
     assert.equal(precedents[0].id, 'semantic-decision-1');
     assert.equal(precedents[0].source, 'semantica');
     assert.equal(precedents[0].score, 0.91);
-});
-
-test('admin retrieval trace consumes the persisted query, metadata and candidate traces', () => {
-    const source = read('admin-v2/src/main.jsx');
-    assert.match(source, /item\.query_text/);
-    assert.match(source, /item\.metadata/);
-    assert.match(source, /item\.traces/);
-    assert.match(source, /trace\.candidate_rank/);
-    assert.match(source, /trace\.exclusion_reason/);
-    assert.match(source, /trace\.final_score/);
 });
 
 test('prompt debug memory_used is always the exact injected fact array', () => {

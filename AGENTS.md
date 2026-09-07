@@ -53,7 +53,6 @@ docker compose up -d
 │   ├── server.js           # Express API сервер (порт 3000)
 │   └── queue.js            # BullMQ очереди и воркеры
 ├── admin-linear/           # Легковесный дашборд Леры в стиле Linear UI (Vite + React 19)
-├── deprecated/             # Архив устаревших модулей (admin-v2)
 ├── semantica-service/      # Python сервис семантической памяти (порт 8081)
 └── test/                   # Тесты на Node.js test runner
 ```
@@ -70,7 +69,7 @@ docker compose up -d
 | **Навигация и старт** | [index.md](file:///Users/bogdan/Desktop/Telegram-AI-bot-with-payments-main/memory/index.md) | Карта слоев |
 | **Общая архитектура / Новые сервисы** | [architecture.md](file:///Users/bogdan/Desktop/Telegram-AI-bot-with-payments-main/memory/architecture.md) | docker-compose.yml |
 | **Бот / API / БД / Radiant / Очереди** | [backend.md](file:///Users/bogdan/Desktop/Telegram-AI-bot-with-payments-main/memory/backend.md) | src/ |
-| **Админка / UI / Компоненты / Стили** | [frontend.md](file:///Users/bogdan/Desktop/Telegram-AI-bot-with-payments-main/memory/frontend.md) | admin-v2/ |
+| **Админка / UI / Компоненты / Стили** | [frontend.md](file:///Users/bogdan/Desktop/Telegram-AI-bot-with-payments-main/memory/frontend.md) | admin-linear/ |
 | **Платежи / Тарифы / Балансы / Чеки** | [payments.md](file:///Users/bogdan/Desktop/Telegram-AI-bot-with-payments-main/memory/payments.md) | src/services/platega.js |
 | **Странные баги / Падения / Таймауты** | [gotchas.md](file:///Users/bogdan/Desktop/Telegram-AI-bot-with-payments-main/memory/gotchas.md) | Логи, .env |
 | **Бизнес-логика / Лимиты / Понятия** | [domain.md](file:///Users/bogdan/Desktop/Telegram-AI-bot-with-payments-main/memory/domain.md) | Тарифная сетка |
@@ -86,6 +85,7 @@ docker compose up -d
    - Для фронтенда: `npm run admin:build`
    - Для бэкенда/логики: `npm test` или запуск специфичного теста из `test/`
 5. **Политика актуализации памяти:** Если в задаче изменились роуты, схемы БД, логика платежей или появились новые грабли — обнови соответствующий файл в `memory/` и укажи это в отчете.
+6. **Figma Pixel-Perfect & Zero Speculation:** При переносе экранов из Figma соблюдай точные токены (`figma-bridge` MCP / скилл `figma-design-transfer`): размеры контейнеров, gaps, paddings, cornerRadius, градиентные стопы (включая `opacity: 0`) и цвет холста. Никакой отсебятины — не добавляй кнопки, бейджи и счетчики, которых нет в макете. Служебные контролы бэкенда/симуляции выноси в отдельный ненавязчивый плавающий HUD в углу. Перед сдачей проводи аудит субагентом-критиком.
 
 ---
 

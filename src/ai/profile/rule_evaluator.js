@@ -9,7 +9,11 @@ function format(value) { return value === undefined ? 'missing' : JSON.stringify
 export function evaluateRule(rule, context = {}) {
     const conditions = Array.isArray(rule?.conditions) ? rule.conditions : [];
     for (const condition of conditions) {
-        const actual = condition.field === 'surface' ? normalizeSurface(context.surface) : readPath(context, condition.field);
+        const actual = condition.field === 'surface' 
+            ? normalizeSurface(context.surface) 
+            : (condition.field === 'mode' || condition.field === 'routingMode'
+                ? String(context.mode || context.routingMode || 'CASUAL').toUpperCase()
+                : readPath(context, condition.field));
         const expected = condition.value;
         let matched = false;
         if (condition.operator === 'equals') matched = actual === expected;
@@ -29,8 +33,24 @@ export function evaluateRules(rules = [], context = {}) {
     const skipped = [];
     for (const rule of rules) {
         if (rule?.enabled === false) { skipped.push({ ruleId: rule.id, title: rule.title, reason: 'disabled' }); continue; }
-        const surface = normalizeSurface(rule?.surface || 'CHAT');
-        if (surface !== 'ALL' && surface !== normalizeSurface(context.surface)) { skipped.push({ ruleId: rule.id, title: rule.title, reason: `surface ${surface} does not match ${normalizeSurface(context.surface)}` }); continue; }
+        const targetSurface = normalizeSurface(context.surface);
+        const ruleSurfaces = Array.isArray(rule?.surfaces) && rule.surfaces.length > 0
+            ? rule.surfaces.map(normalizeSurface)
+            : [normalizeSurface(rule?.surface || 'CHAT')];
+        const surfaceMatches = ruleSurfaces.includes('ALL') || ruleSurfaces.includes(targetSurface);
+        if (!surfaceMatches) {
+            skipped.push({ ruleId: rule.id, title: rule.title, reason: `surface [${ruleSurfaces.join(', ')}] does not match ${targetSurface}` });
+            continue;
+        }
+
+        // Mode condition check (CASUAL / EROTIC / ALL)
+        const currentMode = String(context.mode || context.routingMode || 'CASUAL').toUpperCase();
+        const ruleMode = String(rule?.mode || 'ALL').toUpperCase();
+        if (ruleMode !== 'ALL' && ruleMode !== currentMode) {
+            skipped.push({ ruleId: rule.id, title: rule.title, reason: `mode ${ruleMode} does not match current mode ${currentMode}` });
+            continue;
+        }
+
         const result = evaluateRule(rule, context);
         if (result.active) active.push(rule); else skipped.push({ ruleId: rule.id, title: rule.title, reason: result.reason });
     }

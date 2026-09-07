@@ -48,3 +48,33 @@ test('surface policy blocks private memory in groups', () => {
     assert.equal(isToolAllowed('search_archive_memory', 'GROUP'), false);
     assert.equal(isToolAllowed('schedule_followup', 'INITIATIVE'), false);
 });
+
+test('rule evaluator filters rules by dialogue mode (CASUAL / EROTIC / ALL)', () => {
+    const rules = [
+        { id: 'r_all', title: 'Всегда', surface: 'CHAT', mode: 'ALL' },
+        { id: 'r_casual', title: 'Обычный разговор', surface: 'CHAT', mode: 'CASUAL' },
+        { id: 'r_erotic', title: 'Интим 18+', surface: 'CHAT', mode: 'EROTIC' }
+    ];
+
+    const casualEval = evaluateRules(rules, { surface: 'CHAT', mode: 'CASUAL' });
+    assert.deepEqual(casualEval.active.map(r => r.id), ['r_all', 'r_casual']);
+    assert.equal(casualEval.skipped.some(s => s.ruleId === 'r_erotic'), true);
+
+    const eroticEval = evaluateRules(rules, { surface: 'CHAT', mode: 'EROTIC' });
+    assert.deepEqual(eroticEval.active.map(r => r.id), ['r_all', 'r_erotic']);
+    assert.equal(eroticEval.skipped.some(s => s.ruleId === 'r_casual'), true);
+});
+
+test('normalizer preserves rule provider_id and fallback_provider_ids', () => {
+    const profile = normalizeLeraProfile({
+        blocks: [{
+            id: 'r_custom_provider',
+            title: 'Правило с кастомным провайдером',
+            surface: 'CHAT',
+            provider_id: 3,
+            fallback_provider_ids: [1, 2]
+        }]
+    });
+    assert.equal(profile.blocks[0].provider_id, 3);
+    assert.deepEqual(profile.blocks[0].fallback_provider_ids, [1, 2]);
+});

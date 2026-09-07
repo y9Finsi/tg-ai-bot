@@ -1,28 +1,42 @@
 import React, { useState, useEffect } from 'react';
-import { 
-    Activity, 
-    Utensils, 
-    Moon, 
-    Sparkles, 
-    ShowerHead, 
-    AlertCircle, 
-    Heart, 
-    Check 
-} from 'lucide-react';
-import { NEEDS_CONFIG } from '@/lib/simulationConstants.js';
 import { api } from '@/lib/api.js';
 
-const NEED_ICONS = {
-    hunger: Utensils,
-    fatigue: Moon,
-    boredom: Sparkles,
-    hygiene: ShowerHead,
-    bladder: AlertCircle,
-    horny: Heart
-};
+const NEEDS_CONFIG = [
+    {
+        id: 'hunger',
+        label: 'Голод',
+        gradientStyle: 'linear-gradient(90deg, #28583b 0%, rgba(86, 190, 128, 0) 100%)'
+    },
+    {
+        id: 'boredom',
+        label: 'Скука',
+        gradientStyle: 'linear-gradient(90deg, #582828 0%, rgba(190, 86, 86, 0) 100%)'
+    },
+    {
+        id: 'bladder',
+        label: 'Туалет',
+        gradientStyle: 'linear-gradient(90deg, #583e28 0%, rgba(190, 135, 86, 0) 100%)'
+    },
+    {
+        id: 'fatigue',
+        label: 'Усталость',
+        gradientStyle: 'linear-gradient(90deg, #28583b 0%, rgba(86, 190, 128, 0) 100%)'
+    },
+    {
+        id: 'hygiene',
+        label: 'Свежесть',
+        gradientStyle: 'linear-gradient(90deg, #28583b 0%, rgba(86, 190, 128, 0) 100%)'
+    },
+    {
+        id: 'horny',
+        label: 'Влечение',
+        gradientStyle: 'linear-gradient(90deg, #582854 0%, rgba(190, 86, 181, 0) 100%)'
+    }
+];
 
 export function NeedsPanel({ needs = {}, onNeedsChanged, toast }) {
     const [localNeeds, setLocalNeeds] = useState(needs);
+    const [editingKey, setEditingKey] = useState(null);
     const [savingKey, setSavingKey] = useState(null);
 
     useEffect(() => {
@@ -48,110 +62,70 @@ export function NeedsPanel({ needs = {}, onNeedsChanged, toast }) {
         }
     }
 
-    async function applyPreset(presetNeeds, label) {
-        setLocalNeeds(prev => ({ ...prev, ...presetNeeds }));
-        try {
-            await api('/api/admin/radiant/mutate', {
-                method: 'POST',
-                body: JSON.stringify({ needs: presetNeeds })
-            });
-            toast?.(`Пресет: ${label}`, 'success');
-            onNeedsChanged?.();
-        } catch (err) {
-            toast?.(err.message, 'error');
-        }
-    }
-
     return (
-        <div className="bg-[#0e1013] border border-white/[0.06] rounded-xl p-3.5 sm:p-4 space-y-3">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-[#5e6ad2] stroke-[1.5]" />
-                    <h3 className="text-sm font-semibold text-white tracking-tight">Потребности</h3>
-                </div>
-                <span className="text-[10px] text-white/50 font-mono">Слайдер прямого ввода</span>
-            </div>
+        <section className="w-[1005px] mx-auto select-none">
+            {/* Header: "Состояние" (13:2131, 20px Medium White) */}
+            <h2 className="text-[20px] font-medium text-white leading-tight mb-5">
+                Состояние
+            </h2>
 
-            {/* Sliders Grid - 2 columns inside 730px container */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+            {/* 6 Indicator Cards Grid matching Figma 13:2130 (1005x92px, gap 10px) */}
+            <div className="grid grid-cols-6 gap-[10px]">
                 {NEEDS_CONFIG.map(cfg => {
-                    const Icon = NEED_ICONS[cfg.id] || Activity;
-                    const val = Math.round(localNeeds[cfg.id] ?? (cfg.inverted ? 80 : 20));
-
-                    const isAlert = cfg.inverted
-                        ? val <= cfg.warningThreshold
-                        : val >= cfg.warningThreshold;
-                    const isCritical = cfg.inverted
-                        ? val <= cfg.criticalThreshold
-                        : val >= cfg.criticalThreshold;
-
-                    let textColor = 'text-white/70';
-                    if (isCritical) {
-                        textColor = 'text-rose-400 font-semibold';
-                    } else if (isAlert) {
-                        textColor = 'text-amber-400 font-medium';
-                    }
+                    const rawVal = localNeeds[cfg.id] ?? 50;
+                    const val = Math.round(rawVal);
+                    const isSaving = savingKey === cfg.id;
+                    const isEditing = editingKey === cfg.id;
 
                     return (
-                        <div key={cfg.id} className="space-y-1.5 group">
-                            <div className="flex items-center justify-between text-xs">
-                                <span className="flex items-center gap-1.5 text-white/60 group-hover:text-white/90 transition-colors">
-                                    <Icon className="w-3.5 h-3.5 text-white/40 group-hover:text-white/70 stroke-[1.5] transition-colors" />
-                                    <span>{cfg.label}</span>
+                        <div
+                            key={cfg.id}
+                            className="w-full h-[92px] bg-[#000212]/37 border border-[#8693ff]/25 rounded-[23px] p-2 flex flex-col justify-between relative"
+                        >
+                            {/* Card Top: Label (Frame 201, 141x27px, text 16px white) */}
+                            <div className="px-1 pt-1 flex items-center justify-between">
+                                <span className="text-[16px] font-normal text-white leading-tight">
+                                    {cfg.label}
                                 </span>
-                                <div className="flex items-center gap-1.5 font-mono text-[11px]">
-                                    {savingKey === cfg.id && (
-                                        <Check className="w-3 h-3 text-emerald-400 stroke-[1.5]" />
-                                    )}
-                                    <span className={textColor}>{val}%</span>
-                                </div>
                             </div>
 
-                            <div className="relative flex items-center">
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="100"
-                                    value={val}
-                                    onChange={(e) => handleNeedChange(cfg.id, e.target.value)}
-                                    className="w-full h-1 bg-white/[0.08] rounded-full appearance-none cursor-pointer accent-[#5e6ad2] hover:accent-[#6d78e3] transition-[accent-color]"
-                                />
+                            {/* Card Bottom: Value Pill with Figma Linear Gradient (Component 41, 141x43px, r:20px) */}
+                            <div 
+                                className="h-[43px] rounded-[20px] px-3 flex items-center justify-between shadow-inner cursor-pointer select-none"
+                                style={{ background: cfg.gradientStyle }}
+                                onClick={() => setEditingKey(isEditing ? null : cfg.id)}
+                                title="Нажмите, чтобы изменить значение"
+                            >
+                                <span className="text-[16px] font-normal text-white/72">
+                                    {val}%
+                                </span>
+                                {isSaving && (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white/80 animate-ping" />
+                                )}
                             </div>
+
+                            {/* Inline Slider Popover when editing */}
+                            {isEditing && (
+                                <div className="absolute -top-12 left-0 right-0 z-30 bg-[#1b1d22] border border-white/20 rounded-xl p-2 shadow-2xl flex items-center gap-2">
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="100"
+                                        value={val}
+                                        onChange={(e) => handleNeedChange(cfg.id, e.target.value)}
+                                        className="w-full accent-[#8693ff] cursor-pointer"
+                                    />
+                                    <span className="text-xs font-mono text-white/80 w-8 text-right">
+                                        {val}%
+                                    </span>
+                                </div>
+                            )}
                         </div>
                     );
                 })}
             </div>
-
-            {/* Presets - 4 columns in 1 line */}
-            <div className="pt-2 border-t border-white/[0.04] space-y-1.5">
-                <span className="text-[10px] text-white/50 uppercase tracking-wider font-mono block">Быстрые сценарии</span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                    <button
-                        onClick={() => applyPreset({ hunger: 10, fatigue: 15 }, 'Сыта и бодра')}
-                        className="px-2.5 py-1.5 rounded-md bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.05] hover:border-white/10 text-[11px] text-white/70 hover:text-white text-center truncate transition-[background-color,border-color,transform] active:scale-[0.96]"
-                    >
-                        🥐 Покормить
-                    </button>
-                    <button
-                        onClick={() => applyPreset({ hygiene: 100, bladder: 0 }, 'В душ')}
-                        className="px-2.5 py-1.5 rounded-md bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.05] hover:border-white/10 text-[11px] text-white/70 hover:text-white text-center truncate transition-[background-color,border-color,transform] active:scale-[0.96]"
-                    >
-                        🚿 В душ
-                    </button>
-                    <button
-                        onClick={() => applyPreset({ horny: 85, boredom: 20 }, 'Флирт')}
-                        className="px-2.5 py-1.5 rounded-md bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.05] hover:border-white/10 text-[11px] text-white/70 hover:text-white text-center truncate transition-[background-color,border-color,transform] active:scale-[0.96]"
-                    >
-                        🔥 Флирт
-                    </button>
-                    <button
-                        onClick={() => applyPreset({ fatigue: 85, hunger: 20 }, 'Сон')}
-                        className="px-2.5 py-1.5 rounded-md bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.05] hover:border-white/10 text-[11px] text-white/70 hover:text-white text-center truncate transition-[background-color,border-color,transform] active:scale-[0.96]"
-                    >
-                        💤 Ко сну
-                    </button>
-                </div>
-            </div>
-        </div>
+        </section>
     );
 }
+
+export default NeedsPanel;

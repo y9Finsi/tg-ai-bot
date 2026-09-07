@@ -79,18 +79,14 @@ describe('Zenly Map & Yandex 3.0 Interactive Architecture Contracts', () => {
             assert.match(css, /transform:\s*translateY\(-130px\)/);
         });
 
-        it('admin-linear/src/App.jsx mounts ZenlyMap on map tab', () => {
-            const appSrc = read('admin-linear/src/App.jsx');
-            assert.match(appSrc, /import \{ ZenlyMap \} from '@\/components\/ZenlyMap\.jsx'/);
-            assert.match(appSrc, /<ZenlyMap/);
-            assert.doesNotMatch(appSrc, /<FullScreenMap/);
-        });
+       it('admin-linear/src/App.jsx mounts ZenlyMap on map tab', () => {
+           const appSrc = read('admin-linear/src/App.jsx');
+           assert.match(appSrc, /import \{ ZenlyMap \} from '@\/components\/ZenlyMap\.jsx'/);
+           assert.match(appSrc, /<ZenlyMap/);
+           assert.doesNotMatch(appSrc, /<FullScreenMap/);
+       });
 
-        it('Previous 3D city version is preserved in deprecated/admin-linear-three-city', () => {
-            assert.ok(exists('deprecated/admin-linear-three-city'));
-            assert.ok(exists('deprecated/admin-linear-three-city/src/components/FullScreenMap.jsx'));
-        });
-    });
+   });
 
     describe('4. SPb Locations, Transit & Solar Engine Calculations', () => {
         it('SPB_LOCATIONS contains exactly 14 verified locations with valid coordinates', async () => {
@@ -132,4 +128,3 @@ describe('Zenly Map & Yandex 3.0 Interactive Architecture Contracts', () => {
         });
     });
 });
-

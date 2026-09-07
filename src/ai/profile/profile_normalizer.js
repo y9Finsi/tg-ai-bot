@@ -48,13 +48,21 @@ export function normalizeRule(rule = {}, index = 0) {
         id: String(rule.id || `rule_${index + 1}`),
         title: String(rule.title || 'Правило').slice(0, 120),
         surface: String(rule.surface || 'CHAT').toUpperCase() === 'ALL' ? 'ALL' : normalizeSurface(rule.surface || 'CHAT'),
+        surfaces: Array.isArray(rule.surfaces) && rule.surfaces.length ? rule.surfaces : [rule.surface || 'CHAT'],
+        mode: rule.mode || 'ALL',
         enabled: rule.enabled !== false,
         priority: Number.isFinite(Number(rule.priority)) ? Number(rule.priority) : 0,
         conditions: conditions.slice(0, 12),
         tags: [...new Set(tags)].slice(0, 24),
         content: String(rule.content || '').slice(0, 6000),
         category: String(rule.category || 'context_rule'),
-        source: String(rule.source || 'admin')
+        source: String(rule.source || 'admin'),
+        attachedPromptIds: Array.isArray(rule.attachedPromptIds) ? rule.attachedPromptIds : [],
+        max_tokens: rule.max_tokens !== undefined ? Number(rule.max_tokens) : undefined,
+        temperature: rule.temperature !== undefined ? Number(rule.temperature) : undefined,
+        provider_id: rule.provider_id ? Number(rule.provider_id) : null,
+        fallback_provider_ids: Array.isArray(rule.fallback_provider_ids) ? rule.fallback_provider_ids.map(Number).filter(Boolean) : [],
+        style: rule.style || undefined
     };
 }
 

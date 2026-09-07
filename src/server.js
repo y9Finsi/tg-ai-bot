@@ -289,9 +289,7 @@ export function createAdminApp(bot = null) {
     app.use(express.json({ limit: '10mb' }));
     app.use(express.urlencoded({ extended: true }));
 
-    app.use('/legacy-admin', express.static(path.join(__dirname, '../public/admin')));
     const modernAdminRoot = path.join(__dirname, '../public/admin-linear');
-    const legacyAdminRoot = path.join(__dirname, '../public/admin-v2');
     const modernAdminStaticOptions = {
         setHeaders: (res, filePath) => {
             if (filePath.endsWith('.html')) {
@@ -302,7 +300,6 @@ export function createAdminApp(bot = null) {
     app.use('/admin', express.static(modernAdminRoot, modernAdminStaticOptions));
     app.use('/dashboard', express.static(modernAdminRoot, modernAdminStaticOptions));
     app.use('/linear', express.static(modernAdminRoot, modernAdminStaticOptions));
-    app.use('/admin-v2', express.static(legacyAdminRoot, modernAdminStaticOptions));
     app.use(express.static(modernAdminRoot, modernAdminStaticOptions));
     app.use('/assets/free_pics', express.static(path.join(__dirname, 'assets/free_pics')));
 
@@ -316,9 +313,8 @@ export function createAdminApp(bot = null) {
         res.sendFile(path.join(modernAdminRoot, 'index.html'));
     });
 
-    app.get(/^\/(?:legacy-v2|admin-v2)(\/.*)?$/, (req, res) => {
-        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.sendFile(path.join(legacyAdminRoot, 'index.html'));
+    app.get(/^\/(?:legacy-admin|legacy-v2|admin-v2)(\/.*)?$/, (req, res) => {
+        res.redirect(301, '/admin');
     });
 
     app.get('/', (req, res) => {
@@ -636,8 +632,10 @@ export function createAdminApp(bot = null) {
             return {
                 success: true,
                 snapshotAt: new Date().toISOString(),
+                is_paused: Boolean(inMemorySimState.is_paused),
                 state: {
                     ...(state || {}),
+                    is_paused: Boolean(inMemorySimState.is_paused),
                     location_name: (LOCATIONS[state?.location_id] || LOCATIONS.petrogradka_home).name,
                     needs: state?.needs || {}, mood: calculateMood(state || {}),
                     physiology: {
@@ -982,6 +980,7 @@ export function createAdminApp(bot = null) {
             });
             const changes = dayFacts.filter(item => ['RANDOM_EVENT', 'COMMITMENT_MISSED', 'WORK_REQUEST_CREATED', 'SOCIAL_MEETING_PROPOSED'].includes(item.event_type)).map(item => ({ at: item.occurred_at, label: humanizeAdminEvent(item.event_type, item.payload || {}), type: item.event_type, payload: item.payload || {} }));
             const enrichedActiveTask = overview.active_task ? { ...overview.active_task, taskType: overview.active_task.task_type, label: humanizeAdminEvent('TASK_COMPLETED', { taskType: overview.active_task.task_type }).replace(/^Завершено: /, ''), sourceLabel: overview.active_task.created_by || 'Текущая задача', clockAt: at.toISOString() } : null;
+            res.json({ success: true, at: at.toISOString(), profile: { ...profile, at: at.toISOString() }, state: { ...overview.state, active_task: overview.active_task || null }, activeTask: enrichedActiveTask, queue: overview.queue || [], health, personality, personalityPreview: ADMIN_DAY_TASKS.map(taskType => ({ taskType, modifier: personalityModifiers({ personality, taskType, state, now: at }) })), commitments, forecast, timeline: timeline, schedule: scheduleWithClock, planFactLinks, changes, facts: dayFacts, randomEvents, consequences, meals, sleep, summary: daySummary({ intervals: factIntervals, facts: dayFacts, commitments, randomEvents, consequences, state: overview.state, mood: calculateMood(state || {}) }), rationale: rationale.filter(item => getDayProfile(item.created_at).date === profile.date) });
         } catch (e) {
             const overview = await buildRadiantOverview();
             const at = new Date();
@@ -1152,7 +1151,21 @@ export function createAdminApp(bot = null) {
     });
 
     app.post('/api/admin/radiant/mutate', async (req, res) => {
-        const { rublesDelta, starsDelta, needs, physiology, locationId, activeModifiers, inventory } = req.body || {};
+        const { 
+            rublesDelta, 
+            starsDelta, 
+            needs, 
+            physiology, 
+            locationId, 
+            activeModifiers, 
+            inventory,
+            cancel_task_id,
+            hygieneDelta,
+            moodDelta,
+            hungerDelta,
+            energyDelta,
+            fatigueDelta
+        } = req.body || {};
         const requestId = String(req.body?.request_id || req.body?.requestId || `mutate:${Date.now()}:${Math.random().toString(36).slice(2)}`);
 
         // Clamp needs/physiology to sane ranges so God Mode cannot corrupt the engine.
@@ -1187,15 +1200,30 @@ export function createAdminApp(bot = null) {
 
         try {
             const updated = await StateRepository.withTransaction(async (client) => {
-                await StateRepository.getLockedState(client);
+                const lockedState = await StateRepository.getLockedState(client);
                 if (rublesDelta || starsDelta) {
                     await StateRepository.updateWallet(client, Math.round(rublesDelta || 0), Math.round(starsDelta || 0));
                 }
+
+                if (cancel_task_id) {
+                    await client.query(`UPDATE sim_queue SET status = 'CANCELLED' WHERE id = $1`, [cancel_task_id]).catch(() => null);
+                }
+
+                // Apply needs deltas if provided (from map actions or in-place activities)
+                let effectiveNeeds = safeNeeds;
+                if (hygieneDelta !== undefined || hungerDelta !== undefined || fatigueDelta !== undefined || energyDelta !== undefined) {
+                    effectiveNeeds = { ...(lockedState?.needs || {}), ...(safeNeeds || {}) };
+                    if (hygieneDelta !== undefined) effectiveNeeds.hygiene = Math.max(0, Math.min(100, (Number(effectiveNeeds.hygiene ?? 90) + Number(hygieneDelta))));
+                    if (hungerDelta !== undefined) effectiveNeeds.hunger = Math.max(0, Math.min(100, (Number(effectiveNeeds.hunger ?? 20) + Number(hungerDelta))));
+                    if (fatigueDelta !== undefined) effectiveNeeds.fatigue = Math.max(0, Math.min(100, (Number(effectiveNeeds.fatigue ?? 10) + Number(fatigueDelta))));
+                    if (energyDelta !== undefined) effectiveNeeds.fatigue = Math.max(0, Math.min(100, (Number(effectiveNeeds.fatigue ?? 10) - Number(energyDelta))));
+                }
+
                 let row = null;
-                if (safeNeeds || safePhys || locationId || activeModifiers) {
+                if (effectiveNeeds || safePhys || locationId || activeModifiers) {
                     row = await StateRepository.updateState(client, {
                         locationId,
-                        needs: safeNeeds,
+                        needs: effectiveNeeds,
                         physiology: safePhys,
                         activeModifiers
                     });
@@ -1209,16 +1237,17 @@ export function createAdminApp(bot = null) {
                 const parts = [];
                 if (rublesDelta) parts.push(`кошелёк ${rublesDelta > 0 ? '+' : ''}${rublesDelta}₽`);
                 if (starsDelta) parts.push(`звёзды ${starsDelta > 0 ? '+' : ''}${starsDelta}`);
-                if (safeNeeds) parts.push(`нужды ${JSON.stringify(safeNeeds)}`);
+                if (effectiveNeeds) parts.push(`нужды ${JSON.stringify(effectiveNeeds)}`);
                 if (safePhys) parts.push(`физиология ${JSON.stringify(safePhys)}`);
                 if (locationId) parts.push(`локация ${locationId}`);
                 if (inventory) parts.push(`инвентарь (${inventory.length} предм.)`);
+                if (cancel_task_id) parts.push(`отмена таски #${cancel_task_id}`);
                 if (parts.length > 0) {
                     await StateRepository.addRationale(client, {
                         category: 'ADMIN_OVERRIDE',
                         title: 'Ручное вмешательство из админки (God Mode)',
                         explanation: `Изменено: ${parts.join(', ')}.`,
-                        payload: { requestId, rublesDelta, starsDelta, needs: safeNeeds, physiology: safePhys, locationId }
+                        payload: { requestId, rublesDelta, starsDelta, needs: effectiveNeeds, physiology: safePhys, locationId, cancel_task_id }
                     }).catch(() => null);
                 }
 
@@ -1238,11 +1267,23 @@ export function createAdminApp(bot = null) {
                 inventory: inMemoryInventory
             });
         } catch (e) {
-            if (safeNeeds) Object.assign(inMemorySimState.needs, safeNeeds);
+            let effectiveNeeds = safeNeeds;
+            if (hygieneDelta !== undefined || hungerDelta !== undefined || fatigueDelta !== undefined || energyDelta !== undefined) {
+                effectiveNeeds = { ...(inMemorySimState.needs || {}), ...(safeNeeds || {}) };
+                if (hygieneDelta !== undefined) effectiveNeeds.hygiene = Math.max(0, Math.min(100, (Number(effectiveNeeds.hygiene ?? 90) + Number(hygieneDelta))));
+                if (hungerDelta !== undefined) effectiveNeeds.hunger = Math.max(0, Math.min(100, (Number(effectiveNeeds.hunger ?? 20) + Number(hungerDelta))));
+                if (fatigueDelta !== undefined) effectiveNeeds.fatigue = Math.max(0, Math.min(100, (Number(effectiveNeeds.fatigue ?? 10) + Number(fatigueDelta))));
+                if (energyDelta !== undefined) effectiveNeeds.fatigue = Math.max(0, Math.min(100, (Number(effectiveNeeds.fatigue ?? 10) - Number(energyDelta))));
+            }
+
+            if (effectiveNeeds) Object.assign(inMemorySimState.needs, effectiveNeeds);
             if (safePhys) Object.assign(inMemorySimState.physiology, safePhys);
             if (locationId) inMemorySimState.location_id = locationId;
             if (rublesDelta) inMemorySimState.wallet_rubles = Math.max(0, (inMemorySimState.wallet_rubles || 0) + rublesDelta);
             if (starsDelta) inMemorySimState.wallet_stars = Math.max(0, (inMemorySimState.wallet_stars || 0) + starsDelta);
+            if (cancel_task_id) {
+                inMemoryQueue = inMemoryQueue.filter(t => String(t.id) !== String(cancel_task_id) && String(t.task_id) !== String(cancel_task_id));
+            }
             if (Array.isArray(inventory)) {
                 inMemoryInventory.length = 0;
                 inMemoryInventory.push(...inventory);
@@ -1263,7 +1304,7 @@ export function createAdminApp(bot = null) {
     });
 
     app.post('/api/admin/radiant/god-mode', async (req, res) => {
-        const { action, rubles, stars, needs, physiology } = req.body || {};
+        const { action, rubles, stars, needs, physiology, is_paused } = req.body || {};
         const requestId = String(req.body?.request_id || req.body?.requestId || `god:${Date.now()}:${Math.random().toString(36).slice(2)}`);
         const supportedActions = new Set([
             'RAIN_ON', 'RAIN_OFF', 'RAIN_AUTO', 'CYCLE_PMS', 'CYCLE_OVULATION',
@@ -1296,8 +1337,11 @@ export function createAdminApp(bot = null) {
                         const current = await StateRepository.getLockedState(client);
                         await StateRepository.updateWallet(client, Math.round(Number(rubles ?? current.wallet_rubles) - Number(current.wallet_rubles)), Math.round(Number(stars ?? current.wallet_stars) - Number(current.wallet_stars)));
                     }
+                    if (is_paused !== undefined) {
+                        inMemorySimState.is_paused = Boolean(is_paused);
+                    }
                     await StateRepository.updateState(client, { needs: safeNeeds, physiology: safePhysiology, cycleAnchorDate: safePhysiology?.cycle_day ? cycleAnchorForDay(safePhysiology.cycle_day) : null });
-                    rationale = { ...rationale, rubles, stars, needs: safeNeeds, physiology: safePhysiology };
+                    rationale = { ...rationale, rubles, stars, needs: safeNeeds, physiology: safePhysiology, is_paused };
                 } else if (action === 'NASTYA_DRAMA_50' || action === 'NASTYA_DRAMA' || action === 'MAX_DEADLINE') {
                     const isNastya = action.startsWith('NASTYA');
                     const npcId = isNastya ? 'nastya' : 'max_client';
@@ -1339,6 +1383,7 @@ export function createAdminApp(bot = null) {
                 else if (action === 'RAIN_AUTO') WeatherService.clearOverride();
             }
             publishDevtoolEvent('god_mode', { action, requestId, values: { rubles, stars, needs, physiology } });
+            res.json({ success: true, action, request_id: requestId, deduplicated: mutation.deduplicated, snapshot: await buildRadiantOverview() });
         } catch (e) {
             if (action === 'NASTYA_DRAMA_50' || action === 'NASTYA_DRAMA') {
                 inMemoryNpcs.nastya.drama_level = Math.min(100, (inMemoryNpcs.nastya.drama_level || 30) + 50);
@@ -1348,6 +1393,9 @@ export function createAdminApp(bot = null) {
                 inMemorySimState.physiology.cycle_day = 1;
             } else if (action === 'CYCLE_OVULATION') {
                 inMemorySimState.physiology.cycle_day = 14;
+            }
+            if (is_paused !== undefined) {
+                inMemorySimState.is_paused = Boolean(is_paused);
             }
             res.json({ success: true, action, request_id: requestId, fallback: true, snapshot: await buildRadiantOverview() });
         }
@@ -1395,11 +1443,13 @@ export function createAdminApp(bot = null) {
         try {
             const { itemId } = req.body;
             if (!itemId) return res.status(400).json({ error: 'Не передан itemId' });
-            const item = await StateRepository.withTransaction(async (client) => {
-                return await StateRepository.equipClothing(client, itemId);
+            const result = await StateRepository.withTransaction(async (client) => {
+                const item = await StateRepository.equipClothing(client, itemId);
+                const inventory = await StateRepository.getInventory(client);
+                return { item, inventory };
             });
-            if (!item) return res.status(404).json({ error: 'Предмет не найден или это не одежда' });
-            res.json({ success: true, item });
+            if (!result?.item) return res.status(404).json({ error: 'Предмет не найден или это не одежда' });
+            res.json({ success: true, item: result.item, inventory: result.inventory });
         } catch (e) {
             const { itemId } = req.body;
             const target = inMemoryInventory.find(it => it.item_id === itemId);
@@ -1423,11 +1473,13 @@ export function createAdminApp(bot = null) {
         try {
             const { itemId } = req.body;
             if (!itemId) return res.status(400).json({ error: 'Не передан itemId' });
-            const item = await StateRepository.withTransaction(async (client) => {
-                return await StateRepository.unequipClothing(client, itemId);
+            const result = await StateRepository.withTransaction(async (client) => {
+                const item = await StateRepository.unequipClothing(client, itemId);
+                const inventory = await StateRepository.getInventory(client);
+                return { item, inventory };
             });
-            if (!item) return res.status(404).json({ error: 'Предмет не найден или это не одежда' });
-            res.json({ success: true, item });
+            if (!result?.item) return res.status(404).json({ error: 'Предмет не найден или это не одежда' });
+            res.json({ success: true, item: result.item, inventory: result.inventory });
         } catch (e) {
             const { itemId } = req.body;
             const target = inMemoryInventory.find(it => it.item_id === itemId);
@@ -1555,10 +1607,11 @@ export function createAdminApp(bot = null) {
                     idempotencyKey: `item_consume:${current.item_id}:${Date.now()}`
                 });
 
-                return { item, deltas, needs: updatedNeeds };
+                const inventory = await StateRepository.getInventory(client);
+                return { item, deltas, needs: updatedNeeds, inventory };
             });
             if (!result) return res.status(400).json({ error: 'Предмет не найден или не является расходником' });
-            res.json({ success: true, ...result, inventory: inMemoryInventory });
+            res.json({ success: true, ...result, inventory: result.inventory || inMemoryInventory });
         } catch (e) {
             const { itemId, quantity } = req.body || {};
             if (!itemId) return res.status(400).json({ error: 'Не передан itemId' });
@@ -1637,11 +1690,12 @@ export function createAdminApp(bot = null) {
                     idempotencyKey: `item_use:${current.item_id}:${Date.now()}`
                 });
                 
-                return { item: updatedItem, deltas, needs: updatedNeeds, isDurable };
+                const inventory = await StateRepository.getInventory(client);
+                return { item: updatedItem, deltas, needs: updatedNeeds, isDurable, inventory };
             });
             
             if (!result) return res.status(404).json({ error: 'Предмет не найден или закончился' });
-            res.json({ success: true, ...result, inventory: inMemoryInventory });
+            res.json({ success: true, ...result, inventory: result.inventory || inMemoryInventory });
         } catch (e) {
             const { itemId } = req.body || {};
             if (!itemId) return res.status(400).json({ error: 'Не передан itemId' });
@@ -1750,7 +1804,7 @@ export function createAdminApp(bot = null) {
     app.post('/api/admin/queue/push', pushQueueTask);
     app.post('/api/admin/radiant/queue/push', pushQueueTask);
 
-    app.delete('/api/admin/queue/:id', async (req, res) => {
+    app.delete(['/api/admin/queue/:id', '/api/admin/radiant/queue/:id'], async (req, res) => {
         try {
             const result = await query(
                 `UPDATE sim_queue SET status = 'COMPLETED' WHERE id = $1 RETURNING *`,
@@ -2398,7 +2452,7 @@ export function createAdminApp(bot = null) {
         }
     });
 
-    app.patch('/api/admin/providers/:id', async (req, res) => {
+    const updateProviderHandler = async (req, res) => {
         try {
             const body = req.body || {};
             const samplingCapabilities = body.sampling_capabilities || {
@@ -2415,9 +2469,11 @@ export function createAdminApp(bot = null) {
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
-    });
+    };
+    app.patch('/api/admin/providers/:id', updateProviderHandler);
+    app.put('/api/admin/providers/:id', updateProviderHandler);
 
-    app.patch('/api/admin/providers/:id/priority', async (req, res) => {
+    const updateProviderPriorityHandler = async (req, res) => {
         try {
             const priority = Number(req.body?.priority);
             if (!Number.isInteger(priority) || priority < 1) return res.status(400).json({ error: 'Некорректный приоритет' });
@@ -2428,7 +2484,9 @@ export function createAdminApp(bot = null) {
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
-    });
+    };
+    app.patch('/api/admin/providers/:id/priority', updateProviderPriorityHandler);
+    app.post('/api/admin/providers/:id/priority', updateProviderPriorityHandler);
 
     app.delete('/api/admin/providers/:id', async (req, res) => {
         try {

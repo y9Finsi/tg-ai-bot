@@ -42,7 +42,7 @@
 | **Semantica Service** | Python, FastAPI/urllib | `8081` | Семантическая память и ранжирование релевантных воспоминаний |
 | **Database** | PostgreSQL 15 | `5432` | Основное реляционное хранилище пользователей, сообщений, состояния Radiant и платежей |
 | **Queue / Cache** | Redis 7 | `6379` | Очереди BullMQ (отложенный постинг, генерация контента, бродкасты) |
-| **Admin UI (admin-v2)** | React 19, Vite, Tailwind CSS v4 | — | Веб-панель управления (билдится через `npm run admin:build` или Vite dev) |
+| **Admin UI (admin-linear)** | React 19, Vite, Tailwind CSS v4 | — | Веб-панель управления (билдится через `npm run admin:build` или Vite dev) |
 
 ---
 

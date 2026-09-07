@@ -480,11 +480,12 @@ export function UniversalPipelineBoard({ providers = [], temperature, setTempera
                                     {visiblePrompts.map(item => (
                                         <div
                                             key={item.id}
-                                            className="group rounded-md bg-[#121418] border border-white/[0.05] hover:border-white/15 p-1.5 text-xs space-y-1 transition-[background-color,border-color] duration-150"
+                                            className="group rounded-[16px] bg-[#171616] border border-white/[0.07] hover:border-white/20 p-2 text-xs space-y-1.5 transition-all"
                                         >
-                                            <div className="flex items-center justify-between gap-1">
+                                            <div className="flex items-center justify-between gap-1.5">
                                                 <div className="flex items-center gap-1.5 min-w-0">
-                                                    <span className="font-medium text-white/90 truncate leading-tight">
+                                                    <img src="/assets/icon_dots9.svg" alt="" className="w-3.5 h-3.5 opacity-60 shrink-0" />
+                                                    <span className="font-medium text-[#bdbdbd] text-[13px] truncate leading-tight">
                                                         {item.title}
                                                     </span>
                                                     {item.badge && (
@@ -519,16 +520,17 @@ export function UniversalPipelineBoard({ providers = [], temperature, setTempera
                                             </div>
                                             <p
                                                 onClick={() => setEditor(item)}
-                                                className="text-[10px] text-white/60 leading-tight line-clamp-2 cursor-pointer hover:text-white/80 transition-colors"
+                                                className="text-[11px] text-white/50 leading-relaxed line-clamp-2 cursor-pointer hover:text-white/80 transition-colors pl-5"
                                             >
                                                 {item.text}
                                             </p>
                                         </div>
                                     ))}
-                                    <div className="group rounded-md bg-[#121418] border border-white/[0.05] hover:border-white/15 p-1.5 text-xs space-y-1 transition-[background-color,border-color] duration-150">
-                                        <div className="flex items-center justify-between gap-1">
+                                    <div className="group rounded-[16px] bg-[#171616] border border-white/[0.07] hover:border-white/20 p-2 text-xs space-y-1.5 transition-all">
+                                        <div className="flex items-center justify-between gap-1.5">
                                             <div className="flex items-center gap-1.5 min-w-0">
-                                                <span className="font-medium text-white/90 truncate leading-tight">Инструкции поверхности</span>
+                                                <img src="/assets/icon_dots9.svg" alt="" className="w-3.5 h-3.5 opacity-60 shrink-0" />
+                                                <span className="font-medium text-[#bdbdbd] text-[13px] truncate leading-tight">Инструкции поверхности</span>
                                                 <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 shrink-0">
                                                     {activeSurface.label}
                                                 </span>
@@ -543,7 +545,7 @@ export function UniversalPipelineBoard({ providers = [], temperature, setTempera
                                         </div>
                                         <p 
                                             onClick={() => setEditor({ id: 'surface', title: 'Инструкции: ' + activeSurface.label, text: surfaceOverride.instructions || SURFACE_DEFAULT_INSTRUCTIONS[surface] })}
-                                            className="text-[10px] text-white/60 leading-tight line-clamp-2 cursor-pointer hover:text-white/80 transition-colors"
+                                            className="text-[11px] text-white/50 leading-relaxed line-clamp-2 cursor-pointer hover:text-white/80 transition-colors pl-5"
                                         >
                                             {surfaceOverride.instructions || SURFACE_DEFAULT_INSTRUCTIONS[surface]}
                                         </p>
