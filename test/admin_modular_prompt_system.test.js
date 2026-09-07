@@ -175,3 +175,35 @@ test('Deleted prompt modules are excluded from assembly', async () => {
     const res = await resolveModularRulePrompt(rule, profile, {});
     assert.equal(String(res), 'SHOULD BE INCLUDED');
 });
+
+test('renderPromptTemplate correctly handles special characters like $ and symbols without regex corruption', () => {
+    const template = 'Пользователь: {{user_name}}. Факты:\n{{memory_facts}}';
+    const context = {
+        userName: 'Богдан $100 & $BTC',
+        memoryFacts: '- Купил кроссовки за $200\n- Заработал $5000'
+    };
+
+    const rendered = renderPromptTemplate(template, context);
+    assert.match(rendered, /Богдан \$100 & \$BTC/);
+    assert.match(rendered, /Купил кроссовки за \$200/);
+    assert.match(rendered, /Заработал \$5000/);
+});
+
+test('surface policy allows action tools on CHAT surface', async () => {
+    const { isToolAllowed } = await import('../src/ai/profile/surface_policy.js');
+    assert.equal(isToolAllowed('send_photo', 'CHAT'), true);
+    assert.equal(isToolAllowed('send_voice', 'CHAT'), true);
+    assert.equal(isToolAllowed('send_content', 'CHAT'), true);
+    assert.equal(isToolAllowed('set_reaction', 'CHAT'), true);
+    assert.equal(isToolAllowed('schedule_followup', 'CHAT'), true);
+    assert.equal(isToolAllowed('web_search', 'CHAT'), true);
+});
+
+test('DEFAULT_LERA_COMBAT_RULES attaches radiant, memory and tools by default', async () => {
+    const { DEFAULT_LERA_COMBAT_RULES } = await import('../src/db/database.js');
+    const casual = DEFAULT_LERA_COMBAT_RULES.find(r => r.id === 'rule_chat_casual');
+    assert.ok(casual);
+    assert.ok(casual.attachedPromptIds.includes('prompt_radiant'));
+    assert.ok(casual.attachedPromptIds.includes('prompt_memory'));
+    assert.ok(casual.attachedPromptIds.includes('prompt_tools'));
+});

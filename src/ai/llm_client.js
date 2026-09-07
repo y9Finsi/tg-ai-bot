@@ -217,8 +217,11 @@ export async function requestLlmCompletion(user, messages, isPhotoRequest, getOp
                     delete noToolsParams.tools;
                     delete noToolsParams.tool_choice;
                     const updatedMessages = [...noToolsParams.messages];
-                    if (updatedMessages[0] && updatedMessages[0].role === 'system') {
-                        updatedMessages[0] = { ...updatedMessages[0], content: updatedMessages[0].content + toolsPrompt };
+                    const sysIdx = updatedMessages.findIndex(m => m.role === 'system');
+                    if (sysIdx >= 0) {
+                        updatedMessages[sysIdx] = { ...updatedMessages[sysIdx], content: (updatedMessages[sysIdx].content || '') + toolsPrompt };
+                    } else {
+                        updatedMessages.unshift({ role: 'system', content: toolsPrompt.trim() });
                     }
                     noToolsParams.messages = updatedMessages;
                     completion = await tempClient.chat.completions.create(noToolsParams);

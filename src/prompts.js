@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { getSetting, setSetting, getLeraProfile, getLeraProfileProjection } from './db/database.js';
 import { ALL_PROMPT_SECTIONS, PROMPT_SECTIONS, ROUTING_PROMPT_SECTIONS, SYSTEM_CONTRACT_SECTIONS } from './prompt_sections.js';
 import { renderPromptTemplate, DEFAULT_PROMPT_TEMPLATES } from './ai/prompt_renderer.js';
+import { evaluateRules } from './ai/profile/rule_evaluator.js';
 
 export { ALL_PROMPT_SECTIONS, PROMPT_SECTIONS, ROUTING_PROMPT_SECTIONS, SYSTEM_CONTRACT_SECTIONS };
 
@@ -95,6 +96,10 @@ export async function initPromptsFromDb() {
             if (!isNaN(parsed)) llmParamsCache.frequency_penalty = parsed;
         }
 
+function toSettingKey(key) {
+    return key.startsWith('prompt_') ? key : `prompt_${key}`;
+}
+
         // Code-First синхронизация: файлы на диске являются источником правды
         const allSections = { ...PROMPT_SECTIONS, ...ROUTING_PROMPT_SECTIONS };
         for (const [key, filename] of Object.entries(allSections)) {
@@ -102,16 +107,16 @@ export async function initPromptsFromDb() {
             if (diskContent && diskContent.trim() !== '') {
                 promptsCache[key] = diskContent;
                 // Автоматически синхронизируем базу данных с файлами на диске
-                await setSetting(`prompt_${key}`, diskContent).catch(() => {});
+                await setSetting(toSettingKey(key), diskContent).catch(() => {});
             } else {
-                const dbVal = await getSetting(`prompt_${key}`, null);
+                const dbVal = await getSetting(toSettingKey(key), null);
                 if (dbVal !== null && dbVal !== undefined && dbVal.trim() !== '') {
                     promptsCache[key] = dbVal;
                 }
             }
         }
         for (const [key, tpl] of Object.entries(DEFAULT_PROMPT_TEMPLATES)) {
-            const dbVal = await getSetting(`prompt_${key}`, null);
+            const dbVal = (await getSetting(toSettingKey(key), null)) || (await getSetting(`prompt_${key}`, null));
             if (dbVal !== null && dbVal !== undefined && dbVal.trim() !== '') {
                 promptsCache[key] = dbVal;
             } else if (!promptsCache[key]) {
@@ -181,7 +186,7 @@ export async function updateLeraPrompts(promptsObj) {
         if (typeof text === 'string') {
             const cleanText = text.trim();
             promptsCache[key] = cleanText;
-            await setSetting(`prompt_${key}`, cleanText);
+            await setSetting(toSettingKey(key), cleanText);
             const filename = ALL_PROMPT_SECTIONS[key];
             if (filename) {
                 savePromptFile(filename, cleanText);
@@ -243,7 +248,7 @@ export async function resolveModularRulePrompt(rule, profile, context = {}) {
         const custom = customModules.find(m => m.id === pId);
         if (custom) {
             content = custom.content || '';
-            if (custom.is_tool_module || custom.title?.toLowerCase().includes('инструмент')) isTool = true;
+            if (custom.is_tool_module || custom.title?.toLowerCase().includes('инструмент') || custom.title?.toLowerCase().includes('tool')) isTool = true;
         } else if (pId === 'prompt_bio') {
             content = profile.age_bio || '';
         } else if (pId === 'prompt_character') {
@@ -322,19 +327,14 @@ export async function getRoutedSystemPrompt(mode = 'CASUAL', config = {}) {
     const profile = (rawP.profile && typeof rawP.profile === 'object') ? rawP.profile : rawP;
     const blocks = Array.isArray(profile.blocks) ? profile.blocks : [];
 
-    // 1. Поиск целевого активного правила
+    // 1. Поиск целевого активного правила через evaluateRules с приоритетами и условиями
     let targetRule = config.rule || null;
     if (!targetRule) {
         if (config.ruleId) {
             targetRule = blocks.find(b => b.id === config.ruleId);
         } else {
-            targetRule = blocks.find(b => {
-                if (b.category !== 'rule' || b.enabled === false) return false;
-                const surfaces = Array.isArray(b.surfaces) ? b.surfaces : (b.surface ? [b.surface] : []);
-                if (!surfaces.includes(surface)) return false;
-                const ruleMode = b.mode || 'ALL';
-                return ruleMode === 'ALL' || ruleMode === normalizedMode;
-            });
+            const evaluated = evaluateRules(blocks, context);
+            targetRule = evaluated.active?.[0] || null;
         }
     }
 

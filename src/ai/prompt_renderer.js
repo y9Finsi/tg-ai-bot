@@ -52,20 +52,25 @@ export function renderPromptTemplate(template, context = {}) {
     const statusStr = context.status || context.currentStatus || 'отдыхает дома';
     const channelStatsStr = context.channelStats || (context.channelSubscribers ? `${context.channelSubscribers} подписчиков` : 'ведёт личный ТГК');
     const memoryFactsStr = context.memoryFacts || context.memory_facts || (Array.isArray(context.memories) && context.memories.length > 0 
-        ? context.memories.map(m => `- ${m.text || m.fact || m.normalizedText || ''}`).join('\n') 
+        ? context.memories.map(m => `- ${typeof m === 'string' ? m : (m?.text || m?.fact || m?.normalizedText || '')}`).filter(l => l !== '- ').join('\n') 
         : 'Пока нет подтверждённых фактов о пользователе.');
     const userNameStr = context.userName || context.user_name || 'Собеседник';
 
-    return template
-        .replace(/\{\{\s*time\s*\}\}/gi, timeStr)
-        .replace(/\{\{\s*location\s*\}\}/gi, locationStr)
-        .replace(/\{\{\s*weather\s*\}\}/gi, weatherStr)
-        .replace(/\{\{\s*needs\s*\}\}/gi, needsStr)
-        .replace(/\{\{\s*wellbeing\s*\}\}/gi, needsStr)
-        .replace(/\{\{\s*outfit\s*\}\}/gi, outfitStr)
-        .replace(/\{\{\s*status\s*\}\}/gi, statusStr)
-        .replace(/\{\{\s*channel_stats\s*\}\}/gi, channelStatsStr)
-        .replace(/\{\{\s*memory_facts\s*\}\}/gi, memoryFactsStr)
-        .replace(/\{\{\s*user_name\s*\}\}/gi, userNameStr)
-        .trim();
+    const vars = {
+        time: timeStr,
+        location: locationStr,
+        weather: weatherStr,
+        needs: needsStr,
+        wellbeing: needsStr,
+        outfit: outfitStr,
+        status: statusStr,
+        channel_stats: channelStatsStr,
+        memory_facts: memoryFactsStr,
+        user_name: userNameStr
+    };
+
+    return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => {
+        const val = vars[key.toLowerCase()];
+        return val !== undefined ? val : match;
+    }).trim();
 }

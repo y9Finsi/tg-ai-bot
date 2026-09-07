@@ -429,7 +429,7 @@ export function AiSettingsTab({ toast }) {
                         mode: 'CASUAL',
                         enabled: true,
                         content: 'Обычно отвечай одной короткой репликой либо лесенкой через |||. Опирайся на факты из памяти и контекст дня. Запрещено подыгрывать фантазиям о совместном быте (холодильник, совместная комната) и выдумывать чужие темы.',
-                        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual'],
+                        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual', 'prompt_radiant', 'prompt_memory', 'prompt_tools', 'prompt_antirep', 'prompt_format', 'prompt_continuity'],
                         max_tokens: 200,
                         temperature: 0.68,
                         provider_id: null,
@@ -443,7 +443,7 @@ export function AiSettingsTab({ toast }) {
                         mode: 'EROTIC',
                         enabled: true,
                         content: 'СТРОЖАЙШИЙ ЗАПРЕТ на отговорки про сон и усталость («я усну», «я сонная», «устала»). СТРОЖАЙШИЙ ЗАПРЕТ на шаблонный смех («ахах», «хихи»). Полная вовлечённость в процесс, живость ощущений, отклик на действия партнёра без нытья.',
-                        attachedPromptIds: ['prompt_character', 'routing_erotic', 'prompt_flirt'],
+                        attachedPromptIds: ['prompt_character', 'routing_erotic', 'prompt_flirt', 'prompt_radiant', 'prompt_memory', 'prompt_tools', 'prompt_format'],
                         max_tokens: 240,
                         temperature: 0.75,
                         provider_id: null,
@@ -457,7 +457,7 @@ export function AiSettingsTab({ toast }) {
                         mode: 'ALL',
                         enabled: true,
                         content: 'Пиши живо, коротко и естественно от лица Леры. После длинной паузы начинай с чистого листа без продолжения старых обид. Запрещено выдумывать чужие темы, обещания или сериалы.',
-                        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech'],
+                        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'prompt_radiant', 'prompt_memory', 'prompt_tools', 'prompt_initiative'],
                         max_tokens: 200,
                         temperature: 0.72,
                         provider_id: null,
@@ -471,7 +471,7 @@ export function AiSettingsTab({ toast }) {
                         mode: 'ALL',
                         enabled: true,
                         content: 'Публичный образ петербургской студентки: личные наблюдения, ирония, настроение и вопросы подписчикам. Без раскрытия приватных переписок и секретов из лички.',
-                        attachedPromptIds: ['prompt_bio', 'prompt_speech'],
+                        attachedPromptIds: ['prompt_bio', 'prompt_speech', 'prompt_radiant', 'prompt_tools', 'prompt_channel_persona', 'prompt_channel_rules'],
                         max_tokens: 230,
                         temperature: 0.70,
                         provider_id: null,
@@ -2506,11 +2506,11 @@ export function AiSettingsTab({ toast }) {
                                                     <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/5 text-[11px] font-semibold uppercase tracking-wider opacity-75">
                                                         <span>Роль: {m.role}</span>
                                                         <span className="text-[10px] lowercase opacity-50 font-normal">
-                                                            {m.content.length} символов
+                                                            {typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length} символов
                                                         </span>
                                                     </div>
                                                     <pre className="whitespace-pre-wrap font-mono text-[12px] leading-5 break-words">
-                                                        {m.content}
+                                                        {typeof m.content === 'string' ? m.content : Array.isArray(m.content) ? m.content.map(p => p?.type === 'text' ? (p.text || '') : p?.type === 'image_url' ? `[Изображение]` : JSON.stringify(p)).join('\n') : JSON.stringify(m.content, null, 2)}
                                                     </pre>
                                                 </div>
                                             ))}

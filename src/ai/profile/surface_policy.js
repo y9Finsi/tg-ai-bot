@@ -2,9 +2,13 @@ export const SURFACES = Object.freeze(['CHAT', 'GROUP', 'CHANNEL', 'COMMENTS', '
 
 const SAFE_READ = Object.freeze(['web_search', 'weather', 'spb_places', 'get_channel_posts']);
 const PRIVATE_READ = Object.freeze([...SAFE_READ, 'search_archive_memory']);
+const PRIVATE_ACTIONS = Object.freeze([
+    'send_photo', 'send_voice', 'send_content', 'set_reaction',
+    'schedule_followup', 'schedule_reminder', 'record_open_thread'
+]);
 
 export const SURFACE_POLICY = Object.freeze({
-    CHAT: { memory: 'private', allowedTools: PRIVATE_READ, forbiddenTools: [], output: 'telegram_bubbles' },
+    CHAT: { memory: 'private', allowedTools: PRIVATE_READ.concat(PRIVATE_ACTIONS), forbiddenTools: [], output: 'telegram_bubbles' },
     GROUP: { memory: 'none', allowedTools: SAFE_READ, forbiddenTools: ['search_archive_memory', 'set_reaction', 'schedule_followup', 'schedule_reminder'], output: 'telegram_bubbles' },
     CHANNEL: { memory: 'public_only', allowedTools: ['web_search', 'weather', 'spb_places', 'get_channel_posts', 'send_content'], forbiddenTools: ['search_archive_memory', 'send_voice', 'schedule_followup', 'schedule_reminder'], output: 'channel_post' },
     COMMENTS: { memory: 'public_only', allowedTools: SAFE_READ, forbiddenTools: ['search_archive_memory', 'set_reaction', 'send_voice', 'schedule_followup', 'schedule_reminder'], output: 'comment_json' },

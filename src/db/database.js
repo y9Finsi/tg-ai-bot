@@ -2280,7 +2280,7 @@ export const DEFAULT_LERA_COMBAT_RULES = Object.freeze([
         surfaces: ['CHAT'],
         mode: 'CASUAL',
         enabled: true,
-        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual', 'prompt_format', 'prompt_continuity'],
+        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual', 'prompt_radiant', 'prompt_memory', 'prompt_tools', 'prompt_antirep', 'prompt_format', 'prompt_continuity'],
         max_tokens: 200,
         temperature: 0.68,
         category: 'rule'
@@ -2292,7 +2292,7 @@ export const DEFAULT_LERA_COMBAT_RULES = Object.freeze([
         surfaces: ['CHAT'],
         mode: 'EROTIC',
         enabled: true,
-        attachedPromptIds: ['prompt_character', 'routing_erotic', 'prompt_flirt', 'prompt_format'],
+        attachedPromptIds: ['prompt_character', 'routing_erotic', 'prompt_flirt', 'prompt_radiant', 'prompt_memory', 'prompt_tools', 'prompt_format'],
         max_tokens: 240,
         temperature: 0.75,
         category: 'rule'
@@ -2304,7 +2304,7 @@ export const DEFAULT_LERA_COMBAT_RULES = Object.freeze([
         surfaces: ['INITIATIVE'],
         mode: 'ALL',
         enabled: true,
-        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'prompt_initiative'],
+        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'prompt_radiant', 'prompt_memory', 'prompt_tools', 'prompt_initiative'],
         max_tokens: 200,
         temperature: 0.72,
         category: 'rule'
@@ -2316,7 +2316,7 @@ export const DEFAULT_LERA_COMBAT_RULES = Object.freeze([
         surfaces: ['CHANNEL'],
         mode: 'ALL',
         enabled: true,
-        attachedPromptIds: ['prompt_bio', 'prompt_speech', 'prompt_channel_persona', 'prompt_channel_rules'],
+        attachedPromptIds: ['prompt_bio', 'prompt_speech', 'prompt_radiant', 'prompt_tools', 'prompt_channel_persona', 'prompt_channel_rules'],
         max_tokens: 230,
         temperature: 0.70,
         category: 'rule'
@@ -2339,6 +2339,15 @@ function normalizeLeraProfile(profile = {}) {
     return normalizeProfile({ ...DEFAULT_LERA_PROFILE, ...(profile || {}) });
 }
 
+let cachedLeraProfile = null;
+let cachedLeraProfileTime = 0;
+const LERA_PROFILE_TTL_MS = 60000;
+
+export function invalidateLeraProfileCache() {
+    cachedLeraProfile = null;
+    cachedLeraProfileTime = 0;
+}
+
 async function ensureLeraProfile() {
     const current = await query('SELECT version_id FROM lera_profile_current WHERE id = 1');
     if (current.rowCount) return current.rows[0].version_id;
@@ -2354,6 +2363,10 @@ async function ensureLeraProfile() {
 }
 
 export async function getLeraProfile() {
+    const now = Date.now();
+    if (cachedLeraProfile && (now - cachedLeraProfileTime) < LERA_PROFILE_TTL_MS) {
+        return cachedLeraProfile;
+    }
     const versionId = await ensureLeraProfile();
     const result = await query(
         `SELECT v.id, v.profile, v.author, v.source, v.created_at, c.updated_at
@@ -2371,7 +2384,7 @@ export async function getLeraProfile() {
     if (existingRules.length === 0) {
         rawProfile.blocks = [...DEFAULT_LERA_COMBAT_RULES, ...(rawProfile.blocks || [])];
     }
-    return {
+    const res = {
         version: row?.id || versionId,
         profile: normalizeLeraProfile(rawProfile),
         author: row?.author || 'system',
@@ -2379,6 +2392,9 @@ export async function getLeraProfile() {
         created_at: row?.created_at || null,
         updated_at: row?.updated_at || null
     };
+    cachedLeraProfile = res;
+    cachedLeraProfileTime = now;
+    return res;
 }
 
 export async function listLeraProfileVersions(limit = 30) {
@@ -2414,6 +2430,7 @@ export async function saveLeraProfileVersion(profile, { author = 'admin', source
          ON CONFLICT (id) DO UPDATE SET version_id = EXCLUDED.version_id, updated_at = NOW()`,
         [inserted.rows[0].id]
     );
+    invalidateLeraProfileCache();
     return {
         version: inserted.rows[0].id,
         profile: normalized,

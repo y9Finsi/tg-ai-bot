@@ -2945,8 +2945,6 @@ export function createAdminApp(bot = null) {
             let messages = [];
             if (completeSystemPrompt) {
                 messages.push({ role: 'system', content: completeSystemPrompt });
-            } else {
-                messages.push({ role: 'system', content: '' });
             }
 
             // 6. Surface-Specific Assembly
