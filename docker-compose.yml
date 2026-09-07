@@ -13,6 +13,7 @@ services:
       SEMANTICA_LIMIT: ${SEMANTICA_LIMIT:-8}
     ports:
       - "3000:3000"
+      - "80:3000"
     deploy:
       resources:
         limits:
