@@ -2521,8 +2521,18 @@ export function createAdminApp(bot = null) {
                 listLeraProfileVersions(50),
                 getSetting('llm_temperature', '0.66'),
                 getSetting('llm_max_tokens', '300'),
-                getSetting('typing_delay_enabled', 'true')
+                getSetting('typing_delay_enabled', 'true'),
+                getSetting('semantica_max_facts_per_request', '5'),
+                getSetting('llm_layer_radiant_enabled', 'true'),
+                getSetting('llm_layer_weather_enabled', 'true'),
+                getSetting('llm_layer_memory_enabled', 'true')
             ]);
+            const [memoryDepthVal, radiantVal, weatherVal, memoryVal] = [
+                await getSetting('semantica_max_facts_per_request', '5'),
+                await getSetting('llm_layer_radiant_enabled', 'true'),
+                await getSetting('llm_layer_weather_enabled', 'true'),
+                await getSetting('llm_layer_memory_enabled', 'true')
+            ];
             res.json({
                 success: true,
                 profile,
@@ -2530,7 +2540,13 @@ export function createAdminApp(bot = null) {
                 sampling: {
                     temperature: parseFloat(tempVal) || 0.66,
                     max_tokens: parseInt(tokensVal, 10) || 300,
-                    typing_delay: delayVal === 'true'
+                    typing_delay: delayVal === 'true',
+                    memoryDepth: parseInt(memoryDepthVal, 10) || 5,
+                    contextLayers: {
+                        radiant: radiantVal !== 'false',
+                        weatherGeo: weatherVal !== 'false',
+                        semanticaMemory: memoryVal !== 'false'
+                    }
                 }
             });
         } catch (e) {
@@ -2564,6 +2580,28 @@ export function createAdminApp(bot = null) {
             }
             if (req.body?.typing_delay !== undefined) {
                 await setSetting('typing_delay_enabled', String(Boolean(req.body.typing_delay)));
+            }
+            if (req.body?.memoryDepth !== undefined) {
+                await setSetting('semantica_max_facts_per_request', String(Number(req.body.memoryDepth) || 5));
+            }
+            if (req.body?.contextLayers && typeof req.body.contextLayers === 'object') {
+                if (req.body.contextLayers.radiant !== undefined) {
+                    await setSetting('llm_layer_radiant_enabled', String(Boolean(req.body.contextLayers.radiant)));
+                }
+                if (req.body.contextLayers.weatherGeo !== undefined) {
+                    await setSetting('llm_layer_weather_enabled', String(Boolean(req.body.contextLayers.weatherGeo)));
+                }
+                if (req.body.contextLayers.semanticaMemory !== undefined) {
+                    await setSetting('llm_layer_memory_enabled', String(Boolean(req.body.contextLayers.semanticaMemory)));
+                }
+            }
+            if (req.body?.channelSettings && typeof req.body.channelSettings === 'object') {
+                const cs = req.body.channelSettings;
+                if (cs.temperature !== undefined) await setSetting('channel_temperature', String(cs.temperature));
+                if (cs.judgeMode !== undefined) await setSetting('channel_judge_mode', String(cs.judgeMode));
+                if (cs.promptBlocks && typeof cs.promptBlocks === 'object') {
+                    await setSetting('channel_prompt_blocks', JSON.stringify(cs.promptBlocks));
+                }
             }
 
             const [freshProfile, tempVal, tokensVal, delayVal] = await Promise.all([
@@ -2631,17 +2669,43 @@ export function createAdminApp(bot = null) {
             const context = req.body?.context || {};
             const isGroup = surface === 'GROUP';
             const isComments = surface === 'COMMENTS';
-            const contract = isComments
-                ? 'Ты Лера в комментариях под публичным постом. Отвечай коротко, живо, без приватной памяти и адресного флирта.'
-                : isGroup
-                ? 'Ты Лера в групповом чате. Учитывай автора сообщения, не используй приватную память и не уходи в интим при всех.'
-                : surface === 'CHANNEL'
-                ? 'Ты Лера пишешь публичный пост в Telegram-канал. Не раскрывай личные переписки и relationship-контекст.'
-                : surface === 'INITIATIVE'
-                ? 'Ты Лера сама начинаешь личный контакт. Не зацикливай инициативу и учитывай паузу между сообщениями.'
-                : 'Ты Лера в личном диалоге. Отвечай коротко, естественно и разделяй отдельные сообщения символом |||.';
-            const projection = `${details.text}\n\n[TOOL POLICY]\nПамять: ${details.policy.memory}\nВывод: ${details.policy.output}`;
-            const systemPrompt = compileLeraSystemPrompt({ surface, projection, policy: details.policy, contract, schemas });
+            let systemPrompt = '';
+            if (surface === 'CHANNEL') {
+                const channelSettings = await getChannelPosterSettings().catch(() => ({}));
+                const channelBlocks = channelSettings.prompt_blocks || {};
+                systemPrompt = buildChannelSystemPrompt({
+                    time: 'сейчас',
+                    timeOfDay: context.time?.period || 'день',
+                    topic: 'thoughts',
+                    topicDescription: 'Короткая спонтанная мысль или зарисовка о Петербурге.',
+                    recentPosts: [],
+                    messagesCount: '1',
+                    promptBlocks: channelBlocks,
+                    leraPrompt: details.text,
+                    publicFacts: channelSettings.public_facts || [],
+                    creativity: channelSettings.creativity || 0.6,
+                    ctaStyle: channelSettings.cta_style || '',
+                    contentFormat: 'life_observation',
+                    editorialMode: channelSettings.editorial_mode || 'reference_short'
+                });
+            } else if (surface === 'COMMENTS') {
+                const channelSettings = await getChannelPosterSettings().catch(() => ({}));
+                const routedBase = await getRoutedSystemPrompt('CASUAL', { surface: 'COMMENTS' });
+                const customRules = channelSettings.comments_prompt ? `\nДОПОЛНИТЕЛЬНЫЕ ИНСТРУКЦИИ ДЛЯ КОММЕНТАРИЕВ:\n${channelSettings.comments_prompt}\n` : '';
+                systemPrompt = `${routedBase}\n\n[РЕЖИМ: ПУБЛИЧНЫЕ КОММЕНТАРИИ ПОД ПОСТОМ КАНАЛА]\nИсходный пост канала: "пример поста"\nСобеседник: подписчик канала.\n${customRules}\nФормат ответа — строго валидный JSON:\n{\n  "reaction": "эмодзи или null",\n  "reply": "текст ответа без эмодзи или null",\n  "reason": "краткое объяснение"\n}`;
+            } else {
+                const routedBase = await getRoutedSystemPrompt(surface === 'GROUP' ? 'CASUAL' : 'CASUAL', { surface, isPublicContext: isGroup });
+                const memoryFacts = (context.semanticaMemory !== false && !isGroup) 
+                    ? '\n\n=== 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===\n- Пользователь любит кофе на Петроградке\n- Общались вчера вечером' 
+                    : '';
+                const radiantBlock = (context.radiant !== false)
+                    ? `\n\n=== СОСТОЯНИЕ ЛЕРЫ (RADIANT) ===\nЛокация: Петроградка, Большой пр.\nПогода: Санкт-Петербург, ${context.weather?.condition || 'ясно'}, +18°C\nПотребности: сытость 75%, бодрость 80%`
+                    : '';
+                const modeInstruction = isGroup 
+                    ? '\n\n[ГРУППОВОЙ ЧАТ / ГОСТЕВОЙ РЕЖИМ]:\n- Ты общаешься в публичной группе Telegram.\n- СТРОЖАЙШИЙ ЗАПРЕТ НА ЭРОТИКУ И ПРИВАТНУЮ ПАМЯТЬ В ГРУППЕ.'
+                    : (surface === 'INITIATIVE' ? '\n\n[ТИП ИНИЦИАТИВЫ]: weather\n[ПРИЧИНА]: спонтанная мысль о погоде' : '');
+                systemPrompt = `${routedBase}${modeInstruction}${radiantBlock}${memoryFacts}`;
+            }
             res.json({ success: true, mode, surface, profileVersion: active.version, projection: details.text, systemPrompt, context, activeRules: details.activeRules, skippedRules: details.skippedRules, availableTools: schemas, estimatedTokens: Math.ceil(systemPrompt.length / 3.4) });
         } catch (error) {
             res.status(400).json({ success: false, error: { code: 'INVALID_SURFACE', message: error.message, details: null } });

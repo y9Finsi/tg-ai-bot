@@ -103,6 +103,9 @@ export function UniversalPipelineBoard({ providers = [], temperature, setTempera
     const [sandboxQuery, setSandboxQuery] = useState('');
     const [sandboxLoading, setSandboxLoading] = useState(false);
     const [sandboxResult, setSandboxResult] = useState(null);
+    const [channelData, setChannelData] = useState({ promptBlocks: {}, temperature: 0.7, mediaMode: 'db_photo', judgeMode: 'ENFORCE' });
+    const [runtimeSaving, setRuntimeSaving] = useState(false);
+    const [channelEditorBlock, setChannelEditorBlock] = useState(null);
     const activeSurface = SURFACES.find(item => item.id === surface) || SURFACES[0];
     const activePreset = PRESETS.find(item => item.id === preset) || PRESETS[0];
     const activeProviders = providers.filter(item => item.is_active !== false);
@@ -164,11 +167,22 @@ export function UniversalPipelineBoard({ providers = [], temperature, setTempera
                 { id: 'voice', title: 'Речевой код', text: next.speech || INITIAL_PROMPTS[1].text },
                 { id: 'rules', title: 'Активные правила', text: (next.blocks || []).filter(rule => rule.enabled !== false).map(rule => rule.content).join('\n') || INITIAL_PROMPTS[2].text }
             ]);
+            if (data.sampling?.memoryDepth != null) setMemoryDepth?.(data.sampling.memoryDepth);
+            if (data.sampling?.contextLayers != null) setContextLayers?.(data.sampling.contextLayers);
         }).catch(error => {
             if (!cancelled) setProfileError(error?.message || 'Профиль недоступен');
         }).finally(() => {
             if (!cancelled) setProfileLoading(false);
         });
+        api('/api/admin/channel/settings').then(res => {
+            if (cancelled || !res?.settings) return;
+            setChannelData({
+                promptBlocks: res.settings.prompt_blocks || {},
+                temperature: Number(res.settings.temperature) || 0.7,
+                mediaMode: res.settings.media_mode || 'db_photo',
+                judgeMode: res.settings.judge_mode || 'ENFORCE'
+            });
+        }).catch(() => {});
         return () => { cancelled = true; };
     }, []);
 
@@ -201,7 +215,20 @@ export function UniversalPipelineBoard({ providers = [], temperature, setTempera
     const saveProfile = async (nextProfile, message = 'Профиль сохранён') => {
         setProfileSaving(true);
         try {
-            const data = await api('/api/admin/lera-profile', { method: 'POST', body: JSON.stringify({ profile: nextProfile, temperature, max_tokens: maxTokens, source: 'character_studio' }) });
+            const payload = {
+                profile: nextProfile,
+                temperature,
+                max_tokens: maxTokens,
+                memoryDepth,
+                contextLayers,
+                channelSettings: {
+                    temperature: channelData.temperature,
+                    judgeMode: channelData.judgeMode,
+                    promptBlocks: channelData.promptBlocks
+                },
+                source: 'character_studio'
+            };
+            const data = await api('/api/admin/lera-profile', { method: 'POST', body: JSON.stringify(payload) });
             const savedProfile = data?.profile || nextProfile;
             setProfile(savedProfile);
             toast?.(message, 'success');
@@ -221,6 +248,29 @@ export function UniversalPipelineBoard({ providers = [], temperature, setTempera
         setPrompts(items => items.map(prompt => prompt.id === 'character' ? { ...prompt, text: item.character } : prompt.id === 'voice' ? { ...prompt, text: item.voice } : prompt));
         setShowPresetMenu(false);
         await saveProfile(nextProfile, `Пресет «${item.label}» применён и сохранён`);
+    };
+
+    const saveRuntimeSettings = async () => {
+        setRuntimeSaving(true);
+        try {
+            if (surface === 'CHANNEL') {
+                await api('/api/admin/channel/settings', {
+                    method: 'POST',
+                    body: {
+                        temperature: channelData.temperature,
+                        judgeMode: channelData.judgeMode,
+                        promptBlocks: channelData.promptBlocks,
+                        mediaMode: channelData.mediaMode
+                    }
+                });
+            }
+            await saveProfile(profile || {}, 'Настройки Runtime сохранены');
+            toast?.('Параметры Runtime успешно сохранены в базу данных', 'success');
+        } catch (err) {
+            toast?.(err?.message || 'Ошибка сохранения Runtime', 'error');
+        } finally {
+            setRuntimeSaving(false);
+        }
     };
 
     const resetOverride = async (field) => {
@@ -281,6 +331,22 @@ export function UniversalPipelineBoard({ providers = [], temperature, setTempera
             }
         } else if (editor.id === 'surface') {
             nextProfile.surfacePrompts[surface].instructions = editor.text;
+        } else if (editor.id.startsWith('channel_block_')) {
+            const blockKey = editor.id.replace('channel_block_', '');
+            const nextBlocks = { ...(channelData.promptBlocks || {}), [blockKey]: editor.text };
+            setChannelData(prev => ({ ...prev, promptBlocks: nextBlocks }));
+            await api('/api/admin/channel/settings', {
+                method: 'POST',
+                body: {
+                    temperature: channelData.temperature,
+                    judgeMode: channelData.judgeMode,
+                    promptBlocks: nextBlocks,
+                    mediaMode: channelData.mediaMode
+                }
+            }).catch(() => {});
+            toast?.('Блок канала ' + blockKey + ' обновлён', 'success');
+            setEditor(null);
+            return;
         } else if (editor.id === 'rules') {
             nextProfile.blocks = nextProfile.blocks.length
                 ? nextProfile.blocks.map((rule, index) => index === 0 ? { ...rule, content: editor.text } : rule)
@@ -467,21 +533,46 @@ export function UniversalPipelineBoard({ providers = [], temperature, setTempera
                                                     {activeSurface.label}
                                                 </span>
                                             </div>
-                                            <button
-                                                type="button"
+                                            <button 
+                                                type="button" 
                                                 onClick={() => setEditor({ id: 'surface', title: 'Инструкции: ' + activeSurface.label, text: surfaceOverride.instructions || SURFACE_DEFAULT_INSTRUCTIONS[surface] })}
                                                 className="text-white/40 hover:text-white transition-colors p-0.5 shrink-0"
                                             >
                                                 <Edit2 className="w-3 h-3 stroke-[1.5]" />
                                             </button>
                                         </div>
-                                        <p
+                                        <p 
                                             onClick={() => setEditor({ id: 'surface', title: 'Инструкции: ' + activeSurface.label, text: surfaceOverride.instructions || SURFACE_DEFAULT_INSTRUCTIONS[surface] })}
                                             className="text-[10px] text-white/60 leading-tight line-clamp-2 cursor-pointer hover:text-white/80 transition-colors"
                                         >
                                             {surfaceOverride.instructions || SURFACE_DEFAULT_INSTRUCTIONS[surface]}
                                         </p>
                                     </div>
+                                    {surface === 'CHANNEL' && (
+                                        <div className="rounded-md bg-[#13161e] border border-emerald-500/20 p-2 space-y-1.5 text-xs">
+                                            <div className="flex items-center justify-between text-[10px]">
+                                                <span className="font-semibold text-emerald-300">Редакторские блоки Канала</span>
+                                                <span className="text-[8px] font-mono text-emerald-400/80">promptBlocks</span>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-1 text-[9px]">
+                                                {['voice', 'context', 'restrictions', 'cta'].map(blockKey => (
+                                                    <button
+                                                        key={blockKey}
+                                                        type="button"
+                                                        onClick={() => setEditor({ 
+                                                            id: 'channel_block_' + blockKey, 
+                                                            title: 'Блок канала: ' + blockKey.toUpperCase(), 
+                                                            text: channelData.promptBlocks[blockKey] || '' 
+                                                        })}
+                                                        className="p-1 rounded bg-[#0a0c0e] border border-white/[0.08] hover:border-emerald-500/40 text-left truncate text-white/80 flex items-center justify-between"
+                                                    >
+                                                        <span className="truncate">{blockKey}: {channelData.promptBlocks[blockKey] ? 'задано' : 'канон'}</span>
+                                                        <Edit2 className="w-2.5 h-2.5 text-white/40 shrink-0" />
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                     {activeSurfaceRules.map(rule => (
                                         <div
                                             key={rule.id}
@@ -616,6 +707,14 @@ export function UniversalPipelineBoard({ providers = [], temperature, setTempera
                                     />
                                 </div>
                             </div>
+                            <button 
+                                type="button" 
+                                onClick={saveRuntimeSettings} 
+                                disabled={runtimeSaving} 
+                                className="w-full py-1 rounded bg-[#5e6ad2] hover:bg-[#6d78e3] text-white text-[10px] font-semibold tracking-wide transition-[background-color,transform] active:scale-[0.96] disabled:opacity-50 flex items-center justify-center gap-1 shadow-xs"
+                            >
+                                <span>{runtimeSaving ? 'Сохраняю...' : 'Сохранить Runtime в БД'}</span>
+                            </button>
                         </div>
                     </div>
                     <div className="rounded-xl bg-sky-950/[0.04] border border-sky-500/15 p-2 h-[270px] flex flex-col">
