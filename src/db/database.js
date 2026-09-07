@@ -2283,8 +2283,7 @@ export const DEFAULT_LERA_COMBAT_RULES = Object.freeze([
         attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual', 'prompt_format', 'prompt_continuity'],
         max_tokens: 200,
         temperature: 0.68,
-        category: 'rule',
-        content: 'Обычно отвечай одной короткой репликой либо лесенкой через |||. Опирайся на факты из памяти и контекст дня. Запрещено подыгрывать фантазиям о совместном быте (холодильник, совместная комната) и выдумывать чужие темы.'
+        category: 'rule'
     },
     {
         id: 'rule_chat_erotic',
@@ -2296,8 +2295,7 @@ export const DEFAULT_LERA_COMBAT_RULES = Object.freeze([
         attachedPromptIds: ['prompt_character', 'routing_erotic', 'prompt_flirt', 'prompt_format'],
         max_tokens: 240,
         temperature: 0.75,
-        category: 'rule',
-        content: 'СТРОЖАЙШИЙ ЗАПРЕТ на отговорки про сон и усталость («я усну», «я сонная», «устала»). СТРОЖАЙШИЙ ЗАПРЕТ на шаблонный смех («ахах», «хихи»). Полная вовлечённость в процесс, живость ощущений, отклик на действия партнёра без нытья.'
+        category: 'rule'
     },
     {
         id: 'rule_morning_initiative',
@@ -2309,8 +2307,7 @@ export const DEFAULT_LERA_COMBAT_RULES = Object.freeze([
         attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'prompt_initiative'],
         max_tokens: 200,
         temperature: 0.72,
-        category: 'rule',
-        content: 'Пиши живо, коротко и естественно от лица Леры. После длинной паузы начинай с чистого листа без продолжения старых обид. Запрещено выдумывать чужие темы, обещания или сериалы.'
+        category: 'rule'
     },
     {
         id: 'rule_evening_channel',
@@ -2322,8 +2319,7 @@ export const DEFAULT_LERA_COMBAT_RULES = Object.freeze([
         attachedPromptIds: ['prompt_bio', 'prompt_speech', 'prompt_channel_persona', 'prompt_channel_rules'],
         max_tokens: 230,
         temperature: 0.70,
-        category: 'rule',
-        content: 'Публичный образ петербургской студентки: личные наблюдения, ирония, настроение и вопросы подписчикам. Без раскрытия приватных переписок и секретов из лички.'
+        category: 'rule'
     }
 ]);
 

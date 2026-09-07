@@ -4,6 +4,8 @@ import {
     Pencil, 
     ChevronRight, 
     ChevronDown,
+    ChevronUp,
+    GripVertical,
     Check, 
     X,
     SlidersHorizontal,
@@ -26,7 +28,17 @@ const SURFACES = [
 ];
 
 // Helper: Гарантирует, что канон и системные промпты всегда идут первыми в списке
-export const sortPrompts = (prompts) => {
+export const sortPrompts = (prompts, customOrder = null) => {
+    if (Array.isArray(customOrder) && customOrder.length > 0) {
+        return [...(prompts || [])].sort((a, b) => {
+            const idxA = customOrder.indexOf(a.id);
+            const idxB = customOrder.indexOf(b.id);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            return (a.title || '').localeCompare(b.title || '', 'ru');
+        });
+    }
     const getPriority = (pr) => {
         // 1. Канон и биография — фундамент канона Леры, всегда абсолютный топ
         if (pr.id === 'prompt_bio' || pr.id === 'prompt_canon') return 1;
@@ -426,7 +438,7 @@ export function AiSettingsTab({ toast }) {
                     surface: r.surface || 'CHAT',
                     surfaces: Array.isArray(r.surfaces) && r.surfaces.length ? r.surfaces : [r.surface || 'CHAT'],
                     mode: r.mode || (r.conditions?.find(c => c.field === 'mode')?.value) || 'ALL',
-                    content: r.content || '',
+
                     conditions: Array.isArray(r.conditions) ? r.conditions : [],
                     enabled: r.enabled !== false,
                     attachedPromptIds: Array.isArray(r.attachedPromptIds) ? r.attachedPromptIds : ['prompt_bio'],
@@ -905,29 +917,62 @@ export function AiSettingsTab({ toast }) {
                                     {promptsList.filter(p => p.style === 'style-a').map((item) => (
                                         <div
                                             key={item.id}
-                                            className="w-[377px] min-h-[158px] rounded-[23px] p-2 flex flex-col gap-1 transition-all bg-[#000212]/37 border border-[#8693ff]/25"
+                                            draggable={true}
+                                            onDragStart={(e) => handlePromptDragStart(e, item.id)}
+                                            onDragOver={handlePromptDragOver}
+                                            onDrop={(e) => handlePromptDrop(e, item.id)}
+                                            className={`w-[377px] min-h-[158px] rounded-[23px] p-2 flex flex-col gap-1 transition-all bg-[#000212]/37 border border-[#8693ff]/25 ${draggedPromptId === item.id ? 'opacity-40 border-dashed border-[#8693ff]' : ''}`}
                                         >
                                             {/* Card Header (Frame 201) */}
                                             <div className="px-2 py-1 flex items-center justify-between">
-                                                <div className="flex items-center gap-2 overflow-hidden pr-2">
+                                                <div className="flex items-center gap-1.5 overflow-hidden pr-2">
+                                                    <GripVertical className="w-3.5 h-3.5 text-white/30 cursor-grab active:cursor-grabbing shrink-0" />
                                                     <span className="text-[16px] font-medium text-white truncate select-none">
                                                         {item.title}
                                                     </span>
                                                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#8693ff]/20 text-[#8693ff] font-normal select-none shrink-0">
-                                                        Канон
+                                                        {item.category_label || 'Канон'}
                                                     </span>
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setEditingPrompt(item);
-                                                        setPromptModalOpen(true);
-                                                    }}
-                                                    title="Редактировать промпт"
-                                                    className="p-1 text-white/50 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/5 shrink-0"
-                                                >
-                                                    <Pencil className="w-4 h-4 stroke-[1.5]" />
-                                                </button>
+                                                <div className="flex items-center gap-0.5 shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        disabled={promptsList.indexOf(item) === 0}
+                                                        onClick={() => handleMovePrompt(item.id, 'up')}
+                                                        title="Переместить выше при сборке"
+                                                        className="p-1 text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40 cursor-pointer rounded hover:bg-white/5"
+                                                    >
+                                                        <ChevronUp className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={promptsList.indexOf(item) === promptsList.length - 1}
+                                                        onClick={() => handleMovePrompt(item.id, 'down')}
+                                                        title="Переместить ниже при сборке"
+                                                        className="p-1 text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40 cursor-pointer rounded hover:bg-white/5"
+                                                    >
+                                                        <ChevronDown className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setEditingPrompt(item);
+                                                            setPromptModalOpen(true);
+                                                        }}
+                                                        title="Редактировать промпт"
+                                                        className="p-1 text-white/50 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/5 shrink-0"
+                                                    >
+                                                        <Pencil className="w-4 h-4 stroke-[1.5]" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeletePrompt(item.id)}
+                                                        title="Удалить промпт"
+                                                        className="p-1 text-white/40 hover:text-red-400 transition-colors cursor-pointer rounded-lg hover:bg-white/5 shrink-0"
+                                                    >
+                                                        <Trash2 className="w-4 h-4 stroke-[1.5]" />
+                                                    </button>
+                                                </div>
                                             </div>
 
                                             {/* Card Content (Component 41) */}
@@ -947,11 +992,16 @@ export function AiSettingsTab({ toast }) {
                                     {promptsList.filter(p => p.style !== 'style-a').map((item) => (
                                         <div
                                             key={item.id}
-                                            className="w-[377px] min-h-[158px] rounded-[23px] p-2 flex flex-col gap-1 transition-all bg-gradient-to-b from-[#171717] to-[#232425]/0 border border-white/10"
+                                            draggable={true}
+                                            onDragStart={(e) => handlePromptDragStart(e, item.id)}
+                                            onDragOver={handlePromptDragOver}
+                                            onDrop={(e) => handlePromptDrop(e, item.id)}
+                                            className={`w-[377px] min-h-[158px] rounded-[23px] p-2 flex flex-col gap-1 transition-all bg-gradient-to-b from-[#171717] to-[#232425]/0 border border-white/10 ${draggedPromptId === item.id ? 'opacity-40 border-dashed border-[#8693ff]' : ''}`}
                                         >
                                             {/* Card Header (Frame 201) */}
                                             <div className="px-2 py-1 flex items-center justify-between">
-                                                <div className="flex items-center gap-2 overflow-hidden pr-2">
+                                                <div className="flex items-center gap-1.5 overflow-hidden pr-2">
+                                                    <GripVertical className="w-3.5 h-3.5 text-white/30 cursor-grab active:cursor-grabbing shrink-0" />
                                                     <span className="text-[16px] font-medium text-white truncate select-none">
                                                         {item.title}
                                                     </span>
@@ -965,7 +1015,25 @@ export function AiSettingsTab({ toast }) {
                                                         </span>
                                                     ) : null}
                                                 </div>
-                                                <div className="flex items-center gap-1 shrink-0">
+                                                <div className="flex items-center gap-0.5 shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        disabled={promptsList.indexOf(item) === 0}
+                                                        onClick={() => handleMovePrompt(item.id, 'up')}
+                                                        title="Переместить выше при сборке"
+                                                        className="p-1 text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40 cursor-pointer rounded hover:bg-white/5"
+                                                    >
+                                                        <ChevronUp className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={promptsList.indexOf(item) === promptsList.length - 1}
+                                                        onClick={() => handleMovePrompt(item.id, 'down')}
+                                                        title="Переместить ниже при сборке"
+                                                        className="p-1 text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40 cursor-pointer rounded hover:bg-white/5"
+                                                    >
+                                                        <ChevronDown className="w-3.5 h-3.5" />
+                                                    </button>
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -977,16 +1045,14 @@ export function AiSettingsTab({ toast }) {
                                                     >
                                                         <Pencil className="w-4 h-4 stroke-[1.5]" />
                                                     </button>
-                                                    {!item.is_system && !item.is_system_section && !item.is_canonical && !item.is_routing_module && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleDeletePrompt(item.id)}
-                                                            title="Удалить модуль"
-                                                            className="p-1 text-white/40 hover:text-red-400 transition-colors cursor-pointer rounded-lg hover:bg-white/5 shrink-0"
-                                                        >
-                                                            <Trash2 className="w-4 h-4 stroke-[1.5]" />
-                                                        </button>
-                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeletePrompt(item.id)}
+                                                        title="Удалить промпт"
+                                                        className="p-1 text-white/40 hover:text-red-400 transition-colors cursor-pointer rounded-lg hover:bg-white/5 shrink-0"
+                                                    >
+                                                        <Trash2 className="w-4 h-4 stroke-[1.5]" />
+                                                    </button>
                                                 </div>
                                             </div>
 
@@ -1291,15 +1357,6 @@ export function AiSettingsTab({ toast }) {
                                             )}
                                         </div>
 
-                                        {/* Rule Content / Directive Preview */}
-                                        {rule.content && (
-                                            <div className="px-2 pb-1">
-                                                <p className="text-[13px] text-white/70 line-clamp-2 leading-relaxed">
-                                                    {rule.content}
-                                                </p>
-                                            </div>
-                                        )}
-
                                         {/* Rule Content Row (Frame 199) */}
                                         <div className="flex items-stretch gap-2">
                                             {/* Left Sub-card: Инструкции (Frame 193, width: 288px) */}
@@ -1320,50 +1377,69 @@ export function AiSettingsTab({ toast }) {
                                                 </div>
 
                                                 {/* Attached Prompts List (Frame 112) */}
-                                                <div className="flex flex-col gap-1.5 overflow-hidden">
+                                                <div className="flex flex-col gap-1.5 max-h-[220px] overflow-y-auto pr-0.5">
                                                     {attachedPrompts.length > 0 ? (
-                                                        <>
-                                                            {attachedPrompts.slice(0, 3).map((ap) => (
-                                                                <div
-                                                                    key={ap.id}
-                                                                    className="w-full bg-[#171616] border border-white/[0.07] rounded-[16px] p-2 flex flex-col gap-1"
-                                                                >
-                                                                    <div className="flex items-center justify-between">
-                                                                        <div className="flex items-center gap-2 overflow-hidden">
-                                                                            <img 
-                                                                                src="/assets/icon_dots9.svg" 
-                                                                                alt="" 
-                                                                                className="w-3.5 h-3.5 opacity-80 flex-shrink-0" 
-                                                                            />
-                                                                            <span className="text-[15px] font-medium text-[#bdbdbd] truncate select-none">
-                                                                                {ap.title}
-                                                                            </span>
-                                                                        </div>
+                                                        attachedPrompts.map((ap, apIdx) => (
+                                                            <div
+                                                                key={ap.id}
+                                                                draggable={true}
+                                                                onDragStart={(e) => handleAttachedDragStart(e, ap.id)}
+                                                                onDragOver={handleAttachedDragOver}
+                                                                onDrop={(e) => handleAttachedDrop(e, rule.id, ap.id)}
+                                                                className={`w-full bg-[#171616] border border-white/[0.07] rounded-[16px] p-2 flex flex-col gap-1 transition-all ${draggedAttachedId === ap.id ? 'opacity-40 border-dashed border-[#8693ff]' : ''}`}
+                                                            >
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className="flex items-center gap-1.5 overflow-hidden pr-1">
+                                                                        <GripVertical className="w-3.5 h-3.5 text-white/30 cursor-grab active:cursor-grabbing shrink-0" />
+                                                                        <span className="text-[14px] font-medium text-[#bdbdbd] truncate select-none">
+                                                                            {ap.title}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-0.5 shrink-0">
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={apIdx === 0}
+                                                                            onClick={() => handleMoveAttachedPrompt(rule.id, ap.id, 'up')}
+                                                                            title="Выше в промпте"
+                                                                            className="p-0.5 text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40 cursor-pointer rounded hover:bg-white/5"
+                                                                        >
+                                                                            <ChevronUp className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={apIdx === attachedPrompts.length - 1}
+                                                                            onClick={() => handleMoveAttachedPrompt(rule.id, ap.id, 'down')}
+                                                                            title="Ниже в промпте"
+                                                                            className="p-0.5 text-white/40 hover:text-white disabled:opacity-20 disabled:hover:text-white/40 cursor-pointer rounded hover:bg-white/5"
+                                                                        >
+                                                                            <ChevronDown className="w-3.5 h-3.5" />
+                                                                        </button>
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => {
                                                                                 setEditingPrompt(ap);
                                                                                 setPromptModalOpen(true);
                                                                             }}
-                                                                            className="p-1 opacity-50 hover:opacity-100 transition-opacity cursor-pointer"
+                                                                            title="Редактировать промпт"
+                                                                            className="p-0.5 text-white/40 hover:text-white transition-opacity cursor-pointer rounded hover:bg-white/5"
                                                                         >
-                                                                            <Pencil className="w-3 h-3 text-white stroke-[1.5]" />
+                                                                            <Pencil className="w-3 h-3 stroke-[1.5]" />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleDetachPrompt(rule.id, ap.id)}
+                                                                            title="Открепить от правила"
+                                                                            className="p-0.5 text-white/40 hover:text-red-400 transition-colors cursor-pointer rounded hover:bg-white/5"
+                                                                        >
+                                                                            <X className="w-3.5 h-3.5" />
                                                                         </button>
                                                                     </div>
-                                                                    <p className="text-[14px] text-white/50 truncate px-1 select-none">
-                                                                        {ap.content || 'Пустой текст'}
-                                                                    </p>
                                                                 </div>
-                                                            ))}
-                                                            {attachedPrompts.length > 3 && (
-                                                                <div 
-                                                                    onClick={() => setAttachModalRuleId(rule.id)}
-                                                                    className="text-[12px] text-[#8693ff] hover:text-[#a8b3ff] px-2 py-0.5 cursor-pointer select-none transition-colors"
-                                                                >
-                                                                    + ещё {attachedPrompts.length - 3} {attachedPrompts.length - 3 === 1 ? 'инструкция' : 'инструкции'}
-                                                                </div>
-                                                            )}
-                                                        </>
+                                                                <p className="text-[12px] text-white/50 truncate px-1 select-none">
+                                                                    {ap.content || 'Пустой текст'}
+                                                                </p>
+                                                            </div>
+                                                        ))
                                                     ) : (
                                                         <div 
                                                             onClick={() => setAttachModalRuleId(rule.id)}
@@ -1535,7 +1611,8 @@ export function AiSettingsTab({ toast }) {
                                 handleSavePromptModal({
                                     title: formData.get('title'),
                                     style: formData.get('style'),
-                                    content: formData.get('content')
+                                    content: formData.get('content'),
+                                    is_system: formData.get('is_system') === 'on'
                                 });
                             }}
                             className="flex flex-col gap-4"
@@ -1569,6 +1646,16 @@ export function AiSettingsTab({ toast }) {
                                     <option value="style-b">Стиль B (Темный градиент #171717 — Модульный)</option>
                                 </select>
                             </div>
+
+                            <label className="flex items-center gap-2.5 cursor-pointer select-none text-xs text-white/80 py-1">
+                                <input
+                                    type="checkbox"
+                                    name="is_system"
+                                    defaultChecked={Boolean(editingPrompt?.is_system || editingPrompt?.is_canonical || editingPrompt?.style === 'style-a')}
+                                    className="w-4 h-4 rounded border-white/20 bg-[#202020] text-[#8693ff] focus:ring-0 cursor-pointer"
+                                />
+                                <span>Сделать системным промптом (Канон / Системный приоритет)</span>
+                            </label>
 
                             <div className="flex flex-col gap-1.5">
                                 <label className="text-xs text-white/60 font-medium">Текст системной инструкции</label>
@@ -1645,7 +1732,7 @@ export function AiSettingsTab({ toast }) {
                                     attachedPromptIds: ruleSelectedPromptIds.length ? ruleSelectedPromptIds : (promptsList.length ? [promptsList[0].id] : ['prompt_bio']),
                                     max_tokens: Number(formData.get('max_tokens')) || 230,
                                     temperature: Number(formData.get('temperature')) || 0.7,
-                                    content: formData.get('content') || ''
+                                    content: ''
                                 });
                             }}
                             className="flex flex-col gap-4"
@@ -1661,20 +1748,7 @@ export function AiSettingsTab({ toast }) {
                                 />
                             </div>
 
-                            {/* Директива / боевой текст правила */}
-                            <div className="flex flex-col gap-1.5">
-                                <label className="text-xs text-white/60 font-medium flex items-center justify-between">
-                                    <span>Текст директивы / правила</span>
-                                    <span className="text-[11px] text-white/40">Канонический текст боевого правила</span>
-                                </label>
-                                <textarea
-                                    name="content"
-                                    defaultValue={editingRule?.content || ''}
-                                    rows={3}
-                                    placeholder="Инструкции, ограничения и поведение для этого правила..."
-                                    className="bg-[#202020] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-[#8693ff]/50 font-mono leading-relaxed resize-y"
-                                />
-                            </div>
+
 
                             {/* Выбор инструкций/промптов */}
                             <div className="flex flex-col gap-1.5">

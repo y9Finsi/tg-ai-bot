@@ -62,7 +62,9 @@ export function normalizeRule(rule = {}, index = 0) {
         temperature: rule.temperature !== undefined ? Number(rule.temperature) : undefined,
         provider_id: rule.provider_id ? Number(rule.provider_id) : null,
         fallback_provider_ids: Array.isArray(rule.fallback_provider_ids) ? rule.fallback_provider_ids.map(Number).filter(Boolean) : [],
-        style: rule.style || undefined
+        style: rule.style || undefined,
+        is_system: rule.is_system !== undefined ? Boolean(rule.is_system) : undefined,
+        is_canonical: rule.is_canonical !== undefined ? Boolean(rule.is_canonical) : undefined
     };
 }
 
@@ -86,6 +88,8 @@ export function normalizeLeraProfile(profile = {}) {
     }));
     result.blocks = Array.isArray(source.blocks) ? source.blocks.map(normalizeRule) : Array.isArray(source.modules) ? source.modules.map(normalizeRule) : [];
     result.modules = result.blocks;
+    result.deletedPromptIds = Array.isArray(source.deletedPromptIds) ? source.deletedPromptIds.map(String) : [];
+    result.promptOrder = Array.isArray(source.promptOrder) ? source.promptOrder.map(String) : [];
     return result;
 }
 

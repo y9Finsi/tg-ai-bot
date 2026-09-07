@@ -2777,37 +2777,39 @@ export function createAdminApp(bot = null) {
         if (!Array.isArray(promptIds) || promptIds.length === 0) return '';
         const p = profile || {};
         const promptMap = {
-            prompt_bio: { title: 'Канон и биография', content: p.age_bio },
-            prompt_character: { title: 'Характер', content: p.character },
-            prompt_speech: { title: 'Голос и речь', content: p.speech },
-            prompt_forbidden: { title: 'Ограничения', content: p.forbidden },
-            prompt_facts: { title: 'Правила фактов', content: p.facts },
-            prompt_flirt: { title: 'Флирт и теплота', content: p.flirt },
-            routing_core: { title: 'Системное ядро (Core)', content: routingModules.core },
-            routing_casual: { title: 'Повседневный диалог (Casual)', content: routingModules.casual },
-            routing_erotic: { title: 'Режим 18+ / Вирт (Erotic)', content: routingModules.erotic },
-            routing_common: { title: 'Формат и логика (Common)', content: routingModules.common },
-            prompt_format: { title: 'Формат ответа (Telegram)', content: getPromptSection('lera_format') },
-            prompt_continuity: { title: 'Логика диалога и реальность', content: getPromptSection('lera_continuity') },
-            prompt_context_rules: { title: 'Правила контекста и аналитики', content: getPromptSection('context_template') },
-            prompt_channel_persona: { title: 'Персона Telegram-канала', content: getPromptSection('channel_persona') },
-            prompt_channel_rules: { title: 'Правила автопостинга в канал', content: getPromptSection('channel_rules') },
-            prompt_initiative: { title: 'Самостоятельная инициатива Леры', content: getPromptSection('initiative_directive') }
+            prompt_bio: p.age_bio,
+            prompt_character: p.character,
+            prompt_speech: p.speech,
+            prompt_forbidden: p.forbidden,
+            prompt_facts: p.facts,
+            prompt_flirt: p.flirt,
+            routing_core: routingModules.core,
+            routing_casual: routingModules.casual,
+            routing_erotic: routingModules.erotic,
+            routing_common: routingModules.common,
+            prompt_format: getPromptSection('lera_format'),
+            prompt_continuity: getPromptSection('lera_continuity'),
+            prompt_context_rules: getPromptSection('context_template'),
+            prompt_channel_persona: getPromptSection('channel_persona'),
+            prompt_channel_rules: getPromptSection('channel_rules'),
+            prompt_initiative: getPromptSection('initiative_directive')
         };
         const customBlocks = Array.isArray(p.blocks) ? p.blocks.filter(b => b.category === 'prompt_module') : [];
         for (const cb of customBlocks) {
             if (cb.id) {
-                promptMap[cb.id] = { title: cb.title || 'Модуль промпта', content: cb.content || '' };
+                promptMap[cb.id] = cb.content || '';
             }
         }
-        const lines = [];
+        const deletedSet = new Set(Array.isArray(p.deletedPromptIds) ? p.deletedPromptIds : []);
+        const parts = [];
         for (const pid of promptIds) {
-            const item = promptMap[pid];
-            if (item && item.content) {
-                lines.push(`• [${item.title}]: ${item.content}`);
+            if (deletedSet.has(pid)) continue;
+            const content = promptMap[pid];
+            if (content && typeof content === 'string' && content.trim()) {
+                parts.push(content.trim());
             }
         }
-        return lines.join('\n');
+        return parts.join('\n\n');
     }
 
     /**
@@ -2821,6 +2823,7 @@ export function createAdminApp(bot = null) {
         try {
             const { ruleId, surface, mode, userText = '' } = req.body || {};
             const activeProfile = await getLeraProfile();
+            const routingModules = await getRoutingPromptModules().catch(() => ({}));
             const p = (activeProfile?.profile?.profile && typeof activeProfile?.profile?.profile === 'object')
                 ? activeProfile.profile.profile
                 : (activeProfile?.profile || {});
@@ -2917,52 +2920,29 @@ export function createAdminApp(bot = null) {
                 ];
             }
 
-            // 5. Routing Modules & Prompt Directives
-            const routingModules = await getRoutingPromptModules();
-            const attachedDirectives = targetRule
+            // 5. Build system prompt purely from attached prompt modules (from the Prompts tab) in order
+            let assembledDirectives = targetRule && Array.isArray(targetRule.attachedPromptIds) && targetRule.attachedPromptIds.length > 0
                 ? resolveAttachedPromptDirectives(targetRule.attachedPromptIds, p, routingModules)
                 : '';
+
+            // Fallback if rule has no attached prompts
+            if (!assembledDirectives) {
+                if (normSurface === 'CHANNEL') {
+                    assembledDirectives = resolveAttachedPromptDirectives(['prompt_bio', 'prompt_speech', 'prompt_channel_persona', 'prompt_channel_rules'], p, routingModules);
+                } else if (normSurface === 'INITIATIVE') {
+                    assembledDirectives = resolveAttachedPromptDirectives(['prompt_bio', 'prompt_character', 'prompt_speech', 'prompt_initiative'], p, routingModules);
+                } else if (normMode === 'EROTIC') {
+                    assembledDirectives = resolveAttachedPromptDirectives(['prompt_character', 'routing_erotic', 'prompt_flirt', 'prompt_format'], p, routingModules);
+                } else {
+                    assembledDirectives = resolveAttachedPromptDirectives(['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual', 'prompt_format', 'prompt_continuity'], p, routingModules);
+                }
+            }
 
             let completeSystemPrompt = '';
             let messages = [];
 
             // 6. Surface-Specific Assembly
             if (normSurface === 'CHANNEL') {
-                const channelSettings = await getChannelPosterSettings().catch(() => ({}));
-                const channelBlocks = channelSettings.prompt_blocks || {};
-                const channelProjection = getLeraProfileProjection(p, 'CHANNEL');
-
-                let ruleBlock = '';
-                if (targetRule) {
-                    const parts = [
-                        `=== ⚙️ АКТИВНОЕ ПРАВИЛО КАНАЛА: ${targetRule.title} ===`,
-                        targetRule.content ? `Инструкции правила:\n${targetRule.content}` : '',
-                        attachedDirectives ? `Привязанные инструкции:\n${attachedDirectives}` : ''
-                    ].filter(Boolean);
-                    ruleBlock = `\n\n${parts.join('\n\n')}`;
-                }
-
-                const recentPostsRows = await getChannelPostHistory(5).catch(() => []);
-                const recentPosts = recentPostsRows
-                    .map(r => ({ text: r.post_text || r.text || '' }))
-                    .filter(r => r.text);
-
-                const channelPersonaPrompt = buildChannelSystemPrompt({
-                    time: 'сейчас',
-                    timeOfDay: radiantLayers.time?.period || 'день',
-                    topic: 'thoughts',
-                    topicDescription: 'Короткая спонтанная мысль или зарисовка о Петербурге.',
-                    recentPosts,
-                    messagesCount: '1',
-                    promptBlocks: channelBlocks,
-                    leraPrompt: channelProjection,
-                    publicFacts: channelSettings.public_facts || (p.facts ? [p.facts] : []),
-                    creativity: targetRule?.temperature !== undefined ? targetRule.temperature : (channelSettings.creativity || 0.70),
-                    ctaStyle: channelSettings.cta_style || '',
-                    contentFormat: 'life_observation',
-                    editorialMode: channelSettings.editorial_mode || 'reference_short'
-                });
-
                 const channelRadiantSummary = [
                     `[ОКРУЖЕНИЕ И СОСТОЯНИЕ ЛЕРЫ В ПИТЕРЕ]`,
                     `• Время: ${radiantLayers.time?.formatted || 'день'}`,
@@ -2972,11 +2952,14 @@ export function createAdminApp(bot = null) {
                 ].join('\n');
 
                 completeSystemPrompt = [
-                    channelPersonaPrompt,
-                    `\n\n[КАНОНИЧЕСКИЙ ПРОФИЛЬ ЛЕРЫ · ВЕРСИЯ ${activeProfile?.version || 1} · CHANNEL]\n${channelProjection}`,
-                    ruleBlock,
-                    `\n\n${channelRadiantSummary}`
-                ].filter(Boolean).join('');
+                    assembledDirectives,
+                    channelRadiantSummary
+                ].filter(Boolean).join('\n\n');
+
+                const recentPostsRows = await getChannelPostHistory(5).catch(() => []);
+                const recentPosts = recentPostsRows
+                    .map(r => ({ text: r.post_text || r.text || '' }))
+                    .filter(r => r.text);
 
                 recentEvents = recentPosts.length > 0
                     ? recentPosts.map((post, idx) => ({ role: 'assistant', content: `[Пост #${idx + 1}]: ${post.text}` }))
@@ -2988,29 +2971,11 @@ export function createAdminApp(bot = null) {
                 ];
 
             } else if (normSurface === 'INITIATIVE') {
-                const routedBase = await getRoutedSystemPrompt(normMode, {
-                    surface: 'INITIATIVE'
-                });
-
-                const initiativeDirective = getPromptSection('initiative_directive') || `[РЕЖИМ: САМОСТОЯТЕЛЬНАЯ ИНИЦИАТИВА ЛЕРЫ (ЛЁРА ПИШЕТ ПЕРВОЙ)]\n- Ты сама возобновляешь личный контакт с пользователем в Telegram после паузы.\n- Напиши первое живое сообщение от лица Леры. Учитывай время суток в СПб, текущую погоду и состояние Radiant.\n- Начни с чистого листа: никаких выдуманных претензий или продолжения старых обид.`;
-
-                let ruleBlock = '';
-                if (targetRule) {
-                    const parts = [
-                        `=== ⚙️ АКТИВНОЕ ПРАВИЛО ИНИЦИАТИВЫ: ${targetRule.title} ===`,
-                        targetRule.content ? `Инструкции правила:\n${targetRule.content}` : '',
-                        attachedDirectives ? `Привязанные инструкции:\n${attachedDirectives}` : ''
-                    ].filter(Boolean);
-                    ruleBlock = `\n\n${parts.join('\n\n')}`;
-                }
-
                 completeSystemPrompt = [
-                    routedBase,
-                    `\n\n${initiativeDirective}`,
-                    ruleBlock,
-                    `\n\n${radiantContextText}`,
-                    `\n\n=== 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===\n${memoryText}`
-                ].filter(Boolean).join('');
+                    assembledDirectives,
+                    radiantContextText,
+                    memoryText ? `=== 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===\n${memoryText}` : ''
+                ].filter(Boolean).join('\n\n');
 
                 messages = [
                     { role: 'system', content: completeSystemPrompt },
@@ -3020,27 +2985,11 @@ export function createAdminApp(bot = null) {
 
             } else {
                 // Surface: CHAT (or GROUP / COMMENTS fallback)
-                const routedBase = await getRoutedSystemPrompt(normMode, {
-                    surface: normSurface,
-                    isPublicContext: normSurface === 'GROUP'
-                });
-
-                let ruleBlock = '';
-                if (targetRule) {
-                    const parts = [
-                        `=== ⚙️ АКТИВНОЕ ПРАВИЛО: ${targetRule.title} ===`,
-                        targetRule.content ? `Инструкции правила:\n${targetRule.content}` : '',
-                        attachedDirectives ? `Привязанные инструкции:\n${attachedDirectives}` : ''
-                    ].filter(Boolean);
-                    ruleBlock = `\n\n${parts.join('\n\n')}`;
-                }
-
                 completeSystemPrompt = [
-                    routedBase,
-                    ruleBlock,
-                    `\n\n${radiantContextText}`,
-                    `\n\n=== 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===\n${memoryText}`
-                ].filter(Boolean).join('');
+                    assembledDirectives,
+                    radiantContextText,
+                    memoryText ? `=== 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===\n${memoryText}` : ''
+                ].filter(Boolean).join('\n\n');
 
                 const defaultChatPrompt = normMode === 'EROTIC'
                     ? 'ты такая красивая, поцелуй меня...'
