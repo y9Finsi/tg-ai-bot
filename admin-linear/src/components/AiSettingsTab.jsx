@@ -359,13 +359,16 @@ export function AiSettingsTab({ toast }) {
                 .map((b, idx) => ({
                     id: b.id || `custom_module_${idx}`,
                     title: b.title || 'Модуль промпта',
-                    style: b.style || 'style-b',
+                    style: b.style || (b.is_system ? 'style-a' : 'style-b'),
                     content: b.content || '',
-                    is_canonical: b.style === 'style-a',
-                    is_system: false
+                    is_canonical: Boolean(b.is_canonical || b.style === 'style-a'),
+                    is_system: Boolean(b.is_system),
+                    category_label: b.is_system ? 'Системный' : 'Модуль'
                 }));
 
-            setPromptsList(sortPrompts([...rawPrompts, ...customModules]));
+            const deletedSet = new Set(Array.isArray(p.deletedPromptIds) ? p.deletedPromptIds : []);
+            const allPrompts = [...rawPrompts, ...customModules].filter(pr => !deletedSet.has(pr.id));
+            setPromptsList(sortPrompts(allPrompts, p.promptOrder));
 
             // Extract rules from profile.blocks
             const rawRules = (p.blocks || []).filter(b => b.category !== 'prompt_module');
@@ -462,10 +465,10 @@ export function AiSettingsTab({ toast }) {
     }, [loadProfile]);
 
     // Save profile to server
-    const saveProfileChanges = async (updatedPrompts, updatedRules) => {
+    const saveProfileChanges = async (updatedPrompts, updatedRules, customProfile = null) => {
         try {
             setSaving(true);
-            const baseProfile = profile ? { ...profile } : {};
+            const baseProfile = customProfile ? { ...customProfile } : (profile ? { ...profile } : {});
 
             // Map canonical prompts back to profile fields
             updatedPrompts.forEach(pr => {
@@ -477,27 +480,21 @@ export function AiSettingsTab({ toast }) {
                 if (pr.id === 'prompt_flirt') baseProfile.flirt = pr.content;
             });
 
-            // Custom prompt modules (filter out core canonical, system sections and routing modules)
+            // Custom prompt modules (save any non-system-section and non-routing module)
             const customPromptBlocks = updatedPrompts
-                .filter(pr => !pr.id.startsWith('prompt_') && !pr.id.startsWith('routing_') && !pr.is_routing_module && !pr.is_system_section && !pr.is_system)
+                .filter(pr => !pr.id.startsWith('prompt_') && !pr.id.startsWith('routing_') && !pr.is_routing_module && !pr.is_system_section)
                 .map(pr => ({
                     id: pr.id,
                     title: pr.title,
                     category: 'prompt_module',
                     style: pr.style,
-                    content: pr.content
+                    content: pr.content,
+                    is_canonical: Boolean(pr.is_canonical),
+                    is_system: Boolean(pr.is_system)
                 }));
 
-            // Rule blocks
+            // Rule blocks (without redundant content text)
             const ruleBlocks = updatedRules.map(r => {
-                const attachedPrompts = (r.attachedPromptIds || [])
-                    .map(pId => updatedPrompts.find(p => p.id === pId))
-                    .filter(Boolean);
-
-                const promptInstructions = attachedPrompts.length > 0
-                    ? attachedPrompts.map(p => `[${p.title}]: ${p.content}`).join('; ')
-                    : `Правило ${r.title} для ${(r.surfaces || [r.surface]).join(', ')}`;
-
                 const mode = r.mode || 'ALL';
                 const conditions = Array.isArray(r.conditions) ? [...r.conditions] : [];
                 if (mode !== 'ALL' && !conditions.some(c => c.field === 'mode')) {
@@ -518,11 +515,13 @@ export function AiSettingsTab({ toast }) {
                     temperature: r.temperature,
                     provider_id: r.provider_id ? Number(r.provider_id) : null,
                     fallback_provider_ids: Array.isArray(r.fallback_provider_ids) ? r.fallback_provider_ids.map(Number).filter(Boolean) : [],
-                    content: r.content || promptInstructions
+                    content: ''
                 };
             });
 
             baseProfile.blocks = [...customPromptBlocks, ...ruleBlocks];
+            baseProfile.promptOrder = (customProfile?.promptOrder || profile?.promptOrder || updatedPrompts.map(p => p.id));
+            baseProfile.deletedPromptIds = (customProfile?.deletedPromptIds || profile?.deletedPromptIds || []);
 
             const res = await api('/api/admin/lera-profile', {
                 method: 'POST',
@@ -634,10 +633,116 @@ export function AiSettingsTab({ toast }) {
         saveProfileChanges(promptsList, nextRules);
     };
 
+    // Drag-and-drop state
+    const [draggedPromptId, setDraggedPromptId] = useState(null);
+    const [draggedAttachedId, setDraggedAttachedId] = useState(null);
+
+    const handlePromptDragStart = (e, id) => {
+        setDraggedPromptId(id);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handlePromptDragOver = (e) => {
+        e.preventDefault();
+    };
+
+    const handlePromptDrop = (e, targetId) => {
+        e.preventDefault();
+        if (!draggedPromptId || draggedPromptId === targetId) return;
+        const fromIdx = promptsList.findIndex(p => p.id === draggedPromptId);
+        const toIdx = promptsList.findIndex(p => p.id === targetId);
+        if (fromIdx === -1 || toIdx === -1) return;
+
+        const nextList = [...promptsList];
+        const [moved] = nextList.splice(fromIdx, 1);
+        nextList.splice(toIdx, 0, moved);
+
+        setDraggedPromptId(null);
+        setPromptsList(nextList);
+        const nextOrder = nextList.map(p => p.id);
+        const updatedProfile = { ...profile, promptOrder: nextOrder };
+        setProfile(updatedProfile);
+        saveProfileChanges(nextList, rulesList, updatedProfile);
+    };
+
+    const handleAttachedDragStart = (e, id) => {
+        setDraggedAttachedId(id);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleAttachedDragOver = (e) => {
+        e.preventDefault();
+    };
+
+    const handleAttachedDrop = (e, ruleId, targetId) => {
+        e.preventDefault();
+        if (!draggedAttachedId || draggedAttachedId === targetId) return;
+        const rule = rulesList.find(r => r.id === ruleId);
+        if (!rule || !Array.isArray(rule.attachedPromptIds)) return;
+
+        const fromIdx = rule.attachedPromptIds.indexOf(draggedAttachedId);
+        const toIdx = rule.attachedPromptIds.indexOf(targetId);
+        if (fromIdx === -1 || toIdx === -1) return;
+
+        const nextAttached = [...rule.attachedPromptIds];
+        const [moved] = nextAttached.splice(fromIdx, 1);
+        nextAttached.splice(toIdx, 0, moved);
+
+        setDraggedAttachedId(null);
+        const nextRules = rulesList.map(r => r.id === ruleId ? { ...r, attachedPromptIds: nextAttached } : r);
+        setRulesList(nextRules);
+        saveProfileChanges(promptsList, nextRules);
+    };
+
+    const handleMovePrompt = (promptId, direction) => {
+        const idx = promptsList.findIndex(p => p.id === promptId);
+        if (idx === -1) return;
+        const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (targetIdx < 0 || targetIdx >= promptsList.length) return;
+
+        const nextList = [...promptsList];
+        const [moved] = nextList.splice(idx, 1);
+        nextList.splice(targetIdx, 0, moved);
+
+        setPromptsList(nextList);
+        const nextOrder = nextList.map(p => p.id);
+        const updatedProfile = { ...profile, promptOrder: nextOrder };
+        setProfile(updatedProfile);
+        saveProfileChanges(nextList, rulesList, updatedProfile);
+    };
+
+    const handleMoveAttachedPrompt = (ruleId, promptId, direction) => {
+        const rule = rulesList.find(r => r.id === ruleId);
+        if (!rule || !Array.isArray(rule.attachedPromptIds)) return;
+
+        const idx = rule.attachedPromptIds.indexOf(promptId);
+        if (idx === -1) return;
+        const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (targetIdx < 0 || targetIdx >= rule.attachedPromptIds.length) return;
+
+        const nextAttached = [...rule.attachedPromptIds];
+        const [moved] = nextAttached.splice(idx, 1);
+        nextAttached.splice(targetIdx, 0, moved);
+
+        const nextRules = rulesList.map(r => r.id === ruleId ? { ...r, attachedPromptIds: nextAttached } : r);
+        setRulesList(nextRules);
+        saveProfileChanges(promptsList, nextRules);
+    };
+
+    const handleDetachPrompt = (ruleId, promptId) => {
+        const rule = rulesList.find(r => r.id === ruleId);
+        if (!rule || !Array.isArray(rule.attachedPromptIds)) return;
+        const nextAttached = rule.attachedPromptIds.filter(id => id !== promptId);
+        const nextRules = rulesList.map(r => r.id === ruleId ? { ...r, attachedPromptIds: nextAttached } : r);
+        setRulesList(nextRules);
+        saveProfileChanges(promptsList, nextRules);
+    };
+
     // Save prompt from modal
     const handleSavePromptModal = async (promptData) => {
         let nextPrompts;
-        const isCanonStyle = promptData.style === 'style-a';
+        const isSystem = Boolean(promptData.is_system);
+        const isCanonStyle = promptData.style === 'style-a' || isSystem;
 
         // Check if editing a system section or routing module
         const sectionKey = editingPrompt?.section_key || (editingPrompt?.is_routing_module ? editingPrompt.routing_key : null);
@@ -665,6 +770,7 @@ export function AiSettingsTab({ toast }) {
             nextPrompts = promptsList.map(p => p.id === editingPrompt.id ? { 
                 ...p, 
                 ...promptData,
+                is_system: isSystem,
                 is_canonical: p.is_canonical || isCanonStyle 
             } : p);
         } else {
@@ -672,34 +778,49 @@ export function AiSettingsTab({ toast }) {
             nextPrompts = [...promptsList, { 
                 id: newId, 
                 ...promptData,
+                is_system: isSystem,
                 is_canonical: isCanonStyle,
-                is_system: false 
+                category_label: isSystem ? 'Системный' : 'Модуль'
             }];
         }
-        const sorted = sortPrompts(nextPrompts);
+        const sorted = sortPrompts(nextPrompts, profile?.promptOrder);
         setPromptsList(sorted);
         setPromptModalOpen(false);
         setEditingPrompt(null);
 
-        // Only update profile blocks if not a standalone routing/system module
-        if (!editingPrompt?.is_routing_module && !editingPrompt?.is_system_section) {
-            saveProfileChanges(sorted, rulesList);
-        }
+        saveProfileChanges(sorted, rulesList);
     };
 
-    // Delete custom prompt module
+    // Delete prompt module (custom or system)
     const handleDeletePrompt = (promptId) => {
         const target = promptsList.find(p => p.id === promptId);
         if (!target) return;
-        if (target.is_system || target.is_system_section || target.is_canonical || target.is_routing_module) {
-            if (toast) toast('Базовые системные модули нельзя удалить, но их можно редактировать или открепить от правил', 'error');
-            return;
-        }
         if (!window.confirm(`Удалить модуль промпта "${target.title}"?`)) return;
+
         const nextPrompts = promptsList.filter(p => p.id !== promptId);
-        const sorted = sortPrompts(nextPrompts);
-        setPromptsList(sorted);
-        saveProfileChanges(sorted, rulesList);
+        const nextDeleted = Array.from(new Set([...(profile?.deletedPromptIds || []), promptId]));
+        const nextOrder = (profile?.promptOrder || []).filter(id => id !== promptId);
+        const updatedProfile = { 
+            ...profile, 
+            deletedPromptIds: nextDeleted,
+            promptOrder: nextOrder 
+        };
+        setProfile(updatedProfile);
+
+        // Also detach from any rules that had this prompt attached
+        const nextRules = rulesList.map(r => {
+            if (Array.isArray(r.attachedPromptIds) && r.attachedPromptIds.includes(promptId)) {
+                return {
+                    ...r,
+                    attachedPromptIds: r.attachedPromptIds.filter(id => id !== promptId)
+                };
+            }
+            return r;
+        });
+
+        setPromptsList(nextPrompts);
+        setRulesList(nextRules);
+        saveProfileChanges(nextPrompts, nextRules, updatedProfile);
         if (toast) toast(`Модуль "${target.title}" удален`, 'success');
     };
 
