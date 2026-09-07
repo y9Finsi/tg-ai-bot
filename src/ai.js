@@ -963,7 +963,9 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     // Применение параметров и провайдера из боевого правила профиля Леры (если есть активное для surface + routingMode)
     try {
         const leraProfileData = await getLeraProfile();
-        const ruleEvaluation = evaluateRules(leraProfileData?.profile?.blocks || [], { surface, mode: routingMode, routingMode });
+        const blocks = leraProfileData?.profile?.blocks || [];
+        const rulesOnly = blocks.filter(b => b.category !== 'prompt_module');
+        const ruleEvaluation = evaluateRules(rulesOnly, { surface, mode: routingMode, routingMode });
         const matchedRule = ruleEvaluation.active?.[0];
         if (matchedRule) {
             if (Number.isFinite(matchedRule.max_tokens) && matchedRule.max_tokens > 0) {

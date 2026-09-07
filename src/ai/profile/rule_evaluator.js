@@ -32,6 +32,11 @@ export function evaluateRules(rules = [], context = {}) {
     const active = [];
     const skipped = [];
     for (const rule of rules) {
+        if (!rule) continue;
+        if (rule.category === 'prompt_module') {
+            skipped.push({ ruleId: rule.id, title: rule.title, reason: 'prompt_module is not a rule' });
+            continue;
+        }
         if (rule?.enabled === false) { skipped.push({ ruleId: rule.id, title: rule.title, reason: 'disabled' }); continue; }
         const targetSurface = normalizeSurface(context.surface);
         const ruleSurfaces = Array.isArray(rule?.surfaces) && rule.surfaces.length > 0

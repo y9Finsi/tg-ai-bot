@@ -333,7 +333,8 @@ export async function getRoutedSystemPrompt(mode = 'CASUAL', config = {}) {
         if (config.ruleId) {
             targetRule = blocks.find(b => b.id === config.ruleId);
         } else {
-            const evaluated = evaluateRules(blocks, context);
+            const rulesOnly = blocks.filter(b => b.category !== 'prompt_module');
+            const evaluated = evaluateRules(rulesOnly, context);
             targetRule = evaluated.active?.[0] || null;
         }
     }
