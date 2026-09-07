@@ -34,13 +34,19 @@ export const sortPrompts = (prompts) => {
         if (pr.id === 'prompt_speech') return 3;
         // 4. Прочие канонические карточки (стиль А)
         if (pr.is_canonical || pr.style === 'style-a') return 4;
-        // 5. Вторичные системные модули (стиль B)
-        if (pr.id === 'prompt_forbidden') return 5;
-        if (pr.id === 'prompt_facts') return 6;
-        if (pr.id === 'prompt_flirt') return 7;
-        if (pr.is_system) return 8;
-        // 6. Пользовательские модульные промпты
-        return 10;
+        // 5. Боевые системные модули маршрутизатора
+        if (pr.id === 'routing_core') return 5;
+        if (pr.id === 'routing_casual') return 6;
+        if (pr.id === 'routing_erotic') return 7;
+        if (pr.id === 'routing_common') return 8;
+        // 6. Вторичные системные модули (стиль B)
+        if (pr.id === 'prompt_forbidden') return 9;
+        if (pr.id === 'prompt_facts') return 10;
+        if (pr.id === 'prompt_flirt') return 11;
+        if (pr.is_routing_module) return 12;
+        if (pr.is_system) return 13;
+        // 7. Пользовательские модульные промпты
+        return 20;
     };
 
     return [...(prompts || [])].sort((a, b) => {
@@ -60,70 +66,77 @@ export function AiSettingsTab({ toast }) {
     const [leftTab, setLeftTab] = useState('prompts');
     const [leftMenuOpen, setLeftMenuOpen] = useState(false);
 
-    // Profile state from backend
+    // Profile & Prompts state
     const [profile, setProfile] = useState(null);
+    const [sampling, setSampling] = useState({ temperature: 0.7, max_tokens: 250 });
     const [promptsList, setPromptsList] = useState([]);
     const [rulesList, setRulesList] = useState([]);
-    const [sampling, setSampling] = useState({ temperature: 0.7, max_tokens: 230 });
 
-    // Providers state from backend
+    // Providers state
     const [providersList, setProvidersList] = useState([]);
-    const [providerModalOpen, setProviderModalOpen] = useState(false);
     const [editingProvider, setEditingProvider] = useState(null);
+    const [providerModalOpen, setProviderModalOpen] = useState(false);
 
-    // Modals
-    const [promptModalOpen, setPromptModalOpen] = useState(false);
+    // Prompt edit modal
     const [editingPrompt, setEditingPrompt] = useState(null);
+    const [promptModalOpen, setPromptModalOpen] = useState(false);
 
-    const [ruleModalOpen, setRuleModalOpen] = useState(false);
+    // Rule edit modal
     const [editingRule, setEditingRule] = useState(null);
+    const [ruleModalOpen, setRuleModalOpen] = useState(false);
     const [ruleSelectedPromptIds, setRuleSelectedPromptIds] = useState([]);
     const [ruleSelectedFallbackIds, setRuleSelectedFallbackIds] = useState([]);
 
     const [attachModalRuleId, setAttachModalRuleId] = useState(null);
+    const [paramPopover, setParamPopover] = useState(null); 
 
-    const [paramPopover, setParamPopover] = useState(null); // { ruleId, type: 'tokens' | 'temp' }
-
-    // Load AI providers list from server
+    // Load active providers list
     const loadProviders = useCallback(async () => {
         try {
-            const data = await api('/api/admin/providers');
-            if (data && Array.isArray(data.providers)) {
-                setProvidersList(data.providers);
+            const res = await api('/api/admin/providers');
+            if (res && Array.isArray(res.providers)) {
+                setProvidersList(res.providers);
             }
         } catch (err) {
             console.error('[PROVIDERS LOAD ERROR]', err);
         }
     }, []);
 
-    // Load profile from server
+    // Load profile and combat routing prompts from server
     const loadProfile = useCallback(async () => {
         try {
             setLoading(true);
-            const [profileData] = await Promise.all([
+            const [profileData, llmSettingsData] = await Promise.all([
                 api('/api/admin/lera-profile'),
+                api('/api/admin/llm-settings').catch((e) => {
+                    console.warn('[LLM SETTINGS FETCH WARN]', e);
+                    return null;
+                }),
                 loadProviders()
             ]);
-            const p = profileData.profile || {};
+            const p = profileData?.profile || {};
             setProfile(p);
 
-            if (profileData.sampling) {
+            if (profileData?.sampling) {
                 setSampling(profileData.sampling);
             }
 
-            // Extract prompts from profile
+            const llmPrompts = llmSettingsData?.prompts || {};
+            const routingModules = llmSettingsData?.routingModules || {};
+
+            // Extract prompts from profile and live routing system
             const rawPrompts = [];
 
             // 1. Canonical prompts (Style A in Figma: #000212/37 + #8693ff/25)
             // ПЕРВЫЙ: Канон и биография (фундамент характера Леры)
-            if (p.age_bio !== undefined) {
+            if (p.age_bio !== undefined || llmPrompts.lera_base) {
                 rawPrompts.push({
                     id: 'prompt_bio',
                     title: 'Канон и биография',
                     style: 'style-a',
                     is_canonical: true,
                     is_system: true,
-                    content: p.age_bio || ''
+                    content: p.age_bio || llmPrompts.lera_base || ''
                 });
             }
             // ВТОРОЙ: Характер
@@ -138,25 +151,74 @@ export function AiSettingsTab({ toast }) {
                 });
             }
             // ТРЕТИЙ: Голос и речь
-            if (p.speech !== undefined) {
+            if (p.speech !== undefined || llmPrompts.lera_speech) {
                 rawPrompts.push({
                     id: 'prompt_speech',
                     title: 'Голос и речь',
                     style: 'style-a',
                     is_canonical: true,
                     is_system: true,
-                    content: p.speech || ''
+                    content: p.speech || llmPrompts.lera_speech || ''
                 });
             }
 
-            // 2. Secondary/Modular prompts (Style B in Figma: gradient from #171717 to #232425/0)
-            if (p.forbidden !== undefined) {
+            // 2. Live Combat Routing Modules (Style B) — ядро, по которому Лера генерирует ответы в Telegram
+            // Системное ядро маршрутизатора
+            const coreText = llmPrompts.routing_core || routingModules.core || '';
+            rawPrompts.push({
+                id: 'routing_core',
+                routing_key: 'routing_core',
+                is_routing_module: true,
+                title: 'Системное ядро (Core)',
+                style: 'style-b',
+                is_system: true,
+                content: coreText
+            });
+
+            // Повседневный диалог
+            const casualText = llmPrompts.routing_casual || routingModules.casual || '';
+            rawPrompts.push({
+                id: 'routing_casual',
+                routing_key: 'routing_casual',
+                is_routing_module: true,
+                title: 'Повседневный диалог (Casual)',
+                style: 'style-b',
+                is_system: true,
+                content: casualText
+            });
+
+            // Режим 18+ / Вирт
+            const eroticText = llmPrompts.routing_erotic || routingModules.erotic || '';
+            rawPrompts.push({
+                id: 'routing_erotic',
+                routing_key: 'routing_erotic',
+                is_routing_module: true,
+                title: 'Режим 18+ / Вирт (Erotic)',
+                style: 'style-b',
+                is_system: true,
+                content: eroticText
+            });
+
+            // Формат и логика (Common)
+            const commonText = llmPrompts.routing_common || routingModules.common || '';
+            rawPrompts.push({
+                id: 'routing_common',
+                routing_key: 'routing_common',
+                is_routing_module: true,
+                title: 'Формат и логика (Common)',
+                style: 'style-b',
+                is_system: true,
+                content: commonText
+            });
+
+            // 3. Secondary/Modular prompts (Style B in Figma: gradient from #171717 to #232425/0)
+            if (p.forbidden !== undefined || llmPrompts.lera_rules) {
                 rawPrompts.push({
                     id: 'prompt_forbidden',
                     title: 'Ограничения',
                     style: 'style-b',
                     is_system: true,
-                    content: p.forbidden || ''
+                    content: p.forbidden || llmPrompts.lera_rules || ''
                 });
             }
             if (p.facts !== undefined) {
@@ -168,13 +230,13 @@ export function AiSettingsTab({ toast }) {
                     content: p.facts || ''
                 });
             }
-            if (p.flirt !== undefined) {
+            if (p.flirt !== undefined || llmPrompts.lera_intimacy) {
                 rawPrompts.push({
                     id: 'prompt_flirt',
                     title: 'Флирт и теплота',
                     style: 'style-b',
                     is_system: true,
-                    content: p.flirt || ''
+                    content: p.flirt || llmPrompts.lera_intimacy || ''
                 });
             }
 
@@ -441,9 +503,31 @@ export function AiSettingsTab({ toast }) {
     };
 
     // Save prompt from modal
-    const handleSavePromptModal = (promptData) => {
+    const handleSavePromptModal = async (promptData) => {
         let nextPrompts;
         const isCanonStyle = promptData.style === 'style-a';
+
+        // Check if editing a system routing module (routing_core, routing_casual, routing_erotic, routing_common)
+        if (editingPrompt?.is_routing_module && editingPrompt?.routing_key) {
+            try {
+                setSaving(true);
+                await api('/api/admin/llm-settings', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        prompts: {
+                            [editingPrompt.routing_key]: promptData.content
+                        }
+                    })
+                });
+                if (toast) toast(`Системный модуль "${promptData.title}" сохранен`, 'success');
+            } catch (err) {
+                console.error('[LLM SETTINGS SAVE ERROR]', err);
+                if (toast) toast('Ошибка сохранения: ' + err.message, 'error');
+            } finally {
+                setSaving(false);
+            }
+        }
+
         if (editingPrompt) {
             nextPrompts = promptsList.map(p => p.id === editingPrompt.id ? { 
                 ...p, 
@@ -463,7 +547,11 @@ export function AiSettingsTab({ toast }) {
         setPromptsList(sorted);
         setPromptModalOpen(false);
         setEditingPrompt(null);
-        saveProfileChanges(sorted, rulesList);
+
+        // Only update profile blocks if not a standalone routing module
+        if (!editingPrompt?.is_routing_module) {
+            saveProfileChanges(sorted, rulesList);
+        }
     };
 
     // Open modal for new rule
@@ -637,9 +725,14 @@ export function AiSettingsTab({ toast }) {
                                         >
                                             {/* Card Header (Frame 201) */}
                                             <div className="px-2 py-1 flex items-center justify-between">
-                                                <span className="text-[16px] font-medium text-white select-none">
-                                                    {item.title}
-                                                </span>
+                                                <div className="flex items-center gap-2 overflow-hidden pr-2">
+                                                    <span className="text-[16px] font-medium text-white truncate select-none">
+                                                        {item.title}
+                                                    </span>
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#8693ff]/20 text-[#8693ff] font-normal select-none shrink-0">
+                                                        Канон
+                                                    </span>
+                                                </div>
                                                 <button
                                                     type="button"
                                                     onClick={() => {
@@ -647,7 +740,7 @@ export function AiSettingsTab({ toast }) {
                                                         setPromptModalOpen(true);
                                                     }}
                                                     title="Редактировать промпт"
-                                                    className="p-1 text-white/50 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/5"
+                                                    className="p-1 text-white/50 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/5 shrink-0"
                                                 >
                                                     <Pencil className="w-4 h-4 stroke-[1.5]" />
                                                 </button>
@@ -674,9 +767,16 @@ export function AiSettingsTab({ toast }) {
                                         >
                                             {/* Card Header (Frame 201) */}
                                             <div className="px-2 py-1 flex items-center justify-between">
-                                                <span className="text-[16px] font-medium text-white select-none">
-                                                    {item.title}
-                                                </span>
+                                                <div className="flex items-center gap-2 overflow-hidden pr-2">
+                                                    <span className="text-[16px] font-medium text-white truncate select-none">
+                                                        {item.title}
+                                                    </span>
+                                                    {item.is_routing_module && (
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 font-normal select-none shrink-0">
+                                                            Маршрутизатор
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <button
                                                     type="button"
                                                     onClick={() => {
@@ -684,7 +784,7 @@ export function AiSettingsTab({ toast }) {
                                                         setPromptModalOpen(true);
                                                     }}
                                                     title="Редактировать промпт"
-                                                    className="p-1 text-white/50 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/5"
+                                                    className="p-1 text-white/50 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/5 shrink-0"
                                                 >
                                                     <Pencil className="w-4 h-4 stroke-[1.5]" />
                                                 </button>
@@ -1205,6 +1305,13 @@ export function AiSettingsTab({ toast }) {
                             }}
                             className="flex flex-col gap-4"
                         >
+                            {editingPrompt?.is_routing_module && (
+                                <div className="text-[12px] text-[#8693ff] bg-[#8693ff]/10 border border-[#8693ff]/20 px-3.5 py-2.5 rounded-xl flex items-center gap-2">
+                                    <span className="font-medium">Боевой системный модуль:</span>
+                                    <span className="text-white/80">изменения сразу обновляют боевой конвейер диалога Леры.</span>
+                                </div>
+                            )}
+
                             <div className="flex flex-col gap-1.5">
                                 <label className="text-xs text-white/60 font-medium">Название промпта</label>
                                 <input
