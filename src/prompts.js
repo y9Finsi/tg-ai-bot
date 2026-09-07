@@ -2,9 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getSetting, setSetting, getLeraProfile, getLeraProfileProjection } from './db/database.js';
-import { ALL_PROMPT_SECTIONS, PROMPT_SECTIONS, ROUTING_PROMPT_SECTIONS } from './prompt_sections.js';
+import { ALL_PROMPT_SECTIONS, PROMPT_SECTIONS, ROUTING_PROMPT_SECTIONS, SYSTEM_CONTRACT_SECTIONS } from './prompt_sections.js';
 
-export { ALL_PROMPT_SECTIONS, PROMPT_SECTIONS, ROUTING_PROMPT_SECTIONS };
+export { ALL_PROMPT_SECTIONS, PROMPT_SECTIONS, ROUTING_PROMPT_SECTIONS, SYSTEM_CONTRACT_SECTIONS };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,11 +66,7 @@ function savePromptFile(filename, content) {
 
 // Кэш промптов в памяти
 const promptsCache = {};
-for (const [key, filename] of Object.entries(PROMPT_SECTIONS)) {
-    promptsCache[key] = loadPromptFile(filename);
-}
-
-for (const [key, filename] of Object.entries(ROUTING_PROMPT_SECTIONS)) {
+for (const [key, filename] of Object.entries(ALL_PROMPT_SECTIONS)) {
     promptsCache[key] = loadPromptFile(filename);
 }
 
@@ -206,8 +202,14 @@ export async function getRoutedSystemPrompt(mode = 'CASUAL', config = {}) {
         enabled.common === false ? '' : modules.common,
         enabled.intent === false ? '' : selected
     ].filter(Boolean);
-    blocks.push(CONVERSATION_CONTINUITY_CONTRACT);
-    blocks.push(RESPONSE_FORMAT_CONTRACT);
+    const continuity = config.continuityPrompt || promptsCache.lera_continuity || CONVERSATION_CONTINUITY_CONTRACT;
+    const format = config.formatPrompt || promptsCache.lera_format || RESPONSE_FORMAT_CONTRACT;
+    if (enabled.continuity !== false && continuity) {
+        blocks.push(continuity);
+    }
+    if (enabled.format !== false && format) {
+        blocks.push(format);
+    }
     try {
         const profile = await getLeraProfile();
         const surface = config.surface || (config.isPublicContext ? 'GROUP' : 'CHAT');
@@ -224,6 +226,10 @@ export async function getRoutedSystemPrompt(mode = 'CASUAL', config = {}) {
 
 export function getContextPromptTemplate() {
     return promptsCache.context_template || loadPromptFile(PROMPT_SECTIONS.context_template);
+}
+
+export function getPromptSection(key) {
+    return promptsCache[key] || '';
 }
 
 export const promptTemplates = {

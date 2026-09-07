@@ -106,7 +106,7 @@ import { generateCommentDecision } from './channel_comments.js';
 import { normalizeTopicDistribution } from './channel_topics.js';
 import { CHANNEL_EDITORIAL_MODES, DEFAULT_REFERENCE_FORMAT_SEQUENCE } from './channel_content.js';
 import { getRecentLogs, logEmitter } from './logger.js';
-import { getLlmParams, updateLlmParams, getLeraPrompts, updateLeraPrompts, DEFAULT_LLM_PARAMS, getRoutingPromptModules, getRoutedSystemPrompt } from './prompts.js';
+import { getLlmParams, updateLlmParams, getLeraPrompts, updateLeraPrompts, DEFAULT_LLM_PARAMS, getRoutingPromptModules, getRoutedSystemPrompt, getPromptSection } from './prompts.js';
 import {
     getRoutingSettings,
     DEFAULT_ROUTING_SETTINGS,
@@ -2786,7 +2786,13 @@ export function createAdminApp(bot = null) {
             routing_core: { title: 'Системное ядро (Core)', content: routingModules.core },
             routing_casual: { title: 'Повседневный диалог (Casual)', content: routingModules.casual },
             routing_erotic: { title: 'Режим 18+ / Вирт (Erotic)', content: routingModules.erotic },
-            routing_common: { title: 'Формат и логика (Common)', content: routingModules.common }
+            routing_common: { title: 'Формат и логика (Common)', content: routingModules.common },
+            prompt_format: { title: 'Формат ответа (Telegram)', content: getPromptSection('lera_format') },
+            prompt_continuity: { title: 'Логика диалога и реальность', content: getPromptSection('lera_continuity') },
+            prompt_context_rules: { title: 'Правила контекста и аналитики', content: getPromptSection('context_template') },
+            prompt_channel_persona: { title: 'Персона Telegram-канала', content: getPromptSection('channel_persona') },
+            prompt_channel_rules: { title: 'Правила автопостинга в канал', content: getPromptSection('channel_rules') },
+            prompt_initiative: { title: 'Самостоятельная инициатива Леры', content: getPromptSection('initiative_directive') }
         };
         const customBlocks = Array.isArray(p.blocks) ? p.blocks.filter(b => b.category === 'prompt_module') : [];
         for (const cb of customBlocks) {
@@ -2957,11 +2963,19 @@ export function createAdminApp(bot = null) {
                     editorialMode: channelSettings.editorial_mode || 'reference_short'
                 });
 
+                const channelRadiantSummary = [
+                    `[ОКРУЖЕНИЕ И СОСТОЯНИЕ ЛЕРЫ В ПИТЕРЕ]`,
+                    `• Время: ${radiantLayers.time?.formatted || 'день'}`,
+                    `• Погода за окном: ${radiantLayers.weather?.summary || 'Без осадков'}`,
+                    `• Текущая локация: ${radiantLayers.location?.name || 'Санкт-Петербург'}`,
+                    `• Занятие сейчас: ${radiantLayers.activity?.current || 'Свободное время'}`
+                ].join('\n');
+
                 completeSystemPrompt = [
                     channelPersonaPrompt,
                     `\n\n[КАНОНИЧЕСКИЙ ПРОФИЛЬ ЛЕРЫ · ВЕРСИЯ ${activeProfile?.version || 1} · CHANNEL]\n${channelProjection}`,
                     ruleBlock,
-                    `\n\n${radiantContextText}`
+                    `\n\n${channelRadiantSummary}`
                 ].filter(Boolean).join('');
 
                 recentEvents = recentPosts.length > 0
@@ -2978,7 +2992,7 @@ export function createAdminApp(bot = null) {
                     surface: 'INITIATIVE'
                 });
 
-                const initiativeDirective = `\n\n[РЕЖИМ: САМОСТОЯТЕЛЬНАЯ ИНИЦИАТИВА ЛЕРЫ (ЛЁРА ПИШЕТ ПЕРВОЙ)]\n- Ты сама возобновляешь личный контакт с пользователем в Telegram после паузы.\n- Напиши первое живое сообщение от лица Леры. Учитывай время суток в СПб, текущую погоду и состояние Radiant.\n- Начни с чистого листа: никаких выдуманных претензий или продолжения старых обид.`;
+                const initiativeDirective = getPromptSection('initiative_directive') || `[РЕЖИМ: САМОСТОЯТЕЛЬНАЯ ИНИЦИАТИВА ЛЕРЫ (ЛЁРА ПИШЕТ ПЕРВОЙ)]\n- Ты сама возобновляешь личный контакт с пользователем в Telegram после паузы.\n- Напиши первое живое сообщение от лица Леры. Учитывай время суток в СПб, текущую погоду и состояние Radiant.\n- Начни с чистого листа: никаких выдуманных претензий или продолжения старых обид.`;
 
                 let ruleBlock = '';
                 if (targetRule) {
@@ -2992,7 +3006,7 @@ export function createAdminApp(bot = null) {
 
                 completeSystemPrompt = [
                     routedBase,
-                    initiativeDirective,
+                    `\n\n${initiativeDirective}`,
                     ruleBlock,
                     `\n\n${radiantContextText}`,
                     `\n\n=== 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===\n${memoryText}`

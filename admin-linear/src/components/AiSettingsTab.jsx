@@ -41,14 +41,22 @@ export const sortPrompts = (prompts) => {
         if (pr.id === 'routing_casual') return 6;
         if (pr.id === 'routing_erotic') return 7;
         if (pr.id === 'routing_common') return 8;
-        // 6. Вторичные системные модули (стиль B)
-        if (pr.id === 'prompt_forbidden') return 9;
-        if (pr.id === 'prompt_facts') return 10;
-        if (pr.id === 'prompt_flirt') return 11;
-        if (pr.is_routing_module) return 12;
-        if (pr.is_system) return 13;
-        // 7. Пользовательские модульные промпты
-        return 20;
+        // 6. Контракты и формат ответов
+        if (pr.id === 'prompt_format') return 9;
+        if (pr.id === 'prompt_continuity') return 10;
+        if (pr.id === 'prompt_context_rules') return 11;
+        // 7. Канал и инициатива
+        if (pr.id === 'prompt_channel_persona') return 12;
+        if (pr.id === 'prompt_channel_rules') return 13;
+        if (pr.id === 'prompt_initiative') return 14;
+        // 8. Вторичные модули
+        if (pr.id === 'prompt_forbidden') return 15;
+        if (pr.id === 'prompt_facts') return 16;
+        if (pr.id === 'prompt_flirt') return 17;
+        if (pr.is_routing_module) return 18;
+        if (pr.is_system) return 19;
+        // 9. Пользовательские модульные промпты
+        return 30;
     };
 
     return [...(prompts || [])].sort((a, b) => {
@@ -178,8 +186,11 @@ export function AiSettingsTab({ toast }) {
             rawPrompts.push({
                 id: 'routing_core',
                 routing_key: 'routing_core',
+                section_key: 'routing_core',
                 is_routing_module: true,
+                is_system_section: true,
                 title: 'Системное ядро (Core)',
+                category_label: 'Маршрутизатор',
                 style: 'style-b',
                 is_system: true,
                 content: coreText
@@ -190,8 +201,11 @@ export function AiSettingsTab({ toast }) {
             rawPrompts.push({
                 id: 'routing_casual',
                 routing_key: 'routing_casual',
+                section_key: 'routing_casual',
                 is_routing_module: true,
+                is_system_section: true,
                 title: 'Повседневный диалог (Casual)',
+                category_label: 'Маршрутизатор',
                 style: 'style-b',
                 is_system: true,
                 content: casualText
@@ -202,8 +216,11 @@ export function AiSettingsTab({ toast }) {
             rawPrompts.push({
                 id: 'routing_erotic',
                 routing_key: 'routing_erotic',
+                section_key: 'routing_erotic',
                 is_routing_module: true,
+                is_system_section: true,
                 title: 'Режим 18+ / Вирт (Erotic)',
+                category_label: 'Маршрутизатор',
                 style: 'style-b',
                 is_system: true,
                 content: eroticText
@@ -214,18 +231,90 @@ export function AiSettingsTab({ toast }) {
             rawPrompts.push({
                 id: 'routing_common',
                 routing_key: 'routing_common',
+                section_key: 'routing_common',
                 is_routing_module: true,
+                is_system_section: true,
                 title: 'Формат и логика (Common)',
+                category_label: 'Маршрутизатор',
                 style: 'style-b',
                 is_system: true,
                 content: commonText
             });
 
-            // 3. Secondary/Modular prompts (Style B in Figma: gradient from #171717 to #232425/0)
+            // 3. Contracts & Response Formatting (Style B)
+            rawPrompts.push({
+                id: 'prompt_format',
+                section_key: 'lera_format',
+                is_system_section: true,
+                title: 'Формат ответа (Telegram)',
+                category_label: 'Контракт',
+                style: 'style-b',
+                is_system: true,
+                content: llmPrompts.lera_format || ''
+            });
+
+            rawPrompts.push({
+                id: 'prompt_continuity',
+                section_key: 'lera_continuity',
+                is_system_section: true,
+                title: 'Логика диалога и реальность',
+                category_label: 'Контракт',
+                style: 'style-b',
+                is_system: true,
+                content: llmPrompts.lera_continuity || ''
+            });
+
+            rawPrompts.push({
+                id: 'prompt_context_rules',
+                section_key: 'context_template',
+                is_system_section: true,
+                title: 'Правила контекста и аналитики',
+                category_label: 'Контекст',
+                style: 'style-b',
+                is_system: true,
+                content: llmPrompts.context_template || ''
+            });
+
+            // 4. Channel & Initiative Modules (Style B)
+            rawPrompts.push({
+                id: 'prompt_channel_persona',
+                section_key: 'channel_persona',
+                is_system_section: true,
+                title: 'Персона Telegram-канала',
+                category_label: 'Канал',
+                style: 'style-b',
+                is_system: true,
+                content: llmPrompts.channel_persona || ''
+            });
+
+            rawPrompts.push({
+                id: 'prompt_channel_rules',
+                section_key: 'channel_rules',
+                is_system_section: true,
+                title: 'Правила автопостинга в канал',
+                category_label: 'Канал',
+                style: 'style-b',
+                is_system: true,
+                content: llmPrompts.channel_rules || ''
+            });
+
+            rawPrompts.push({
+                id: 'prompt_initiative',
+                section_key: 'initiative_directive',
+                is_system_section: true,
+                title: 'Самостоятельная инициатива Леры',
+                category_label: 'Инициатива',
+                style: 'style-b',
+                is_system: true,
+                content: llmPrompts.initiative_directive || ''
+            });
+
+            // 5. Secondary/Modular prompts (Style B in Figma: gradient from #171717 to #232425/0)
             if (p.forbidden !== undefined || llmPrompts.lera_rules) {
                 rawPrompts.push({
                     id: 'prompt_forbidden',
                     title: 'Ограничения',
+                    category_label: 'Модуль',
                     style: 'style-b',
                     is_system: true,
                     content: p.forbidden || llmPrompts.lera_rules || ''
@@ -235,6 +324,7 @@ export function AiSettingsTab({ toast }) {
                 rawPrompts.push({
                     id: 'prompt_facts',
                     title: 'Правила фактов',
+                    category_label: 'Модуль',
                     style: 'style-b',
                     is_system: true,
                     content: p.facts || ''
@@ -244,6 +334,7 @@ export function AiSettingsTab({ toast }) {
                 rawPrompts.push({
                     id: 'prompt_flirt',
                     title: 'Флирт и теплота',
+                    category_label: 'Модуль',
                     style: 'style-b',
                     is_system: true,
                     content: p.flirt || llmPrompts.lera_intimacy || ''
@@ -374,9 +465,9 @@ export function AiSettingsTab({ toast }) {
                 if (pr.id === 'prompt_flirt') baseProfile.flirt = pr.content;
             });
 
-            // Custom prompt modules (filter out core canonical and routing modules)
+            // Custom prompt modules (filter out core canonical, system sections and routing modules)
             const customPromptBlocks = updatedPrompts
-                .filter(pr => !pr.id.startsWith('prompt_') && !pr.id.startsWith('routing_') && !pr.is_routing_module)
+                .filter(pr => !pr.id.startsWith('prompt_') && !pr.id.startsWith('routing_') && !pr.is_routing_module && !pr.is_system_section && !pr.is_system)
                 .map(pr => ({
                     id: pr.id,
                     title: pr.title,
@@ -536,15 +627,16 @@ export function AiSettingsTab({ toast }) {
         let nextPrompts;
         const isCanonStyle = promptData.style === 'style-a';
 
-        // Check if editing a system routing module (routing_core, routing_casual, routing_erotic, routing_common)
-        if (editingPrompt?.is_routing_module && editingPrompt?.routing_key) {
+        // Check if editing a system section or routing module
+        const sectionKey = editingPrompt?.section_key || (editingPrompt?.is_routing_module ? editingPrompt.routing_key : null);
+        if (sectionKey) {
             try {
                 setSaving(true);
                 await api('/api/admin/llm-settings', {
                     method: 'POST',
                     body: JSON.stringify({
                         prompts: {
-                            [editingPrompt.routing_key]: promptData.content
+                            [sectionKey]: promptData.content
                         }
                     })
                 });
@@ -577,10 +669,26 @@ export function AiSettingsTab({ toast }) {
         setPromptModalOpen(false);
         setEditingPrompt(null);
 
-        // Only update profile blocks if not a standalone routing module
-        if (!editingPrompt?.is_routing_module) {
+        // Only update profile blocks if not a standalone routing/system module
+        if (!editingPrompt?.is_routing_module && !editingPrompt?.is_system_section) {
             saveProfileChanges(sorted, rulesList);
         }
+    };
+
+    // Delete custom prompt module
+    const handleDeletePrompt = (promptId) => {
+        const target = promptsList.find(p => p.id === promptId);
+        if (!target) return;
+        if (target.is_system || target.is_system_section || target.is_canonical || target.is_routing_module) {
+            if (toast) toast('Базовые системные модули нельзя удалить, но их можно редактировать или открепить от правил', 'error');
+            return;
+        }
+        if (!window.confirm(`Удалить модуль промпта "${target.title}"?`)) return;
+        const nextPrompts = promptsList.filter(p => p.id !== promptId);
+        const sorted = sortPrompts(nextPrompts);
+        setPromptsList(sorted);
+        saveProfileChanges(sorted, rulesList);
+        if (toast) toast(`Модуль "${target.title}" удален`, 'success');
     };
 
     // Open modal for new rule
@@ -847,23 +955,39 @@ export function AiSettingsTab({ toast }) {
                                                     <span className="text-[16px] font-medium text-white truncate select-none">
                                                         {item.title}
                                                     </span>
-                                                    {item.is_routing_module && (
+                                                    {item.category_label ? (
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 font-normal select-none shrink-0">
+                                                            {item.category_label}
+                                                        </span>
+                                                    ) : item.is_routing_module ? (
                                                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 font-normal select-none shrink-0">
                                                             Маршрутизатор
                                                         </span>
+                                                    ) : null}
+                                                </div>
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setEditingPrompt(item);
+                                                            setPromptModalOpen(true);
+                                                        }}
+                                                        title="Редактировать промпт"
+                                                        className="p-1 text-white/50 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/5 shrink-0"
+                                                    >
+                                                        <Pencil className="w-4 h-4 stroke-[1.5]" />
+                                                    </button>
+                                                    {!item.is_system && !item.is_system_section && !item.is_canonical && !item.is_routing_module && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeletePrompt(item.id)}
+                                                            title="Удалить модуль"
+                                                            className="p-1 text-white/40 hover:text-red-400 transition-colors cursor-pointer rounded-lg hover:bg-white/5 shrink-0"
+                                                        >
+                                                            <Trash2 className="w-4 h-4 stroke-[1.5]" />
+                                                        </button>
                                                     )}
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setEditingPrompt(item);
-                                                        setPromptModalOpen(true);
-                                                    }}
-                                                    title="Редактировать промпт"
-                                                    className="p-1 text-white/50 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/5 shrink-0"
-                                                >
-                                                    <Pencil className="w-4 h-4 stroke-[1.5]" />
-                                                </button>
                                             </div>
 
                                             {/* Card Content (Component 41) */}

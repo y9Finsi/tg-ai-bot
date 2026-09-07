@@ -15,7 +15,16 @@ export const ROUTING_PROMPT_SECTIONS = {
     routing_erotic: 'lera_erotic.txt'
 };
 
+export const SYSTEM_CONTRACT_SECTIONS = {
+    lera_format: 'lera_format.txt',
+    lera_continuity: 'lera_continuity.txt',
+    channel_persona: 'lera_channel_persona.txt',
+    channel_rules: 'lera_channel_rules.txt',
+    initiative_directive: 'lera_initiative.txt'
+};
+
 export const ALL_PROMPT_SECTIONS = {
     ...PROMPT_SECTIONS,
-    ...ROUTING_PROMPT_SECTIONS
+    ...ROUTING_PROMPT_SECTIONS,
+    ...SYSTEM_CONTRACT_SECTIONS
 };
