@@ -106,6 +106,39 @@ test('ignore chain follows 15m reminder, 4-day block and ignore_4d', () => {
     }), null);
 });
 
+test('consecutive unanswered initiatives prevent spam loop on new_day', () => {
+    // 1 безответная инициатива: на следующее утро new_day НЕ шлется
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 86400, state: 'CLOSED', latestEvent: latestText,
+        counts: available, newMoscowDay: true,
+        consecutiveInitiatives: 1
+    }), null);
+
+    // 2+ безответных инициатив: полная тишина
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 86400 * 2, state: 'CLOSED', latestEvent: latestText,
+        counts: available, newMoscowDay: true,
+        consecutiveInitiatives: 2
+    }), null);
+
+    // 1 безответная инициатива + молчание 4 дня (345600s): шлется ignore_4d
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 345600, state: 'CLOSED', latestEvent: latestText,
+        counts: available, newMoscowDay: false,
+        consecutiveInitiatives: 1,
+        userSilenceSeconds: 345600
+    }), 'ignore_4d');
+
+    // Если ignore_4d уже был отправлен: полная тишина
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 345600 + 86400, state: 'CLOSED', latestEvent: latestText,
+        counts: available, newMoscowDay: true,
+        consecutiveInitiatives: 2,
+        hasSentIgnore4d: true,
+        userSilenceSeconds: 345600 + 86400
+    }), null);
+});
+
 test('content channel reads native media and URL only from Telegram entities', () => {
     assert.deepEqual(extractContentFromChannelPost({
         chat: { id: -100123 }, message_id: 5, caption: 'трек на вечер',

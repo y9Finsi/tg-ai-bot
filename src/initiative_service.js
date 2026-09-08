@@ -57,50 +57,75 @@ export function chooseInitiativeKind({
     initiativeLimit = INITIATIVE_LIMIT,
     isColdStart = false,
     hasActiveOpenThread = false,
-    openThreadAgeSeconds = 0
+    openThreadAgeSeconds = 0,
+    consecutiveInitiatives = 0,
+    hasSentIgnore4d = false,
+    userSilenceSeconds = 0
 }) {
     const initiativesAvailable = counts.initiatives < initiativeLimit;
     if (!initiativesAvailable) return null;
 
     if (isColdStart) {
-        if (stageKinds.includes('cold_start')) return null;
+        if (stageKinds.includes('cold_start') || consecutiveInitiatives > 0) return null;
         return 'cold_start';
     }
 
     // Если 4-дневный пинг уже был отправлен — больше не пишем пока юзер сам не напишет
-    if (stageKinds.includes('ignore_4d')) {
+    if (hasSentIgnore4d || stageKinds.includes('ignore_4d')) {
+        return null;
+    }
+
+    // Защита от спама: если юзер не ответил на предыдущую инициативу Леры
+    if (consecutiveInitiatives >= 1) {
+        // Если уже было 2 или больше инициатив без ответа — полная тишина
+        if (consecutiveInitiatives >= 2) {
+            return null;
+        }
+
+        const silenceTime = Math.max(ageSeconds, userSilenceSeconds);
+        // Через 4+ дня молчания юзера разрешен один финальный пинг ignore_4d
+        if (silenceTime >= 345600 && !stageKinds.includes('ignore_4d')) {
+            return 'ignore_4d';
+        }
+
+        // В первые 15-120 минут после первого сообщения разрешен пинг ignore_1
+        if (consecutiveInitiatives === 1 && (state === 'IGNORED' || stageKinds.includes('new_day')) && !stageKinds.includes('ignore_1')) {
+            if (ageSeconds >= 900 && ageSeconds <= 7200) {
+                return 'ignore_1';
+            }
+        }
+
+        // Во всех остальных случаях (включая утренний new_day на следующий день) — тишина!
         return null;
     }
 
     // Если было отправлено напоминание ignore_1 (или open):
     // Включается блокировка инициатив на 4 дня (345600 сек)
     if (stageKinds.includes('ignore_1') || stageKinds.includes('open')) {
-        // Если прошло 4+ дня (345600 сек) с момента игнора — отправляем дерзкий пинг ignore_4d
-        if (ageSeconds >= 345600 && !stageKinds.includes('ignore_4d')) {
+        const silenceTime = Math.max(ageSeconds, userSilenceSeconds);
+        if (silenceTime >= 345600 && !stageKinds.includes('ignore_4d')) {
             return 'ignore_4d';
         }
-        // В противном случае блокировка на 4 дня (не шлем new_day, не шлем спам)
         return null;
     }
+
+    // Ниже — только когда consecutiveInitiatives === 0 (последний диалог был взаимным)
 
     // Шаг 1: Открытый тред / обещание собеседника — если наступил новый день
     if (newMoscowDay && hasActiveOpenThread && !stageKinds.includes('open_thread')) {
-        // Если тред уже созрел (12+ часов = 43200 сек) — отправляем его
         if (openThreadAgeSeconds >= 43200) {
             return 'open_thread';
         }
-        // Если еще не созрел (< 12ч, например в 09:00 после ночного обещания в 23:00):
-        // Ждем созревания днем (12:00+), не сжигаем день дежурным new_day!
         return null;
     }
 
-    // Шаг 2: Новый день — если сегодня ещё не здоровались и юзер не в блоке 4 дней
+    // Шаг 2: Новый день — если сегодня ещё не здоровались
     if (newMoscowDay && !stageKinds.includes('new_day')) {
         return 'new_day';
     }
 
-    // Шаг 3: Напоминание через 15 минут (900 сек), если юзер проигнорил реплику Леры или утренний new_day
-    if ((state === 'IGNORED' || stageKinds.includes('new_day')) && !stageKinds.includes('ignore_1')) {
+    // Шаг 3: Напоминание через 15 минут (900 сек), если юзер проигнорил реплику Леры
+    if (state === 'IGNORED' && !stageKinds.includes('ignore_1')) {
         if (ageSeconds >= 900 && ageSeconds <= 7200) {
             return 'ignore_1';
         }
@@ -153,7 +178,15 @@ export async function enqueuePersonalInitiatives(queue) {
 
         if (newMoscowDay && hourMsk < NEW_DAY_START_HOUR_MSK) continue;
 
-        if (!newMoscowDay) {
+        const consecutive = Number(latest.consecutive_initiatives || 0);
+        if (consecutive >= 1) {
+            // Если уже было 2+ безответных инициатив или уже отправлен ignore_4d — полностью пропускаем
+            if (latest.has_ignore_4d || consecutive >= 2) continue;
+            const silenceTime = Math.max(Number(latest.age_seconds || 0), Number(latest.user_silence_seconds || 0));
+            const isIgnore1Window = consecutive === 1 && (Number(latest.age_seconds || 0) >= 900 && Number(latest.age_seconds || 0) <= 7200);
+            const isIgnore4dWindow = (silenceTime >= 345600) && (hourMsk >= 11 && hourMsk < 21);
+            if (!isIgnore1Window && !isIgnore4dWindow) continue;
+        } else if (!newMoscowDay) {
             const ageSec = Number(latest.age_seconds || 0);
             const hasIgnoredKind = ['ignore_1', 'ignore_2', 'ignore_4d'].includes(latestMeta.kind);
             // Если нет специального статуса игнора, а тайминг не попадает в окна ignore_1 (15м-2ч) или ignore_4d (4д+),
@@ -255,7 +288,10 @@ export async function enqueuePersonalInitiatives(queue) {
                     newMoscowDay,
                     initiativeLimit,
                     hasActiveOpenThread: Boolean(activeOpenThread),
-                    openThreadAgeSeconds
+                    openThreadAgeSeconds,
+                    consecutiveInitiatives: Number(latest.consecutive_initiatives || 0),
+                    hasSentIgnore4d: Boolean(latest.has_ignore_4d),
+                    userSilenceSeconds: Number(latest.user_silence_seconds || 0)
                 });
                 if (!kind) return;
                 if (kind === 'open_thread' && (hourMsk < 12 || hourMsk >= 20)) return;

@@ -228,6 +228,10 @@ async function processInitiativeJob(bot, job) {
     }).format(new Date()));
     if (isColdStart && (hourMsk < 11 || hourMsk >= 21)) return;
     if ((initiativeKind === 'new_day' || initiativeKind === 'open_thread') && (latestLocalDate >= todayMsk || hourMsk < 9)) return;
+    if (['new_day', 'open_thread'].includes(initiativeKind) && latest?.role === 'lera' && latest?.event_type === 'INITIATIVE') {
+        console.warn(`[INITIATIVE SKIPPED] user ${userId}: ${initiativeKind} отменен, так как предыдущее сообщение уже было безответной инициативой`);
+        return;
+    }
     const anchorAgeSeconds = anchor ? (Date.now() - new Date(anchor.occurred_at).getTime()) / 1000 : 0;
     if (initiativeKind === 'open' && (anchorAgeSeconds < 300 || anchorAgeSeconds > 3600)) return;
     if (initiativeKind === 'ignore_1' && (anchorAgeSeconds < 900 || anchorAgeSeconds > 7200)) return;

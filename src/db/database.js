@@ -756,7 +756,11 @@ export async function getInitiativeSchedulerUsers(limit = 500) {
             e.local_date::text AS local_date,
             e.metadata,
             e.status,
-            EXTRACT(EPOCH FROM (NOW() - COALESCE(e.occurred_at, u.created_at)))::bigint AS age_seconds
+            u_last.last_user_at,
+            COALESCE(init_stats.count, 0)::int AS consecutive_initiatives,
+            COALESCE(init_stats.has_ignore_4d, false) AS has_ignore_4d,
+            EXTRACT(EPOCH FROM (NOW() - COALESCE(e.occurred_at, u.created_at)))::bigint AS age_seconds,
+            EXTRACT(EPOCH FROM (NOW() - COALESCE(u_last.last_user_at, e.occurred_at, u.created_at)))::bigint AS user_silence_seconds
          FROM users u
          LEFT JOIN LATERAL (
              SELECT * FROM conversation_events
@@ -768,6 +772,26 @@ export async function getInitiativeSchedulerUsers(limit = 500) {
              ORDER BY occurred_at DESC, id DESC
              LIMIT 1
          ) e ON TRUE
+         LEFT JOIN LATERAL (
+             SELECT occurred_at AS last_user_at
+             FROM conversation_events
+             WHERE user_id = u.telegram_id
+               AND status = 'COMPLETED'
+               AND role = 'user'
+               AND occurred_at > COALESCE(u.chat_history_cleared_at, '-infinity'::timestamptz)
+             ORDER BY occurred_at DESC, id DESC
+             LIMIT 1
+         ) u_last ON TRUE
+         LEFT JOIN LATERAL (
+             SELECT
+                 COUNT(*)::int AS count,
+                 BOOL_OR(metadata->>'kind' = 'ignore_4d') AS has_ignore_4d
+             FROM conversation_events
+             WHERE user_id = u.telegram_id
+               AND status = 'COMPLETED'
+               AND event_type = 'INITIATIVE'
+               AND occurred_at > COALESCE(u_last.last_user_at, u.created_at)
+         ) init_stats ON TRUE
          WHERE u.is_blocked = FALSE
            AND u.telegram_id IS NOT NULL
            AND u.telegram_id > 1000
