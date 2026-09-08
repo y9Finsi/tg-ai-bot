@@ -568,6 +568,68 @@ test('Admin Linear Endpoints Integration Verification Suite', { concurrency: 1 }
     });
 
     // =========================================================================
+    // 6. Content Bank Endpoints
+    // =========================================================================
+    let testContentId = null;
+
+    await t.test('6.1 GET /api/admin/content returns items list and channel settings', async () => {
+        const res = await adminFetch('/api/admin/content', {
+            headers: { 'x-admin-key': ADMIN_KEY }
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.success, true);
+        assert.ok(Array.isArray(res.data.content));
+    });
+
+    await t.test('6.2 POST /api/admin/content creates new content item', async () => {
+        const res = await adminFetch('/api/admin/content', {
+            method: 'POST',
+            headers: { 'x-admin-key': ADMIN_KEY },
+            body: {
+                telegram_type: 'audio',
+                url: 'https://music.yandex.ru/album/test/track/12345',
+                description: 'Питерский рок трек для ночных диалогов',
+                enabled: true,
+                allow_in_dialogue: true,
+                allow_initiative: true,
+                allow_channel: false
+            }
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.success, true);
+        assert.ok(res.data.content && res.data.content.id);
+        testContentId = res.data.content.id;
+        assert.equal(res.data.content.telegram_type, 'audio');
+        assert.equal(res.data.content.description, 'Питерский рок трек для ночных диалогов');
+    });
+
+    await t.test('6.3 PATCH /api/admin/content/:id updates content fields', async () => {
+        assert.ok(testContentId, 'testContentId must exist');
+        const res = await adminFetch(`/api/admin/content/${testContentId}`, {
+            method: 'PATCH',
+            headers: { 'x-admin-key': ADMIN_KEY },
+            body: {
+                description: 'Обновленное описание трека',
+                allow_channel: true
+            }
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.success, true);
+        assert.equal(res.data.content.description, 'Обновленное описание трека');
+        assert.equal(res.data.content.allow_channel, true);
+    });
+
+    await t.test('6.4 DELETE /api/admin/content/:id removes content item', async () => {
+        assert.ok(testContentId, 'testContentId must exist');
+        const res = await adminFetch(`/api/admin/content/${testContentId}`, {
+            method: 'DELETE',
+            headers: { 'x-admin-key': ADMIN_KEY }
+        });
+        assert.equal(res.status, 200);
+        assert.equal(res.data.success, true);
+    });
+
+    // =========================================================================
     // 99. Teardown
     // =========================================================================
     await t.test('99. Teardown test server, queues, and database connection', async () => {

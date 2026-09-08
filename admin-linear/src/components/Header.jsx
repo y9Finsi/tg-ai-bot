@@ -19,8 +19,8 @@ export function Header({
                 aria-hidden="true"
             />
 
-            {/* Centered Figma Button Group (13:1936, 357x54px) */}
-            <nav className="relative z-10 pointer-events-auto w-[357px] h-[54px] inline-flex items-center justify-between bg-[#1b1d22]/90 backdrop-blur-xl rounded-full p-2 shadow-[0_8px_32px_rgba(0,0,0,0.6)] border border-white/[0.08]">
+            {/* Centered Figma Button Group with Content Bank */}
+            <nav className="relative z-10 pointer-events-auto min-w-[357px] max-w-fit h-[54px] inline-flex items-center justify-between gap-1.5 bg-[#1b1d22]/90 backdrop-blur-xl rounded-full p-2 shadow-[0_8px_32px_rgba(0,0,0,0.6)] border border-white/[0.08]">
                 <button
                     type="button"
                     onClick={() => onTabChange('overview')}
@@ -43,6 +43,18 @@ export function Header({
                     }`}
                 >
                     Настройка ИИ
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => onTabChange('content')}
+                    className={`h-[38px] px-4 rounded-full text-[16px] font-normal transition-all duration-150 active:scale-95 cursor-pointer flex items-center justify-center ${
+                        activeTab === 'content'
+                            ? 'bg-[#292e5e] border border-[#434771] text-white shadow-sm'
+                            : 'text-white/58 hover:text-white border border-transparent'
+                    }`}
+                >
+                    Банк контента
                 </button>
 
                 <button

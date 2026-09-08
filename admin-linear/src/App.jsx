@@ -7,6 +7,7 @@ import { InventoryWidget } from '@/components/InventoryWidget.jsx';
 import { KanbanBoard } from '@/components/KanbanBoard.jsx';
 import { NeedsPanel } from '@/components/NeedsPanel.jsx';
 import { AiSettingsTab } from '@/components/AiSettingsTab.jsx';
+import { ContentBankTab } from '@/components/ContentBankTab.jsx';
 import { ZenlyMap } from '@/components/ZenlyMap.jsx';
 import { Toast } from '@/components/Toast.jsx';
 import { LoginModal } from '@/components/LoginModal.jsx';
@@ -20,6 +21,7 @@ export function App() {
         if (typeof window !== 'undefined') {
             const hash = window.location.hash.toLowerCase();
             const search = new URLSearchParams(window.location.search);
+            if (hash === '#content' || search.get('tab') === 'content') return 'content';
             if (hash === '#map' || search.get('tab') === 'map') return 'map';
             if (hash === '#ai' || search.get('tab') === 'ai') return 'ai';
         }
@@ -29,14 +31,15 @@ export function App() {
     const setActiveTab = useCallback((tab) => {
         setActiveTabState(tab);
         if (typeof window !== 'undefined') {
-            window.location.hash = tab === 'map' ? '#map' : (tab === 'ai' ? '#ai' : '#overview');
+            window.location.hash = tab === 'map' ? '#map' : (tab === 'ai' ? '#ai' : (tab === 'content' ? '#content' : '#overview'));
         }
     }, []);
 
     useEffect(() => {
         const handleHash = () => {
             const hash = window.location.hash.toLowerCase();
-            if (hash === '#map') setActiveTabState('map');
+            if (hash === '#content') setActiveTabState('content');
+            else if (hash === '#map') setActiveTabState('map');
             else if (hash === '#ai') setActiveTabState('ai');
             else if (hash === '#overview') setActiveTabState('overview');
         };
@@ -267,7 +270,12 @@ export function App() {
                 <AiSettingsTab toast={toast} />
             )}
 
-            {/* TAB 3: ZENLY INTERACTIVE MAP */}
+            {/* TAB 3: CONTENT BANK */}
+            {activeTab === 'content' && (
+                <ContentBankTab toast={toast} />
+            )}
+
+            {/* TAB 4: ZENLY INTERACTIVE MAP */}
             {activeTab === 'map' && (
                 <main className="flex-1 w-full h-[calc(100vh-86px)] overflow-hidden animate-in fade-in duration-150">
                     <ZenlyMap
