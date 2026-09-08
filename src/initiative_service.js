@@ -131,6 +131,13 @@ export function chooseInitiativeKind({
         }
     }
 
+    // Шаг 4: Дневная инициатива с контентом (трек, мем, видео) после 4–12 часов паузы (14400–43200 сек)
+    if (!newMoscowDay && counts.content < 3 && !stageKinds.includes('content_4h')) {
+        if (ageSeconds >= 14400 && ageSeconds <= 43200) {
+            return 'content_4h';
+        }
+    }
+
     return null;
 }
 
@@ -189,12 +196,12 @@ export async function enqueuePersonalInitiatives(queue) {
         } else if (!newMoscowDay) {
             const ageSec = Number(latest.age_seconds || 0);
             const hasIgnoredKind = ['ignore_1', 'ignore_2', 'ignore_4d'].includes(latestMeta.kind);
-            // Если нет специального статуса игнора, а тайминг не попадает в окна ignore_1 (15м-2ч) или ignore_4d (4д+),
-            // то инициатива заведомо не сработает.
+            // Если нет специального статуса игнора, проверяем окна: ignore_1 (15м-2ч), content_4h (4ч-12ч днем 11-21 МСК) или ignore_4d (4д+)
             if (!hasIgnoredKind) {
                 const isIgnore1Window = (ageSec >= 900 && ageSec <= 7200);
+                const isContent4hWindow = (ageSec >= 14400 && ageSec <= 43200) && (hourMsk >= 11 && hourMsk < 21);
                 const isIgnore4dWindow = (ageSec >= 345600);
-                if (!isIgnore1Window && !isIgnore4dWindow) continue;
+                if (!isIgnore1Window && !isContent4hWindow && !isIgnore4dWindow) continue;
             }
         }
 
@@ -257,8 +264,9 @@ export async function enqueuePersonalInitiatives(queue) {
                 const ageSeconds = Math.max(0, Math.floor((Date.now() - new Date(anchor.occurred_at).getTime()) / 1000));
                 if (!newMoscowDay) {
                     const isIgnore1Window = (ageSeconds >= 900 && ageSeconds <= 7200);
+                    const isContent4hWindow = (ageSeconds >= 14400 && ageSeconds <= 43200) && (hourMsk >= 11 && hourMsk < 21);
                     const isIgnore4dWindow = (ageSeconds >= 345600);
-                    if (!isIgnore1Window && !isIgnore4dWindow) return;
+                    if (!isIgnore1Window && !isContent4hWindow && !isIgnore4dWindow) return;
                 }
 
                 const counts = await getInitiativeDailyCounts(latest.user_id);
@@ -298,7 +306,7 @@ export async function enqueuePersonalInitiatives(queue) {
                 if (['content_4h', 'idle_4h'].includes(kind) && (hourMsk < 11 || hourMsk >= 21)) return;
 
                 let candidateIds = [];
-                if (kind === 'content_4h' || (kind === 'open' && !dialogue.some(event => event.event_type === 'CONTENT') && counts.content < CONTENT_LIMIT)) {
+                if (kind === 'content_4h' || (kind === 'new_day' && counts.content < CONTENT_LIMIT) || (kind === 'open' && !dialogue.some(event => event.event_type === 'CONTENT') && counts.content < CONTENT_LIMIT)) {
                     const contentCandidates = await getContentCandidates(latest.user_id, 'initiative', 4);
                     candidateIds = contentCandidates.map(item => Number(item.id));
                 }

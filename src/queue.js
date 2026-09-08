@@ -245,7 +245,7 @@ async function processInitiativeJob(bot, job) {
     }
 
     let candidates = [];
-    if (!['ignore_1', 'ignore_2', 'ignore_4d', 'new_day', 'open_thread', 'idle_4h', 'cold_start'].includes(initiativeKind) && counts.content < 3) {
+    if (!['ignore_1', 'ignore_2', 'ignore_4d', 'open_thread', 'idle_4h', 'cold_start'].includes(initiativeKind) && counts.content < 3) {
         const rows = await Promise.all(contentCandidateIds.map(id => getLeraContent(id)));
         candidates = rows.filter(item => item?.enabled && item.allow_initiative);
         const sentFlags = await Promise.all(candidates.map(item => wasContentSent(userId, item.id)));

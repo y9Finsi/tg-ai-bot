@@ -139,6 +139,37 @@ test('consecutive unanswered initiatives prevent spam loop on new_day', () => {
     }), null);
 });
 
+test('content_4h triggers after 4-12 hours pause in mutual dialogue', () => {
+    // 3 часа (10800s) — еще рано для контента
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 10800, state: 'CLOSED', latestEvent: latestText,
+        counts: available, newMoscowDay: false,
+        consecutiveInitiatives: 0
+    }), null);
+
+    // 5 часов (18000s) — время для content_4h
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 18000, state: 'CLOSED', latestEvent: latestText,
+        counts: available, newMoscowDay: false,
+        consecutiveInitiatives: 0
+    }), 'content_4h');
+
+    // Если лимит контента на сегодня исчерпан (counts.content >= 3) — не шлем
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 18000, state: 'CLOSED', latestEvent: latestText,
+        counts: { initiatives: 0, content: 3 }, newMoscowDay: false,
+        consecutiveInitiatives: 0
+    }), null);
+
+    // Если content_4h уже был отправлен в этом цикле диалога — не повторяем
+    assert.equal(chooseInitiativeKind({
+        ageSeconds: 18000, state: 'CLOSED', latestEvent: latestText,
+        counts: available, newMoscowDay: false,
+        stageKinds: ['content_4h'],
+        consecutiveInitiatives: 0
+    }), null);
+});
+
 test('content channel reads native media and URL only from Telegram entities', () => {
     assert.deepEqual(extractContentFromChannelPost({
         chat: { id: -100123 }, message_id: 5, caption: 'трек на вечер',
