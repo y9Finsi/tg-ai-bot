@@ -20,7 +20,34 @@ function parseTelegram(html, sourceUrl) {
         const block = match[0];
         const textMatch = block.match(/<div class="tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/i);
         const text = clean(textMatch?.[1]);
-        if (text) out.push({ externalId: match[1], canonicalUrl: canonicalUrl('https://t.me/' + match[1]), title: text.slice(0, 160), rawText: text, category: 'telegram', metadata: { sourceUrl } });
+        if (!text) continue;
+
+        const ymLinkMatch = block.match(/href=["'](https?:\/\/music\.yandex\.[^"'\s>]+)["']/i);
+        const mangaLinkMatch = block.match(/href=["'](https?:\/\/(?:mangalib\.me|remanga\.org|hentailib\.me)[^"'\s>]+)["']/i);
+
+        let canonical = canonicalUrl('https://t.me/' + match[1]);
+        let category = 'telegram';
+
+        if (ymLinkMatch) {
+            canonical = canonicalUrl(ymLinkMatch[1].replace(/&amp;/g, '&'));
+            category = 'music';
+        } else if (mangaLinkMatch) {
+            canonical = canonicalUrl(mangaLinkMatch[1].replace(/&amp;/g, '&'));
+            category = 'hentai';
+        }
+
+        out.push({
+            externalId: match[1],
+            canonicalUrl: canonical,
+            title: text.slice(0, 160),
+            rawText: text,
+            category,
+            metadata: {
+                sourceUrl,
+                yandexMusicUrl: ymLinkMatch ? ymLinkMatch[1] : null,
+                mangaUrl: mangaLinkMatch ? mangaLinkMatch[1] : null
+            }
+        });
     }
     return out;
 }
@@ -68,6 +95,10 @@ async function parseYandexMusic(target) {
         const [, owner, kind] = playlistMatch;
         const apiUrl = `https://api.music.yandex.net/users/${owner}/playlists/${kind}`;
         const res = await fetch(apiUrl, { headers: { 'User-Agent': 'Yandex-Music-API' }, signal: AbortSignal.timeout(10000) });
+        if (res.status === 403) {
+            console.warn(`[YANDEX MUSIC GEOBLOCK] Yandex Music API returned 403 for ${target}. Direct datacenter IP blocked by Yandex.`);
+            return [];
+        }
         if (!res.ok) throw new Error(`Yandex Music API ${res.status}`);
         const data = await res.json();
         const playlistTitle = data.result?.title || 'Плейлист Яндекс Музыки';

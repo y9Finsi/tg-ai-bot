@@ -91,6 +91,13 @@ export const INITIAL_SOURCES = [
         url_or_handle: 'manga_18_plus',
         topics: ['хентай', 'манга', '18+', 'додзинси', 'hentai'],
         is_trusted: true
+    },
+    {
+        name: 'Инди Музыка (Релизы и Яндекс.Музыка)',
+        source_type: 'telegram',
+        url_or_handle: 'indie_music',
+        topics: ['музыка', 'инди', 'яндекс музыка', 'пост-панк', 'новинки'],
+        is_trusted: true
     }
 ];
 

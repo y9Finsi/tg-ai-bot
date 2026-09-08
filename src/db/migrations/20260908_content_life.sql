@@ -67,5 +67,6 @@ INSERT INTO content_sources (name, source_type, url_or_handle, topics, is_truste
 ('Яндекс Музыка: Инди лучшее', 'yandex_music', 'https://music.yandex.ru/users/yamusic-top/playlists/1036', '["музыка", "инди", "шугейз", "дрим-поп", "яндекс музыка"]'::jsonb, TRUE, TRUE),
 ('Manga Read (Рекомендации манги)', 'telegram', 'manga_read', '["манга", "манхва", "mangalib", "хентай", "тайтлы"]'::jsonb, TRUE, TRUE),
 ('ReManga (Новинки манхвы и манги)', 'telegram', 'remanga', '["манга", "манхва", "remanga", "главы", "тайтлы"]'::jsonb, TRUE, TRUE),
-('Manga 18+ (Пикантная манга и главы)', 'telegram', 'manga_18_plus', '["хентай", "манга", "18+", "додзинси", "hentai"]'::jsonb, TRUE, TRUE)
+('Manga 18+ (Пикантная манга и главы)', 'telegram', 'manga_18_plus', '["хентай", "манга", "18+", "додзинси", "hentai"]'::jsonb, TRUE, TRUE),
+('Инди Музыка (Релизы и Яндекс.Музыка)', 'telegram', 'indie_music', '["музыка", "инди", "яндекс музыка", "пост-панк", "новинки"]'::jsonb, TRUE, TRUE)
 ON CONFLICT (source_type, url_or_handle) DO NOTHING;
