@@ -2,18 +2,18 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     Search, Plus, List, Grid, Link as LinkIcon, Image as ImageIcon,
     Film, Sparkles, Music, FileText, ExternalLink, Send, Pencil,
-    Trash2, Check, Radio, RefreshCw, AlertCircle, Eye, Settings
+    Trash2, Check, Radio, RefreshCw, AlertCircle, Settings
 } from 'lucide-react';
 import { api } from '@/lib/api.js';
 import { ContentModal } from './ContentModal.jsx';
 
 const FILTER_TABS = [
     { id: 'all', label: 'Все' },
-    { id: 'audio', label: 'Музыка', icon: '🎵' },
-    { id: 'video', label: 'Видео', icon: '🎬' },
-    { id: 'photo', label: 'Фото / Мемы', icon: '🐱' },
-    { id: 'animation', label: 'GIF', icon: '✨' },
-    { id: 'link', label: 'Ссылки', icon: '🔗' }
+    { id: 'audio', label: 'Музыка' },
+    { id: 'video', label: 'Видео' },
+    { id: 'photo', label: 'Фото / Мемы' },
+    { id: 'animation', label: 'GIF' },
+    { id: 'link', label: 'Ссылки' }
 ];
 
 const TYPE_ICONS = {
@@ -23,6 +23,15 @@ const TYPE_ICONS = {
     animation: Sparkles,
     document: FileText,
     link: LinkIcon
+};
+
+const TYPE_LABELS = {
+    audio: 'Аудио',
+    video: 'Видео',
+    photo: 'Фото',
+    animation: 'GIF',
+    document: 'Файл',
+    link: 'Ссылка'
 };
 
 export function ContentBankTab({ toast }) {
@@ -180,420 +189,434 @@ export function ContentBankTab({ toast }) {
     };
 
     return (
-        <main className="flex-1 w-full max-w-[1240px] mx-auto px-4 md:px-8 py-6 flex flex-col gap-6 animate-in fade-in duration-150">
-            {/* Top Stats Bar */}
-            <div className="w-full grid grid-cols-2 sm:grid-cols-5 gap-3">
-                <div className="rounded-[20px] bg-[#1b1d22]/80 border border-white/5 p-3.5 flex flex-col gap-1">
-                    <span className="text-[12px] uppercase font-semibold text-white/40">Всего в базе</span>
-                    <span className="text-[22px] font-medium text-white">{stats.total}</span>
-                </div>
-                <div className="rounded-[20px] bg-[#1b1d22]/80 border border-white/5 p-3.5 flex flex-col gap-1">
-                    <span className="text-[12px] uppercase font-semibold text-emerald-400/70">Активных</span>
-                    <span className="text-[22px] font-medium text-emerald-400">{stats.active}</span>
-                </div>
-                <div className="rounded-[20px] bg-[#1b1d22]/80 border border-white/5 p-3.5 flex flex-col gap-1">
-                    <span className="text-[12px] uppercase font-semibold text-indigo-400/70">В диалогах</span>
-                    <span className="text-[22px] font-medium text-indigo-300">{stats.dialogue}</span>
-                </div>
-                <div className="rounded-[20px] bg-[#1b1d22]/80 border border-white/5 p-3.5 flex flex-col gap-1">
-                    <span className="text-[12px] uppercase font-semibold text-amber-400/70">В инициативах</span>
-                    <span className="text-[22px] font-medium text-amber-300">{stats.initiative}</span>
-                </div>
-                <div className="rounded-[20px] bg-[#1b1d22]/80 border border-white/5 p-3.5 flex flex-col gap-1 col-span-2 sm:col-span-1">
-                    <span className="text-[12px] uppercase font-semibold text-sky-400/70">В ТГ-канале</span>
-                    <span className="text-[22px] font-medium text-sky-300">{stats.channel}</span>
-                </div>
-            </div>
-
-            {/* Controls Bar: Filters, Search, Mode Toggle & Actions */}
-            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-[#1b1d22]/60 backdrop-blur-md rounded-[24px] p-3 border border-white/5">
-                {/* Search Bar */}
-                <div className="relative flex-1 min-w-[240px]">
-                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Поиск по описанию, ссылкам, авторам..."
-                        className="w-full pl-10 pr-4 py-2 rounded-full bg-[#151515] border border-white/10 text-white text-[14px] placeholder:text-white/30 focus:outline-none focus:border-[#434771]"
-                    />
-                </div>
-
-                {/* Filter Pills */}
-                <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
-                    {FILTER_TABS.map(tab => (
-                        <button
-                            key={tab.id}
-                            type="button"
-                            onClick={() => setSelectedTab(tab.id)}
-                            className={`px-3.5 py-1.5 rounded-full text-[13px] font-normal cursor-pointer whitespace-nowrap transition-all ${
-                                selectedTab === tab.id
-                                    ? 'bg-[#292e5e] text-white border border-[#434771]'
-                                    : 'text-white/50 hover:text-white hover:bg-white/5'
-                            }`}
-                        >
-                            {tab.icon && <span className="mr-1.5">{tab.icon}</span>}
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
-
-                {/* Right Actions: View Toggle, Channel Config, Add Button */}
-                <div className="flex items-center gap-2 shrink-0 justify-end">
-                    {/* View Mode Toggle */}
-                    <div className="flex items-center p-1 bg-[#151515] rounded-full border border-white/10">
-                        <button
-                            type="button"
-                            onClick={() => setViewMode('list')}
-                            title="Вид: список"
-                            className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                                viewMode === 'list' ? 'bg-[#292e5e] text-white' : 'text-white/40 hover:text-white'
-                            }`}
-                        >
-                            <List className="w-4 h-4 stroke-[2]" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setViewMode('grid')}
-                            title="Вид: плитка"
-                            className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                                viewMode === 'grid' ? 'bg-[#292e5e] text-white' : 'text-white/40 hover:text-white'
-                            }`}
-                        >
-                            <Grid className="w-4 h-4 stroke-[2]" />
-                        </button>
+        <main className="flex-1 w-full flex flex-col items-center animate-in fade-in duration-150">
+            <div className="w-full max-w-[1042px] px-4 md:px-[20px] pt-[24px] pb-[60px] flex flex-col gap-[20px]">
+                
+                {/* Top Bar matching Figma Surface Tabs (Frame 212) + Action Button */}
+                <div className="w-full flex items-center justify-between gap-3 flex-wrap">
+                    {/* Category Filter Tabs matching Figma Surface selector */}
+                    <div className="flex items-center gap-[8px] overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+                        {FILTER_TABS.map((surf) => {
+                            const isActive = selectedTab === surf.id;
+                            return (
+                                <button
+                                    key={surf.id}
+                                    type="button"
+                                    onClick={() => setSelectedTab(surf.id)}
+                                    className={`h-[38px] px-4 text-[16px] font-normal flex items-center justify-center cursor-pointer transition-all ${
+                                        isActive
+                                            ? 'rounded-[12px] bg-[#232425] border border-[#353636] text-white shadow-inner'
+                                            : 'rounded-full text-white/58 hover:text-white hover:bg-white/5'
+                                    }`}
+                                >
+                                    {surf.label}
+                                </button>
+                            );
+                        })}
                     </div>
 
-                    {/* Channel Sync Settings */}
-                    <button
-                        type="button"
-                        onClick={() => setChannelModalOpen(true)}
-                        title="Настройки сервисного канала контента"
-                        className="p-2 rounded-full bg-[#151515] border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all cursor-pointer"
-                    >
-                        <Settings className="w-4 h-4 stroke-[1.8]" />
-                    </button>
-
-                    {/* Add Content Button */}
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setEditingItem(null);
-                            setModalOpen(true);
-                        }}
-                        className="h-[38px] px-4 rounded-full bg-[#292e5e] hover:bg-[#383f7d] border border-[#434771] text-white text-[14px] font-medium flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-sm"
-                    >
-                        <Plus className="w-4 h-4 stroke-[2.2]" />
-                        <span>Добавить материал</span>
-                    </button>
-                </div>
-            </div>
-
-            {/* Main Content Area */}
-            {loading ? (
-                <div className="w-full h-64 flex flex-col items-center justify-center gap-3 text-white/40">
-                    <RefreshCw className="w-6 h-6 animate-spin text-[#8693ff]" />
-                    <span className="text-[14px]">Загрузка банка контента...</span>
-                </div>
-            ) : filteredItems.length === 0 ? (
-                <div className="w-full rounded-[24px] bg-[#1b1d22]/40 border border-white/5 p-12 flex flex-col items-center justify-center gap-3 text-center">
-                    <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-white/30 mb-2">
-                        <AlertCircle className="w-6 h-6 stroke-[1.5]" />
-                    </div>
-                    <span className="text-[17px] font-medium text-white">Материалы не найдены</span>
-                    <p className="text-[14px] text-white/40 max-w-md">
-                        {searchQuery ? 'По вашему запросу ничего не найдено.' : 'Банк контента пуст. Добавьте первый трек, мем или видео через кнопку выше.'}
-                    </p>
-                </div>
-            ) : viewMode === 'list' ? (
-                /* LIST VIEW (FigmaListItemRow style) */
-                <div className="flex flex-col gap-2">
-                    {filteredItems.map(item => {
-                        const Icon = TYPE_ICONS[item.telegram_type] || LinkIcon;
-                        return (
-                            <div
-                                key={item.id}
-                                className={`w-full rounded-[20px] p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 border transition-all ${
-                                    item.enabled
-                                        ? 'bg-[#1b1d22]/90 border-white/[0.08] hover:border-white/15'
-                                        : 'bg-[#1b1d22]/40 border-white/5 opacity-60'
+                    {/* Right Controls: View Toggle, Channel Settings & Add Button */}
+                    <div className="flex items-center gap-2 shrink-0">
+                        {/* View Switcher matching Figma Pill style */}
+                        <div className="flex items-center h-[38px] px-1 bg-[#1b1d22] rounded-full border border-white/10">
+                            <button
+                                type="button"
+                                onClick={() => setViewMode('list')}
+                                title="Список"
+                                className={`h-[30px] px-3 rounded-full text-[13px] font-normal transition-all cursor-pointer flex items-center gap-1.5 ${
+                                    viewMode === 'list'
+                                        ? 'bg-[#292e5e] border border-[#434771] text-white shadow-sm'
+                                        : 'text-white/50 hover:text-white'
                                 }`}
                             >
-                                {/* Left side: Icon + Content Info */}
-                                <div className="flex items-start md:items-center gap-3.5 flex-1 min-w-0">
-                                    <div className="w-10 h-10 rounded-xl bg-[#272727] flex items-center justify-center shrink-0 border border-white/10 text-white/80">
-                                        <Icon className="w-5 h-5 stroke-[1.8]" />
-                                    </div>
-                                    <div className="flex flex-col min-w-0 flex-1">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-[15px] font-medium text-white truncate max-w-md">
+                                <List className="w-3.5 h-3.5 stroke-[1.5]" />
+                                <span className="hidden sm:inline">Список</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setViewMode('grid')}
+                                title="Сетка"
+                                className={`h-[30px] px-3 rounded-full text-[13px] font-normal transition-all cursor-pointer flex items-center gap-1.5 ${
+                                    viewMode === 'grid'
+                                        ? 'bg-[#292e5e] border border-[#434771] text-white shadow-sm'
+                                        : 'text-white/50 hover:text-white'
+                                }`}
+                            >
+                                <Grid className="w-3.5 h-3.5 stroke-[1.5]" />
+                                <span className="hidden sm:inline">Сетка</span>
+                            </button>
+                        </div>
+
+                        {/* Settings Button */}
+                        <button
+                            type="button"
+                            onClick={() => setChannelModalOpen(true)}
+                            title="Настройки канала пополнения"
+                            className="h-[38px] w-[38px] rounded-full bg-[#1b1d22] border border-white/10 text-white/60 hover:text-white hover:border-white/20 transition-all flex items-center justify-center cursor-pointer active:scale-95"
+                        >
+                            <Settings className="w-4 h-4 stroke-[1.5]" />
+                        </button>
+
+                        {/* Add Content Button matching Figma Frame 201 (38px height, rounded-full, bg-[#292e5e]) */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setEditingItem(null);
+                                setModalOpen(true);
+                            }}
+                            className="h-[38px] px-4 rounded-full bg-[#292e5e] hover:bg-[#343b75] text-white text-[16px] font-normal flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98 shadow-sm"
+                        >
+                            <span>Добавить материал</span>
+                            <Plus className="w-4 h-4 text-white stroke-[1.5]" />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Sub-bar: Search Input and Status Stats Counter */}
+                <div className="w-full flex items-center justify-between gap-3 flex-wrap">
+                    {/* Search Field styled like Figma input / Linear input */}
+                    <div className="relative flex-1 min-w-[280px]">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Поиск по описанию, ссылкам, ключевым словам..."
+                            className="w-full pl-10 pr-4 py-2 rounded-[14px] bg-[#171717] border border-white/10 text-white text-[14px] placeholder:text-white/30 focus:outline-none focus:border-[#434771] transition-all"
+                        />
+                    </div>
+
+                    {/* Compact Status Badges */}
+                    <div className="flex items-center gap-2 text-[12px] text-white/50 select-none">
+                        <span className="px-2.5 py-1 rounded-[10px] bg-[#171717] border border-white/5">
+                            Всего: <strong className="text-white font-medium">{stats.total}</strong>
+                        </span>
+                        <span className="px-2.5 py-1 rounded-[10px] bg-[#171717] border border-white/5">
+                            Активно: <strong className="text-emerald-400 font-medium">{stats.active}</strong>
+                        </span>
+                        <span className="px-2.5 py-1 rounded-[10px] bg-[#171717] border border-white/5 hidden sm:inline">
+                            В диалогах: <strong className="text-indigo-300 font-medium">{stats.dialogue}</strong>
+                        </span>
+                        <span className="px-2.5 py-1 rounded-[10px] bg-[#171717] border border-white/5 hidden sm:inline">
+                            В канале: <strong className="text-sky-300 font-medium">{stats.channel}</strong>
+                        </span>
+                    </div>
+                </div>
+
+                {/* Main Content Render */}
+                {loading ? (
+                    <div className="w-full h-80 flex flex-col items-center justify-center gap-2 text-white/50">
+                        <RefreshCw className="w-5 h-5 animate-spin text-[#8693ff]" />
+                        <span className="text-[14px]">Загрузка банка контента...</span>
+                    </div>
+                ) : filteredItems.length === 0 ? (
+                    <div className="w-full rounded-[23px] bg-gradient-to-b from-[#171717] to-[#232425]/0 border border-white/10 p-12 flex flex-col items-center justify-center gap-3 text-center">
+                        <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center text-white/30 mb-1">
+                            <AlertCircle className="w-6 h-6 stroke-[1.5]" />
+                        </div>
+                        <span className="text-[16px] font-medium text-white">Материалы не найдены</span>
+                        <p className="text-[14px] text-white/45 max-w-sm">
+                            {searchQuery ? 'По вашему запросу ничего не найдено.' : 'Банк контента пуст. Нажмите «Добавить материал», чтобы пополнить банк.'}
+                        </p>
+                    </div>
+                ) : viewMode === 'list' ? (
+                    /* LIST VIEW: Rows styled exactly like FigmaListItemRow / Rule items */
+                    <div className="flex flex-col gap-[10px]">
+                        {filteredItems.map((item) => {
+                            const Icon = TYPE_ICONS[item.telegram_type] || LinkIcon;
+                            const typeLabel = TYPE_LABELS[item.telegram_type] || item.telegram_type;
+                            return (
+                                <div
+                                    key={item.id}
+                                    className={`w-full rounded-[23px] p-2 flex flex-col transition-all bg-gradient-to-b from-[#171717] to-[#232425]/0 border ${
+                                        item.enabled ? 'border-white/10 hover:border-white/20' : 'border-white/5 opacity-50'
+                                    }`}
+                                >
+                                    {/* Header Row */}
+                                    <div className="px-3 py-1.5 flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-2.5 overflow-hidden">
+                                            <div className="w-7 h-7 rounded-[10px] bg-[#272727] border border-white/10 flex items-center justify-center shrink-0 text-white/80">
+                                                <Icon className="w-3.5 h-3.5 stroke-[1.5]" />
+                                            </div>
+                                            <span className="text-[15px] font-medium text-white truncate select-none">
                                                 {item.description || 'Без описания'}
                                             </span>
+                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/60 font-normal select-none shrink-0">
+                                                {typeLabel}
+                                            </span>
                                             {!item.enabled && (
-                                                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
-                                                    Отключен
+                                                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 select-none shrink-0">
+                                                    Выкл
                                                 </span>
                                             )}
                                         </div>
-                                        {item.url && (
+
+                                        {/* Right Actions */}
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            {/* Status Indicators */}
+                                            <div className="hidden sm:flex items-center gap-1.5 mr-2 select-none">
+                                                {item.allow_in_dialogue && (
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#292e5e]/40 border border-[#434771]/50 text-indigo-200">
+                                                        Диалог
+                                                    </span>
+                                                )}
+                                                {item.allow_initiative && (
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-200">
+                                                        Инициатива
+                                                    </span>
+                                                )}
+                                                {item.allow_channel && (
+                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-200">
+                                                        Канал
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => handleTestSend(item.id)}
+                                                disabled={testingId === item.id}
+                                                title="Отправить мне в Telegram для теста"
+                                                className="p-1.5 text-white/50 hover:text-sky-400 transition-colors cursor-pointer rounded-lg hover:bg-white/5"
+                                            >
+                                                <Send className={`w-3.5 h-3.5 stroke-[1.5] ${testingId === item.id ? 'animate-pulse' : ''}`} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setEditingItem(item);
+                                                    setModalOpen(true);
+                                                }}
+                                                title="Редактировать материал"
+                                                className="p-1.5 text-white/50 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/5"
+                                            >
+                                                <Pencil className="w-3.5 h-3.5 stroke-[1.5]" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteItem(item.id, item.description)}
+                                                title="Удалить материал"
+                                                className="p-1.5 text-white/40 hover:text-red-400 transition-colors cursor-pointer rounded-lg hover:bg-white/5"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5 stroke-[1.5]" />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Bottom Container (Component 41 style: bg-[#272727] rounded-[20px]) */}
+                                    <div className="w-full rounded-[20px] p-3 flex items-center justify-between gap-3 bg-[#272727]">
+                                        <div className="flex-1 min-w-0">
+                                            {item.url ? (
+                                                <a
+                                                    href={item.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-[13px] text-sky-400 hover:text-sky-300 hover:underline truncate inline-flex items-center gap-1.5"
+                                                >
+                                                    <span className="truncate">{item.url}</span>
+                                                    <ExternalLink className="w-3 h-3 shrink-0" />
+                                                </a>
+                                            ) : item.telegram_file_id ? (
+                                                <span className="text-[12px] font-mono text-white/40 truncate">
+                                                    TG File: {item.telegram_file_id}
+                                                </span>
+                                            ) : (
+                                                <span className="text-[12px] text-white/30">Источник не указан</span>
+                                            )}
+                                        </div>
+                                        <span className="text-[11px] text-white/30 font-mono shrink-0">#{item.id}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    /* GRID VIEW: Cards styled exactly like Figma 377px Width Cards (Style B / Frame 216) */
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-[14px]">
+                        {filteredItems.map((item) => {
+                            const Icon = TYPE_ICONS[item.telegram_type] || LinkIcon;
+                            const typeLabel = TYPE_LABELS[item.telegram_type] || item.telegram_type;
+                            return (
+                                <div
+                                    key={item.id}
+                                    className={`w-full min-h-[170px] rounded-[23px] p-2 flex flex-col justify-between gap-2 transition-all bg-gradient-to-b from-[#171717] to-[#232425]/0 border ${
+                                        item.enabled ? 'border-white/10 hover:border-white/20' : 'border-white/5 opacity-50'
+                                    }`}
+                                >
+                                    {/* Card Header (Frame 201) */}
+                                    <div className="px-2 py-1 flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5 overflow-hidden">
+                                            <div className="w-6 h-6 rounded-[8px] bg-[#272727] border border-white/10 flex items-center justify-center shrink-0 text-white/80">
+                                                <Icon className="w-3 h-3 stroke-[1.5]" />
+                                            </div>
+                                            <span className="text-[14px] font-medium text-white truncate select-none">
+                                                {typeLabel}
+                                            </span>
+                                            <span className="text-[10px] text-white/30 font-mono">#{item.id}</span>
+                                        </div>
+
+                                        <div className="flex items-center gap-0.5 shrink-0">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleTestSend(item.id)}
+                                                disabled={testingId === item.id}
+                                                title="Отправить в Telegram"
+                                                className="p-1 text-white/40 hover:text-sky-400 transition-colors cursor-pointer rounded hover:bg-white/5"
+                                            >
+                                                <Send className="w-3.5 h-3.5 stroke-[1.5]" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setEditingItem(item);
+                                                    setModalOpen(true);
+                                                }}
+                                                title="Редактировать"
+                                                className="p-1 text-white/40 hover:text-white transition-colors cursor-pointer rounded hover:bg-white/5"
+                                            >
+                                                <Pencil className="w-3.5 h-3.5 stroke-[1.5]" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteItem(item.id, item.description)}
+                                                title="Удалить"
+                                                className="p-1 text-white/40 hover:text-red-400 transition-colors cursor-pointer rounded hover:bg-white/5"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5 stroke-[1.5]" />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Card Content (Component 41: bg-[#272727] rounded-[20px]) */}
+                                    <div className="w-full h-[96px] rounded-[20px] p-3 flex flex-col justify-between overflow-hidden bg-[#272727]">
+                                        <p className="text-[13px] font-normal leading-relaxed line-clamp-2 text-white/70 select-none">
+                                            {item.description || 'Без описания'}
+                                        </p>
+                                        {item.url ? (
                                             <a
                                                 href={item.url}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="text-[12px] text-sky-400/80 hover:text-sky-300 hover:underline truncate max-w-lg mt-0.5 inline-flex items-center gap-1"
+                                                className="text-[11px] text-sky-400 hover:text-sky-300 hover:underline truncate inline-flex items-center gap-1"
                                             >
                                                 <span className="truncate">{item.url}</span>
-                                                <ExternalLink className="w-3 h-3 shrink-0" />
+                                                <ExternalLink className="w-2.5 h-2.5 shrink-0" />
                                             </a>
-                                        )}
-                                        {item.telegram_file_id && !item.url && (
-                                            <span className="text-[11px] font-mono text-white/30 truncate max-w-sm">
-                                                TG File: {item.telegram_file_id.slice(0, 24)}...
+                                        ) : (
+                                            <span className="text-[10px] text-white/30 font-mono truncate">
+                                                {item.telegram_file_id ? `TG: ${item.telegram_file_id.slice(0, 18)}...` : 'Локальный'}
                                             </span>
                                         )}
                                     </div>
-                                </div>
 
-                                {/* Center: Badges */}
-                                <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-                                    {item.allow_in_dialogue && (
-                                        <span className="text-[11px] font-normal px-2.5 py-1 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                                            Диалог
-                                        </span>
-                                    )}
-                                    {item.allow_initiative && (
-                                        <span className="text-[11px] font-normal px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                                            Инициатива
-                                        </span>
-                                    )}
-                                    {item.allow_channel && (
-                                        <span className="text-[11px] font-normal px-2.5 py-1 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30">
-                                            Канал
-                                        </span>
-                                    )}
-                                </div>
-
-                                {/* Right: Action buttons */}
-                                <div className="flex items-center gap-1 shrink-0 self-end md:self-auto border-t md:border-t-0 pt-2 md:pt-0 border-white/5">
-                                    <button
-                                        type="button"
-                                        onClick={() => handleTestSend(item.id)}
-                                        disabled={testingId === item.id}
-                                        title="Отправить мне в Telegram для проверки"
-                                        className="p-2 rounded-xl text-white/50 hover:text-sky-400 hover:bg-white/5 transition-all cursor-pointer disabled:opacity-50"
-                                    >
-                                        <Send className={`w-4 h-4 stroke-[1.8] ${testingId === item.id ? 'animate-pulse' : ''}`} />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setEditingItem(item);
-                                            setModalOpen(true);
-                                        }}
-                                        title="Редактировать параметры"
-                                        className="p-2 rounded-xl text-white/50 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
-                                    >
-                                        <Pencil className="w-4 h-4 stroke-[1.8]" />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleDeleteItem(item.id, item.description)}
-                                        title="Удалить материал"
-                                        className="p-2 rounded-xl text-white/40 hover:text-red-400 hover:bg-white/5 transition-all cursor-pointer"
-                                    >
-                                        <Trash2 className="w-4 h-4 stroke-[1.8]" />
-                                    </button>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            ) : (
-                /* GRID VIEW (Card style matching AiSettingsTab) */
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredItems.map(item => {
-                        const Icon = TYPE_ICONS[item.telegram_type] || LinkIcon;
-                        return (
-                            <div
-                                key={item.id}
-                                className={`rounded-[23px] p-4 flex flex-col justify-between gap-4 border transition-all ${
-                                    item.enabled
-                                        ? 'bg-[#1b1d22]/90 border-white/[0.08] hover:border-white/15'
-                                        : 'bg-[#1b1d22]/40 border-white/5 opacity-60'
-                                }`}
-                            >
-                                {/* Card Header */}
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="flex items-center gap-2.5 min-w-0">
-                                        <div className="w-9 h-9 rounded-xl bg-[#272727] flex items-center justify-center shrink-0 border border-white/10 text-white/80">
-                                            <Icon className="w-4 h-4 stroke-[1.8]" />
+                                    {/* Bottom Badges */}
+                                    <div className="px-2 pb-0.5 flex items-center justify-between text-[10px] select-none">
+                                        <div className="flex items-center gap-1 flex-wrap">
+                                            {item.allow_in_dialogue && (
+                                                <span className="px-1.5 py-0.5 rounded bg-[#292e5e]/40 border border-[#434771]/50 text-indigo-200">
+                                                    Диалог
+                                                </span>
+                                            )}
+                                            {item.allow_initiative && (
+                                                <span className="px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-200">
+                                                    Инициатива
+                                                </span>
+                                            )}
+                                            {item.allow_channel && (
+                                                <span className="px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/30 text-sky-200">
+                                                    Канал
+                                                </span>
+                                            )}
                                         </div>
-                                        <div className="flex flex-col min-w-0">
-                                            <span className="text-[12px] uppercase font-bold tracking-wider text-white/40">
-                                                {item.telegram_type}
-                                            </span>
-                                            <span className="text-[10px] text-white/30">ID: #{item.id}</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Action buttons */}
-                                    <div className="flex items-center gap-1">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleTestSend(item.id)}
-                                            disabled={testingId === item.id}
-                                            title="Отправить мне в Telegram"
-                                            className="p-1.5 rounded-lg text-white/50 hover:text-sky-400 hover:bg-white/5 transition-all cursor-pointer"
-                                        >
-                                            <Send className="w-3.5 h-3.5 stroke-[1.8]" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setEditingItem(item);
-                                                setModalOpen(true);
-                                            }}
-                                            title="Редактировать"
-                                            className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
-                                        >
-                                            <Pencil className="w-3.5 h-3.5 stroke-[1.8]" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDeleteItem(item.id, item.description)}
-                                            title="Удалить"
-                                            className="p-1.5 rounded-lg text-white/40 hover:text-red-400 hover:bg-white/5 transition-all cursor-pointer"
-                                        >
-                                            <Trash2 className="w-3.5 h-3.5 stroke-[1.8]" />
-                                        </button>
+                                        <span className={`uppercase font-bold tracking-wider ${item.enabled ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {item.enabled ? 'Активен' : 'Выкл'}
+                                        </span>
                                     </div>
                                 </div>
+                            );
+                        })}
+                    </div>
+                )}
 
-                                {/* Description & Preview */}
-                                <div className="rounded-[18px] bg-[#272727] p-3 flex flex-col gap-2 min-h-[90px]">
-                                    <p className="text-[14px] font-normal leading-relaxed line-clamp-3 text-white/80">
-                                        {item.description || 'Без описания'}
-                                    </p>
-                                    {item.url && (
-                                        <a
-                                            href={item.url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-[12px] text-sky-400/80 hover:text-sky-300 hover:underline truncate inline-flex items-center gap-1 mt-auto"
-                                        >
-                                            <span className="truncate">{item.url}</span>
-                                            <ExternalLink className="w-3 h-3 shrink-0" />
-                                        </a>
-                                    )}
-                                </div>
+                {/* Modal: Add/Edit Item */}
+                <ContentModal
+                    isOpen={modalOpen}
+                    item={editingItem}
+                    onClose={() => {
+                        setModalOpen(false);
+                        setEditingItem(null);
+                    }}
+                    onSave={handleSaveItem}
+                    saving={saving}
+                />
 
-                                {/* Badges Footer */}
-                                <div className="flex items-center justify-between gap-1 pt-1 border-t border-white/5 text-[11px]">
-                                    <div className="flex items-center gap-1 flex-wrap">
-                                        {item.allow_in_dialogue && (
-                                            <span className="px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-                                                Диалог
-                                            </span>
-                                        )}
-                                        {item.allow_initiative && (
-                                            <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                                                Инициатива
-                                            </span>
-                                        )}
-                                        {item.allow_channel && (
-                                            <span className="px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30">
-                                                Канал
-                                            </span>
-                                        )}
-                                    </div>
-                                    <span className={`text-[10px] uppercase font-bold tracking-wider ${item.enabled ? 'text-emerald-400' : 'text-red-400'}`}>
-                                        {item.enabled ? 'Активен' : 'Выкл'}
-                                    </span>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-
-            {/* Modal: Add/Edit Item */}
-            <ContentModal
-                isOpen={modalOpen}
-                item={editingItem}
-                onClose={() => {
-                    setModalOpen(false);
-                    setEditingItem(null);
-                }}
-                onSave={handleSaveItem}
-                saving={saving}
-            />
-
-            {/* Modal: Service Channel Settings */}
-            {channelModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150 select-none">
-                    <div className="relative w-full max-w-[500px] rounded-[24px] bg-[#151515] border border-white/10 shadow-[0_16px_48px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col">
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.08] bg-[#1b1d22]/50">
-                            <h3 className="text-[17px] font-medium text-white">
-                                Канал пополнения контента
-                            </h3>
-                            <button
-                                type="button"
-                                onClick={() => setChannelModalOpen(false)}
-                                className="p-1.5 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors cursor-pointer"
-                            >
-                                <Check className="w-4 h-4 stroke-[2]" />
-                            </button>
-                        </div>
-
-                        <div className="p-6 flex flex-col gap-4">
-                            <p className="text-[13px] text-white/60 leading-relaxed">
-                                Любое медиа или ссылка, отправленные в этот закрытый Telegram-канал, автоматически парсятся и попадают в базу контента Леры.
-                            </p>
-
-                            <div className="flex flex-col gap-1.5">
-                                <label className="text-[12px] font-medium uppercase tracking-wider text-white/40">
-                                    Telegram Channel ID
-                                </label>
-                                <input
-                                    type="text"
-                                    value={contentChannelId}
-                                    onChange={(e) => setContentChannelId(e.target.value)}
-                                    placeholder="-100..."
-                                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#1b1d22] border border-white/10 text-white text-[14px] font-mono placeholder:text-white/25 focus:outline-none focus:border-[#434771]"
-                                />
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={handlePublishGuide}
-                                disabled={publishingGuide}
-                                className="w-full py-2.5 px-4 rounded-xl bg-[#1b1d22] hover:bg-white/5 border border-white/10 text-white/80 hover:text-white text-[13px] transition-all cursor-pointer flex items-center justify-center gap-2"
-                            >
-                                <Radio className="w-4 h-4 stroke-[1.8] text-sky-400" />
-                                <span>{publishingGuide ? 'Отправка...' : 'Опубликовать памятку в канал'}</span>
-                            </button>
-
-                            <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/[0.08]">
+                {/* Modal: Service Channel Settings */}
+                {channelModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150 select-none">
+                        <div className="relative w-full max-w-[480px] rounded-[24px] bg-[#151515] border border-white/10 shadow-[0_16px_48px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col">
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.08] bg-[#1b1d22]/50">
+                                <h3 className="text-[17px] font-medium text-white">
+                                    Канал пополнения контента
+                                </h3>
                                 <button
                                     type="button"
                                     onClick={() => setChannelModalOpen(false)}
-                                    className="px-4 py-2 rounded-full text-[14px] text-white/60 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                                    className="p-1.5 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors cursor-pointer"
                                 >
-                                    Закрыть
+                                    <Check className="w-4 h-4 stroke-[2]" />
                                 </button>
+                            </div>
+
+                            <div className="p-6 flex flex-col gap-4">
+                                <p className="text-[13px] text-white/60 leading-relaxed">
+                                    Медиа или ссылки, отправленные в этот закрытый Telegram-канал, автоматически парсятся и попадают в базу Леры.
+                                </p>
+
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[12px] font-medium uppercase tracking-wider text-white/40">
+                                        Telegram Channel ID
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={contentChannelId}
+                                        onChange={(e) => setContentChannelId(e.target.value)}
+                                        placeholder="-100..."
+                                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#171717] border border-white/10 text-white text-[14px] font-mono placeholder:text-white/25 focus:outline-none focus:border-[#434771]"
+                                    />
+                                </div>
+
                                 <button
                                     type="button"
-                                    onClick={handleSaveChannelSettings}
-                                    disabled={channelSaving}
-                                    className="px-5 py-2 rounded-full bg-[#292e5e] hover:bg-[#383f7d] border border-[#434771] text-white text-[14px] font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-sm"
+                                    onClick={handlePublishGuide}
+                                    disabled={publishingGuide}
+                                    className="w-full py-2.5 px-4 rounded-xl bg-[#171717] hover:bg-white/5 border border-white/10 text-white/80 hover:text-white text-[13px] transition-all cursor-pointer flex items-center justify-center gap-2"
                                 >
-                                    {channelSaving ? 'Сохранение...' : 'Сохранить ID'}
+                                    <Radio className="w-4 h-4 stroke-[1.5] text-sky-400" />
+                                    <span>{publishingGuide ? 'Отправка...' : 'Опубликовать памятку в канал'}</span>
                                 </button>
+
+                                <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/[0.08]">
+                                    <button
+                                        type="button"
+                                        onClick={() => setChannelModalOpen(false)}
+                                        className="px-4 py-2 rounded-full text-[14px] text-white/60 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                                    >
+                                        Закрыть
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveChannelSettings}
+                                        disabled={channelSaving}
+                                        className="px-5 py-2 rounded-full bg-[#292e5e] hover:bg-[#383f7d] border border-[#434771] text-white text-[14px] font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-sm"
+                                    >
+                                        {channelSaving ? 'Сохранение...' : 'Сохранить ID'}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
         </main>
     );
 }

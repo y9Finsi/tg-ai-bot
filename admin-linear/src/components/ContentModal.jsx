@@ -73,10 +73,10 @@ export function ContentModal({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150 select-none">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 select-none">
             <div className="relative w-full max-w-[560px] rounded-[24px] bg-[#151515] border border-white/10 shadow-[0_16px_48px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col max-h-[90vh]">
-                {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.08] bg-[#1b1d22]/50">
+                {/* Header matching Figma Frame 201 */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.08] bg-[#1b1d22]/60">
                     <h3 className="text-[17px] font-medium text-white">
                         {item ? 'Редактировать материал' : 'Добавить материал в банк'}
                     </h3>
@@ -85,7 +85,7 @@ export function ContentModal({
                         onClick={onClose}
                         className="p-1.5 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors cursor-pointer"
                     >
-                        <X className="w-4 h-4 stroke-[2]" />
+                        <X className="w-4 h-4 stroke-[1.5]" />
                     </button>
                 </div>
 
@@ -105,13 +105,13 @@ export function ContentModal({
                                         key={t.id}
                                         type="button"
                                         onClick={() => setTelegramType(t.id)}
-                                        className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[13px] font-normal transition-all cursor-pointer border ${
+                                        className={`flex items-center gap-2 px-3 py-2.5 rounded-[14px] text-[13px] font-normal transition-all cursor-pointer border ${
                                             isSelected
                                                 ? 'bg-[#292e5e] border-[#434771] text-white shadow-sm'
-                                                : 'bg-[#1b1d22] border-white/5 text-white/60 hover:text-white hover:border-white/10'
+                                                : 'bg-[#171717] border-white/5 text-white/60 hover:text-white hover:border-white/10'
                                         }`}
                                     >
-                                        <Icon className="w-3.5 h-3.5 stroke-[1.8] shrink-0" />
+                                        <Icon className="w-3.5 h-3.5 stroke-[1.5] shrink-0" />
                                         <span className="truncate">{t.label}</span>
                                     </button>
                                 );
@@ -129,7 +129,7 @@ export function ContentModal({
                             value={url}
                             onChange={(e) => setUrl(e.target.value)}
                             placeholder="https://t.me/... или https://music.yandex.ru/..."
-                            className="w-full px-3.5 py-2.5 rounded-xl bg-[#1b1d22] border border-white/10 text-white text-[14px] placeholder:text-white/25 focus:outline-none focus:border-[#434771] focus:ring-1 focus:ring-[#434771] transition-all"
+                            className="w-full px-3.5 py-2.5 rounded-[14px] bg-[#171717] border border-white/10 text-white text-[14px] placeholder:text-white/25 focus:outline-none focus:border-[#434771] transition-all"
                         />
                     </div>
 
@@ -144,7 +144,7 @@ export function ContentModal({
                             value={telegramFileId}
                             onChange={(e) => setTelegramFileId(e.target.value)}
                             placeholder="BAACAgIAAxkBAAI..."
-                            className="w-full px-3.5 py-2.5 rounded-xl bg-[#1b1d22] border border-white/10 text-white text-[13px] font-mono placeholder:text-white/25 focus:outline-none focus:border-[#434771] focus:ring-1 focus:ring-[#434771] transition-all"
+                            className="w-full px-3.5 py-2.5 rounded-[14px] bg-[#171717] border border-white/10 text-white text-[13px] font-mono placeholder:text-white/25 focus:outline-none focus:border-[#434771] transition-all"
                         />
                     </div>
 
@@ -159,7 +159,7 @@ export function ContentModal({
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             placeholder="Например: Любимый трек группы Кино, скидывать когда разговор заходит про Питер или ностальгию..."
-                            className="w-full px-3.5 py-2.5 rounded-xl bg-[#1b1d22] border border-white/10 text-white text-[14px] placeholder:text-white/25 focus:outline-none focus:border-[#434771] focus:ring-1 focus:ring-[#434771] transition-all resize-none"
+                            className="w-full px-3.5 py-2.5 rounded-[14px] bg-[#171717] border border-white/10 text-white text-[14px] placeholder:text-white/25 focus:outline-none focus:border-[#434771] transition-all resize-none"
                         />
                     </div>
 
@@ -169,22 +169,22 @@ export function ContentModal({
                             Разрешения и доступность
                         </label>
 
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-2.5">
                             {/* Enabled */}
                             <button
                                 type="button"
                                 onClick={() => setEnabled(!enabled)}
-                                className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                                className={`flex items-center justify-between p-3 rounded-[16px] border transition-all cursor-pointer ${
                                     enabled
-                                        ? 'bg-[#1b1d22] border-emerald-500/40 text-white'
-                                        : 'bg-[#1b1d22]/40 border-white/5 text-white/40'
+                                        ? 'bg-[#171717] border-emerald-500/40 text-white'
+                                        : 'bg-[#171717]/40 border-white/5 text-white/40'
                                 }`}
                             >
                                 <span className="text-[13px] font-medium">Материал активен</span>
                                 <div className={`w-4 h-4 rounded-md flex items-center justify-center border transition-all ${
                                     enabled ? 'bg-emerald-500 border-emerald-400 text-black' : 'border-white/20'
                                 }`}>
-                                    {enabled && <Check className="w-3 h-3 stroke-[3]" />}
+                                    {enabled && <Check className="w-3 h-3 stroke-[2.5]" />}
                                 </div>
                             </button>
 
@@ -192,17 +192,17 @@ export function ContentModal({
                             <button
                                 type="button"
                                 onClick={() => setAllowInDialogue(!allowInDialogue)}
-                                className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                                className={`flex items-center justify-between p-3 rounded-[16px] border transition-all cursor-pointer ${
                                     allowInDialogue
-                                        ? 'bg-[#1b1d22] border-[#434771] text-white'
-                                        : 'bg-[#1b1d22]/40 border-white/5 text-white/40'
+                                        ? 'bg-[#171717] border-[#434771] text-white'
+                                        : 'bg-[#171717]/40 border-white/5 text-white/40'
                                 }`}
                             >
                                 <span className="text-[13px] font-medium">В личных диалогах</span>
                                 <div className={`w-4 h-4 rounded-md flex items-center justify-center border transition-all ${
                                     allowInDialogue ? 'bg-[#292e5e] border-[#434771] text-white' : 'border-white/20'
                                 }`}>
-                                    {allowInDialogue && <Check className="w-3 h-3 stroke-[3]" />}
+                                    {allowInDialogue && <Check className="w-3 h-3 stroke-[2.5]" />}
                                 </div>
                             </button>
 
@@ -210,17 +210,17 @@ export function ContentModal({
                             <button
                                 type="button"
                                 onClick={() => setAllowInitiative(!allowInitiative)}
-                                className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                                className={`flex items-center justify-between p-3 rounded-[16px] border transition-all cursor-pointer ${
                                     allowInitiative
-                                        ? 'bg-[#1b1d22] border-amber-500/40 text-white'
-                                        : 'bg-[#1b1d22]/40 border-white/5 text-white/40'
+                                        ? 'bg-[#171717] border-amber-500/40 text-white'
+                                        : 'bg-[#171717]/40 border-white/5 text-white/40'
                                 }`}
                             >
                                 <span className="text-[13px] font-medium">В инициативах Леры</span>
                                 <div className={`w-4 h-4 rounded-md flex items-center justify-center border transition-all ${
                                     allowInitiative ? 'bg-amber-500/20 border-amber-500/50 text-amber-300' : 'border-white/20'
                                 }`}>
-                                    {allowInitiative && <Check className="w-3 h-3 stroke-[3]" />}
+                                    {allowInitiative && <Check className="w-3 h-3 stroke-[2.5]" />}
                                 </div>
                             </button>
 
@@ -228,17 +228,17 @@ export function ContentModal({
                             <button
                                 type="button"
                                 onClick={() => setAllowChannel(!allowChannel)}
-                                className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                                className={`flex items-center justify-between p-3 rounded-[16px] border transition-all cursor-pointer ${
                                     allowChannel
-                                        ? 'bg-[#1b1d22] border-sky-500/40 text-white'
-                                        : 'bg-[#1b1d22]/40 border-white/5 text-white/40'
+                                        ? 'bg-[#171717] border-sky-500/40 text-white'
+                                        : 'bg-[#171717]/40 border-white/5 text-white/40'
                                 }`}
                             >
                                 <span className="text-[13px] font-medium">В Telegram-канале</span>
                                 <div className={`w-4 h-4 rounded-md flex items-center justify-center border transition-all ${
                                     allowChannel ? 'bg-sky-500/20 border-sky-500/50 text-sky-300' : 'border-white/20'
                                 }`}>
-                                    {allowChannel && <Check className="w-3 h-3 stroke-[3]" />}
+                                    {allowChannel && <Check className="w-3 h-3 stroke-[2.5]" />}
                                 </div>
                             </button>
                         </div>
@@ -256,7 +256,7 @@ export function ContentModal({
                         <button
                             type="submit"
                             disabled={saving}
-                            className="px-5 py-2 rounded-full bg-[#292e5e] hover:bg-[#383f7d] border border-[#434771] text-white text-[14px] font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-sm flex items-center gap-2"
+                            className="px-5 py-2 rounded-full bg-[#292e5e] hover:bg-[#343b75] border border-[#434771] text-white text-[14px] font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-sm flex items-center gap-2"
                         >
                             {saving ? 'Сохранение...' : (item ? 'Сохранить изменения' : 'Добавить материал')}
                         </button>
