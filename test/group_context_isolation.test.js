@@ -116,4 +116,25 @@ test('getRoutedSystemPrompt resolves rule_group_chat and rule_group_welcome from
     });
     assert.ok(groupResult);
     assert.ok(groupResult.prompt.includes('ГРУПП') || groupResult.prompt.includes('СТРОГОЕ ПРАВИЛО'));
+    // Ensure prompt_tools instructions are not leaked into group chat prompt
+    assert.ok(!groupResult.prompt.includes('ИНСТРУМЕНТЫ И ФУНКЦИИ (TOOL USE)'));
+});
+
+test('cleanResponseText completely strips DeepSeek DSML tool calls and invoke tags', async () => {
+    const { cleanResponseText } = await import('../src/utils/response_text.js');
+    const dirtyDsml = `<｜DSML｜tool_calls>
+<｜DSML｜invoke name="send_photo">
+</｜DSML｜invoke>
+</｜DSML｜tool_calls>`;
+    assert.equal(cleanResponseText(dirtyDsml), '');
+
+    const mixed = `не, ща точно не вариант <｜DSML｜tool_calls>\n<｜DSML｜invoke name="send_photo">\n</｜DSML｜invoke>\n</｜DSML｜tool_calls> я дома сижу`;
+    assert.equal(cleanResponseText(mixed), 'не, ща точно не вариант\nя дома сижу');
+});
+
+test('DEFAULT_LERA_COMBAT_RULES excludes prompt_tools from rule_group_chat', async () => {
+    const { DEFAULT_LERA_COMBAT_RULES } = await import('../src/db/database.js');
+    const groupRule = DEFAULT_LERA_COMBAT_RULES.find(r => r.id === 'rule_group_chat');
+    assert.ok(groupRule);
+    assert.ok(!groupRule.attachedPromptIds.includes('prompt_tools'), 'rule_group_chat must not include prompt_tools');
 });

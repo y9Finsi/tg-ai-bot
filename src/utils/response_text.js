@@ -9,8 +9,13 @@ export function cleanResponseText(rawText) {
     text = text.replace(/^[\s\S]*?<\/think>/gi, '').trim();
     text = text.replace(/<think>[\s\S]*/gi, '').trim();
 
-    // Удаляем специальные токены и разметку моделей (DeepSeek, ChatGPT и др.)
-    text = text.replace(/<[｜|][\s\S]*?[｜|]>/g, '').trim();
+    // Удаляем вызовы инструментов (DSML, tool_call, invoke, function_call и др.) вместе с содержимым/аргументами
+    text = text.replace(/<[｜|\uFF5C]?\s*(?:DSML|tool_calls?|function_calls?|tool_call|invoke)[\s\S]*?<\/[｜|\uFF5C]?\s*(?:DSML|tool_calls?|function_calls?|tool_call|invoke)>/gi, '').trim();
+    text = text.replace(/<\/?(?:tool_call|tool_calls|invoke|function_call|arg|parameter)[^>]*>[\s\S]*?<\/(?:tool_call|tool_calls|invoke|function_call|arg|parameter)>/gi, '').trim();
+    text = text.replace(/<\/?(?:tool_call|tool_calls|invoke|function_call|arg|parameter)[^>]*>/gi, '').trim();
+    // Удаляем любые спец-теги моделей с пайпами (DeepSeek <｜end_of_sentence｜>, <｜tool_calls｜> и т.д.)
+    text = text.replace(/<[^>]*[｜|\uFF5C][^>]*>/gu, '').trim();
+    text = text.replace(/<[^>]*[｜|\uFF5C][\s\S]*$/gu, '').trim();
     text = text.replace(/<\/?context>/gi, '').trim();
     text = text.replace(/<\/?[a-z0-9_-]+(?:\s+[^>]*)?>/gi, '').trim();
 

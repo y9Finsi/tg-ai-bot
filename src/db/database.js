@@ -2367,7 +2367,7 @@ export const DEFAULT_LERA_COMBAT_RULES = Object.freeze([
         surfaces: ['GROUP'],
         mode: 'ALL',
         enabled: true,
-        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual', 'prompt_group_chat', 'prompt_tools'],
+        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual', 'prompt_group_chat'],
         max_tokens: 220,
         temperature: 0.70,
         category: 'rule'
