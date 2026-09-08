@@ -90,41 +90,90 @@ function parseYoutube(html, sourceUrl) {
 }
 
 async function parseYandexMusic(target) {
+    const semanticaUrl = (process.env.SEMANTICA_URL || 'http://semantica-service:8081').replace(/\/$/, '');
+    const resolveEndpoint = `${semanticaUrl}/api/music/yandex/resolve`;
+
+    try {
+        const res = await fetch(resolveEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: target, limit: 30 }),
+            signal: AbortSignal.timeout(15000)
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            if (data.ok && Array.isArray(data.tracks)) {
+                return data.tracks.map(track => ({
+                    externalId: String(track.id),
+                    canonicalUrl: canonicalUrl(track.url),
+                    title: `${track.title} — ${track.artists}`,
+                    rawText: `Трек «${track.title}» от ${track.artists}${track.playlist_title ? ` из подборки «${track.playlist_title}»` : ''} на Яндекс Музыке`,
+                    category: 'music',
+                    metadata: {
+                        sourceUrl: target,
+                        artists: track.artists,
+                        trackTitle: track.title,
+                        albumId: track.album_id,
+                        thumbnail: track.cover_url,
+                        durationMs: track.duration_ms
+                    }
+                }));
+            }
+
+            if (data.error === 'GEOBLOCK_451') {
+                console.warn(`[YANDEX MUSIC GEOBLOCK] 451 Unavailable For Legal Reasons for ${target}. Requires YANDEX_MUSIC_TOKEN or YANDEX_MUSIC_PROXY_URL.`);
+                return [];
+            }
+
+            console.warn(`[YANDEX MUSIC RESOLVE WARN]: ${data.message || data.error || 'Unknown error'}`);
+            return [];
+        }
+    } catch (err) {
+        console.warn(`[YANDEX MUSIC SIDECAR FETCH WARN]: ${err.message}. Falling back to direct API check.`);
+    }
+
+    // Direct fallback if semantica-service is unreachable
     const playlistMatch = target.match(/\/users\/([^\/]+)\/playlists\/(\d+)/i);
     if (playlistMatch) {
         const [, owner, kind] = playlistMatch;
-        const apiUrl = `https://api.music.yandex.net/users/${owner}/playlists/${kind}`;
-        const res = await fetch(apiUrl, { headers: { 'User-Agent': 'Yandex-Music-API' }, signal: AbortSignal.timeout(10000) });
-        if (res.status === 403) {
-            console.warn(`[YANDEX MUSIC GEOBLOCK] Yandex Music API returned 403 for ${target}. Direct datacenter IP blocked by Yandex.`);
-            return [];
+        try {
+            const apiUrl = `https://api.music.yandex.net/users/${owner}/playlists/${kind}`;
+            const res = await fetch(apiUrl, { headers: { 'User-Agent': 'Yandex-Music-API' }, signal: AbortSignal.timeout(10000) });
+            if (res.status === 403 || res.status === 451) {
+                console.warn(`[YANDEX MUSIC GEOBLOCK] Direct API returned ${res.status} for ${target}.`);
+                return [];
+            }
+            if (res.ok) {
+                const data = await res.json();
+                const playlistTitle = data.result?.title || 'Плейлист Яндекс Музыки';
+                const tracks = (data.result?.tracks || []).slice(0, 30);
+                return tracks.map(t => {
+                    const track = t.track || t;
+                    const albumId = track.albums?.[0]?.id;
+                    const artists = track.artists?.map(a => a.name).join(', ') || 'Неизвестный исполнитель';
+                    const trackUrl = albumId ? `https://music.yandex.ru/album/${albumId}/track/${track.id}` : `https://music.yandex.ru/track/${track.id}`;
+                    const cover = track.coverUri ? `https://${track.coverUri.replace('%%', '400x400')}` : null;
+                    return {
+                        externalId: String(track.id),
+                        canonicalUrl: canonicalUrl(trackUrl),
+                        title: `${track.title} — ${artists}`,
+                        rawText: `Трек «${track.title}» от ${artists} из подборки «${playlistTitle}» на Яндекс Музыке`,
+                        category: 'music',
+                        metadata: {
+                            sourceUrl: target,
+                            artists,
+                            trackTitle: track.title,
+                            albumId,
+                            thumbnail: cover,
+                            durationMs: track.durationMs
+                        }
+                    };
+                });
+            }
+        } catch (directErr) {
+            console.warn(`[YANDEX MUSIC DIRECT FALLBACK WARN]: ${directErr.message}`);
         }
-        if (!res.ok) throw new Error(`Yandex Music API ${res.status}`);
-        const data = await res.json();
-        const playlistTitle = data.result?.title || 'Плейлист Яндекс Музыки';
-        const tracks = (data.result?.tracks || []).slice(0, 30);
-        return tracks.map(t => {
-            const track = t.track || t;
-            const albumId = track.albums?.[0]?.id;
-            const artists = track.artists?.map(a => a.name).join(', ') || 'Неизвестный исполнитель';
-            const trackUrl = albumId ? `https://music.yandex.ru/album/${albumId}/track/${track.id}` : `https://music.yandex.ru/track/${track.id}`;
-            const cover = track.coverUri ? `https://${track.coverUri.replace('%%', '400x400')}` : null;
-            return {
-                externalId: String(track.id),
-                canonicalUrl: canonicalUrl(trackUrl),
-                title: `${track.title} — ${artists}`,
-                rawText: `Трек «${track.title}» от ${artists} из подборки «${playlistTitle}» на Яндекс Музыке`,
-                category: 'music',
-                metadata: {
-                    sourceUrl: target,
-                    artists,
-                    trackTitle: track.title,
-                    albumId,
-                    thumbnail: cover,
-                    durationMs: track.durationMs
-                }
-            };
-        });
     }
     return [];
 }

@@ -29,7 +29,10 @@ from .models import (
     SearchResponse,
     UpsertRequest,
     UpsertResponse,
+    YandexMusicResolveRequest,
 )
+from .yandex_music_client import YandexMusicService
+
 
 
 logger = logging.getLogger(__name__)
@@ -69,15 +72,21 @@ def create_app(
     settings: Settings | None = None,
     *,
     backend: Any | None = None,
+    yandex_music_service: Any | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings.from_env()
     resolved_backend = backend or create_backend(resolved_settings)
+    resolved_yandex_music = yandex_music_service or YandexMusicService(
+        token=resolved_settings.yandex_music_token,
+        proxy_url=resolved_settings.yandex_music_proxy_url,
+    )
 
     app = FastAPI(
         title="Lera Semantica Memory Sidecar",
         version=__version__,
     )
     app.state.memory_backend = resolved_backend
+    app.state.yandex_music = resolved_yandex_music
 
     @app.middleware("http")
     async def attach_request_id(request: Request, call_next: Any) -> Any:
@@ -316,5 +325,26 @@ def create_app(
             idempotency_key=idempotency_key,
             request_id=_request_id(request),
         )
+
+    @app.post("/api/music/yandex/resolve")
+    def yandex_music_resolve(
+        payload: YandexMusicResolveRequest,
+    ) -> dict[str, Any]:
+        return resolved_yandex_music.resolve_url(payload.url, limit=payload.limit)
+
+    @app.get("/api/music/yandex/search")
+    def yandex_music_search(
+        q: str,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        return resolved_yandex_music.search_tracks(q, limit=limit)
+
+    @app.get("/api/music/yandex/status")
+    def yandex_music_status() -> dict[str, Any]:
+        return {
+            "ok": True,
+            "has_token": bool(resolved_settings.yandex_music_token),
+            "has_proxy": bool(resolved_settings.yandex_music_proxy_url),
+        }
 
     return app

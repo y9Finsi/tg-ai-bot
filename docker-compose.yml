@@ -42,6 +42,8 @@ services:
       SEMANTICA_LIMIT: ${SEMANTICA_LIMIT:-8}
       SEMANTICA_BACKEND: ${SEMANTICA_BACKEND:-semantica}
       SEMANTICA_STATE_PATH: /data/semantica-state.json
+      YANDEX_MUSIC_TOKEN: ${YANDEX_MUSIC_TOKEN:-}
+      YANDEX_MUSIC_PROXY_URL: ${YANDEX_MUSIC_PROXY_URL:-}
     ports:
       - "8081:8081"
     volumes:

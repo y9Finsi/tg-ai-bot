@@ -198,3 +198,9 @@ class PurgeUserResponse(StrictModel):
     idempotency_replayed: bool
     result: Literal["purged", "already_purged"]
     tombstone: UserPurgeTombstone
+
+
+class YandexMusicResolveRequest(StrictModel):
+    url: str = Field(min_length=1, max_length=2048)
+    limit: int = Field(default=50, ge=1, le=100)
+
