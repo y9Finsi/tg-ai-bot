@@ -16,7 +16,8 @@ import {
     Server,
     Zap,
     Eye,
-    Copy
+    Copy,
+    ArrowRightLeft
 } from 'lucide-react';
 import { api } from '@/lib/api.js';
 
@@ -111,6 +112,7 @@ export function AiSettingsTab({ toast }) {
 
     const [attachModalRuleId, setAttachModalRuleId] = useState(null);
     const [paramPopover, setParamPopover] = useState(null); 
+    const [movePopoverRuleId, setMovePopoverRuleId] = useState(null); 
 
     // Raw prompt inspector modal state
     const [rawPromptModalOpen, setRawPromptModalOpen] = useState(false);
@@ -901,6 +903,86 @@ export function AiSettingsTab({ toast }) {
         saveProfileChanges(promptsList, nextRules);
     };
 
+    // Duplicate existing rule (optionally directly to another surface/section)
+    const handleDuplicateRule = (rule, targetSurface = null) => {
+        const newId = 'rule_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+        const targetSurf = targetSurface || rule.surface || activeSurface;
+        const targetLabel = SURFACES.find(s => s.id === targetSurface)?.label;
+        const duplicatedRule = {
+            ...rule,
+            id: newId,
+            title: targetSurface && targetSurface !== rule.surface
+                ? `${rule.title} (${targetLabel || targetSurface})`
+                : `${rule.title} (копия)`,
+            surface: targetSurf,
+            surfaces: targetSurface ? [targetSurface] : (Array.isArray(rule.surfaces) && rule.surfaces.length ? [...rule.surfaces] : [targetSurf]),
+            mode: rule.mode || 'ALL',
+            conditions: Array.isArray(rule.conditions) ? JSON.parse(JSON.stringify(rule.conditions)) : [],
+            attachedPromptIds: Array.isArray(rule.attachedPromptIds) ? [...rule.attachedPromptIds] : ['prompt_bio'],
+            max_tokens: rule.max_tokens || 230,
+            temperature: rule.temperature !== undefined ? rule.temperature : 0.7,
+            provider_id: rule.provider_id ? Number(rule.provider_id) : null,
+            fallback_provider_ids: Array.isArray(rule.fallback_provider_ids) ? [...rule.fallback_provider_ids] : [],
+            enabled: true,
+            category: 'rule'
+        };
+
+        let nextRules;
+        if (targetSurface && targetSurface !== activeSurface) {
+            nextRules = [...rulesList, duplicatedRule];
+        } else {
+            const ruleIdx = rulesList.findIndex(r => r.id === rule.id);
+            nextRules = [...rulesList];
+            if (ruleIdx !== -1) {
+                nextRules.splice(ruleIdx + 1, 0, duplicatedRule);
+            } else {
+                nextRules.push(duplicatedRule);
+            }
+        }
+
+        setRulesList(nextRules);
+        setMovePopoverRuleId(null);
+        saveProfileChanges(promptsList, nextRules);
+        const destLabel = targetSurface ? ` в раздел «${targetLabel}»` : '';
+        if (toast) toast(`Правило «${duplicatedRule.title}» создано${destLabel}`, 'success');
+    };
+
+    // Move rule to another surface / section
+    const handleMoveRule = (ruleId, targetSurface) => {
+        const targetSurfaceObj = SURFACES.find(s => s.id === targetSurface);
+        const targetRule = rulesList.find(r => r.id === ruleId);
+        if (!targetRule) return;
+
+        const nextRules = rulesList.map(r => {
+            if (r.id === ruleId) {
+                return {
+                    ...r,
+                    surface: targetSurface,
+                    surfaces: [targetSurface]
+                };
+            }
+            return r;
+        });
+
+        setRulesList(nextRules);
+        setMovePopoverRuleId(null);
+        saveProfileChanges(promptsList, nextRules);
+        if (toast) toast(`Правило «${targetRule.title}» перенесено в раздел «${targetSurfaceObj?.label || targetSurface}»`, 'success');
+    };
+
+    // Delete rule
+    const handleDeleteRule = (ruleId) => {
+        const target = rulesList.find(r => r.id === ruleId);
+        if (!target) return;
+        if (!window.confirm(`Удалить боевое правило «${target.title}»?`)) return;
+
+        const nextRules = rulesList.filter(r => r.id !== ruleId);
+        setRulesList(nextRules);
+        setMovePopoverRuleId(null);
+        saveProfileChanges(promptsList, nextRules);
+        if (toast) toast(`Правило «${target.title}» удалено`, 'success');
+    };
+
     // Attach/detach prompt IDs in a rule
     const handleToggleAttachPrompt = (ruleId, promptId) => {
         const nextRules = rulesList.map(r => {
@@ -1414,7 +1496,11 @@ export function AiSettingsTab({ toast }) {
                                 <button
                                     key={surf.id}
                                     type="button"
-                                    onClick={() => setActiveSurface(surf.id)}
+                                    onClick={() => {
+                                        setActiveSurface(surf.id);
+                                        setMovePopoverRuleId(null);
+                                        setParamPopover(null);
+                                    }}
                                     className={`h-[38px] px-4 text-[16px] font-normal flex items-center justify-center cursor-pointer transition-all ${
                                         isActive
                                             ? 'rounded-[12px] bg-[#232425] border border-[#353636] text-white shadow-inner'
@@ -1481,19 +1567,127 @@ export function AiSettingsTab({ toast }) {
                                                 )}
                                             </div>
 
-                                            {/* Toggle Icon (Circle Checkmark) */}
-                                            <button
-                                                type="button"
-                                                onClick={() => handleToggleRule(rule.id)}
-                                                title={rule.enabled ? 'Правило активно (кликните, чтобы отключить)' : 'Правило отключено (кликните, чтобы включить)'}
-                                                className={`w-6 h-6 rounded-full flex items-center justify-center cursor-pointer transition-all ${
-                                                    rule.enabled
-                                                        ? 'bg-white text-black shadow-sm'
-                                                        : 'border border-white/30 text-transparent hover:border-white/60'
-                                                }`}
-                                            >
-                                                <Check className="w-4 h-4 stroke-[2.5]" />
-                                            </button>
+                                            {/* Right controls: Move, Duplicate, Edit, Delete, Toggle */}
+                                            <div className="flex items-center gap-1 shrink-0 relative">
+                                                {/* Move to surface button & Popover */}
+                                                <div className="relative">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setMovePopoverRuleId(movePopoverRuleId === rule.id ? null : rule.id)}
+                                                        title="Перенести или скопировать в другой раздел"
+                                                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                                            movePopoverRuleId === rule.id
+                                                                ? 'bg-[#8693ff]/25 text-[#8693ff]'
+                                                                : 'text-white/40 hover:text-white hover:bg-white/5'
+                                                        }`}
+                                                    >
+                                                        <ArrowRightLeft className="w-3.5 h-3.5 stroke-[1.75]" />
+                                                    </button>
+
+                                                    {movePopoverRuleId === rule.id && (
+                                                        <>
+                                                            <div 
+                                                                className="fixed inset-0 z-30" 
+                                                                onClick={() => setMovePopoverRuleId(null)} 
+                                                            />
+                                                            <div className="absolute top-8 right-0 z-40 w-60 bg-[#19191b] border border-white/15 rounded-2xl p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-100 flex flex-col gap-2.5 backdrop-blur-md">
+                                                                <div className="flex items-center justify-between pb-1 border-b border-white/10">
+                                                                    <span className="text-[12px] font-medium text-white/90">
+                                                                        Раздел правила
+                                                                    </span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setMovePopoverRuleId(null)}
+                                                                        className="text-white/40 hover:text-white cursor-pointer"
+                                                                    >
+                                                                        <X className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                </div>
+
+                                                                {/* Move to section */}
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className="text-[11px] text-white/40 font-medium px-1">
+                                                                        Перенести в раздел:
+                                                                    </span>
+                                                                    {SURFACES.filter(s => s.id !== activeSurface).map((s) => (
+                                                                        <button
+                                                                            key={s.id}
+                                                                            type="button"
+                                                                            onClick={() => handleMoveRule(rule.id, s.id)}
+                                                                            className="w-full px-2.5 py-1.5 rounded-xl bg-white/[0.04] hover:bg-[#8693ff]/20 hover:text-[#8693ff] text-white/80 text-[12px] font-medium flex items-center justify-between transition-colors cursor-pointer"
+                                                                        >
+                                                                            <span>{s.label}</span>
+                                                                            <ArrowRightLeft className="w-3.5 h-3.5 opacity-60" />
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+
+                                                                {/* Duplicate to section */}
+                                                                <div className="border-t border-white/10 pt-1.5 flex flex-col gap-1">
+                                                                    <span className="text-[11px] text-white/40 font-medium px-1">
+                                                                        Скопировать в раздел:
+                                                                    </span>
+                                                                    {SURFACES.filter(s => s.id !== activeSurface).map((s) => (
+                                                                        <button
+                                                                            key={s.id}
+                                                                            type="button"
+                                                                            onClick={() => handleDuplicateRule(rule, s.id)}
+                                                                            className="w-full px-2.5 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/10 text-white/70 hover:text-white text-[12px] font-medium flex items-center justify-between transition-colors cursor-pointer"
+                                                                        >
+                                                                            <span>{s.label}</span>
+                                                                            <Copy className="w-3.5 h-3.5 opacity-60" />
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
+
+                                                {/* Duplicate in place */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDuplicateRule(rule)}
+                                                    title="Дублировать правило"
+                                                    className="p-1.5 text-white/40 hover:text-white hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
+                                                >
+                                                    <Copy className="w-3.5 h-3.5 stroke-[1.75]" />
+                                                </button>
+
+                                                {/* Edit */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openEditRuleModal(rule)}
+                                                    title="Настройки правила"
+                                                    className="p-1.5 text-white/40 hover:text-white hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
+                                                >
+                                                    <Pencil className="w-3 h-3 stroke-[1.75]" />
+                                                </button>
+
+                                                {/* Delete */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteRule(rule.id)}
+                                                    title="Удалить правило"
+                                                    className="p-1.5 text-white/40 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5 stroke-[1.75]" />
+                                                </button>
+
+                                                {/* Toggle Icon (Circle Checkmark) */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleToggleRule(rule.id)}
+                                                    title={rule.enabled ? 'Правило активно (кликните, чтобы отключить)' : 'Правило отключено (кликните, чтобы включить)'}
+                                                    className={`w-6 h-6 ml-1 rounded-full flex items-center justify-center cursor-pointer transition-all ${
+                                                        rule.enabled
+                                                            ? 'bg-white text-black shadow-sm'
+                                                            : 'border border-white/30 text-transparent hover:border-white/60'
+                                                    }`}
+                                                >
+                                                    <Check className="w-4 h-4 stroke-[2.5]" />
+                                                </button>
+                                            </div>
                                         </div>
 
                                         {/* Rule Provider & Fallback Badge Row */}
@@ -1973,20 +2167,20 @@ export function AiSettingsTab({ toast }) {
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-xs text-white/60 font-medium">Поверхности применения</label>
+                                <label className="text-xs text-white/60 font-medium">Раздел / Поверхности применения</label>
                                 <div className="grid grid-cols-3 gap-2">
                                     {SURFACES.map((s) => {
                                         const isChecked = (editingRule?.surfaces || [activeSurface]).includes(s.id);
                                         return (
                                             <label
                                                 key={s.id}
-                                                className="flex items-center gap-2 p-2.5 rounded-xl bg-[#202020] border border-white/10 cursor-pointer hover:bg-white/5"
+                                                className="flex items-center gap-2 p-2.5 rounded-xl bg-[#202020] border border-white/10 cursor-pointer hover:bg-white/5 has-[:checked]:border-[#8693ff]/50 has-[:checked]:bg-[#1e233d] transition-all"
                                             >
                                                 <input
                                                     type="checkbox"
                                                     name={`surf_${s.id}`}
                                                     defaultChecked={isChecked}
-                                                    className="rounded accent-[#292e5e]"
+                                                    className="rounded accent-[#8693ff]"
                                                 />
                                                 <span className="text-xs text-white/90">{s.label}</span>
                                             </label>
