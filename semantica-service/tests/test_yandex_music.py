@@ -120,6 +120,31 @@ def test_yandex_music_resolve_geoblock_error():
         assert data["error"] == "GEOBLOCK_451"
 
 
+def test_yandex_music_resolve_token_expired():
+    mock_service = MagicMock(spec=YandexMusicService)
+    mock_service.resolve_url.return_value = {
+        "ok": False,
+        "error": "TOKEN_EXPIRED",
+        "message": "Токен Яндекс Музыки истек или недействителен.",
+    }
+
+    app = create_app(
+        Settings(backend_mode="memory"),
+        backend=InMemoryBackend(),
+        yandex_music_service=mock_service,
+    )
+
+    with TestClient(app) as test_client:
+        res = test_client.post(
+            "/api/music/yandex/resolve",
+            json={"url": "https://music.yandex.ru/users/yamusic-top/playlists/1005"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["ok"] is False
+        assert data["error"] == "TOKEN_EXPIRED"
+
+
 def test_yandex_music_service_unit_formatting():
     service = YandexMusicService()
     fake_track = FakeTrack(777, "Кофе мой друг", ["Сироткин"], album_id=55)
@@ -132,3 +157,4 @@ def test_yandex_music_service_unit_formatting():
     assert formatted["url"] == "https://music.yandex.ru/album/55/track/777"
     assert formatted["cover_url"] == "https://avatars.yandex.net/get-music-content/123/400x400"
     assert formatted["playlist_title"] == "Инди утро"
+

@@ -2069,9 +2069,24 @@ export function createAdminApp(bot = null) {
     });
     app.patch('/api/admin/content/sources/:id', async (req, res) => {
         try {
+            const { enabled, name, url_or_handle, topics } = req.body || {};
             const { rows } = await query(
-                'UPDATE content_sources SET enabled=COALESCE($2,enabled), name=COALESCE($3,name), last_error=NULL WHERE id=$1 RETURNING *',
-                [req.params.id, req.body?.enabled, req.body?.name]
+                `UPDATE content_sources
+                 SET enabled = COALESCE($2, enabled),
+                     name = COALESCE($3, name),
+                     url_or_handle = COALESCE($4, url_or_handle),
+                     topics = COALESCE($5::jsonb, topics),
+                     consecutive_errors = CASE WHEN $2 = TRUE THEN 0 ELSE consecutive_errors END,
+                     last_error = CASE WHEN $2 = TRUE THEN NULL ELSE last_error END
+                 WHERE id = $1
+                 RETURNING *`,
+                [
+                    req.params.id,
+                    enabled,
+                    name,
+                    url_or_handle,
+                    topics ? JSON.stringify(topics) : null
+                ]
             );
             if (!rows[0]) return res.status(404).json({ error: 'Источник не найден' });
             res.json({ success: true, source: rows[0] });
@@ -2203,15 +2218,22 @@ export function createAdminApp(bot = null) {
                         telegramType = 'audio';
                     }
 
-                    const saved = await addLeraContent({
-                        telegramType,
-                        url: d.canonical_url,
-                        description: d.title || d.raw_text || d.canonical_url,
-                        allowInDialogue: true,
-                        allowInitiative: true,
-                        allowChannel: false
-                    });
-                    result = await query('UPDATE content_discoveries SET lera_content_id=$2 WHERE id=$1 RETURNING *', [req.params.id, saved.id]);
+                    let contentId;
+                    const existing = await query('SELECT id FROM lera_content WHERE url = $1 LIMIT 1', [d.canonical_url]);
+                    if (existing.rows[0]) {
+                        contentId = existing.rows[0].id;
+                    } else {
+                        const saved = await addLeraContent({
+                            telegramType,
+                            url: d.canonical_url,
+                            description: d.title || d.raw_text || d.canonical_url,
+                            allowInDialogue: true,
+                            allowInitiative: true,
+                            allowChannel: false
+                        });
+                        contentId = saved.id;
+                    }
+                    result = await query('UPDATE content_discoveries SET lera_content_id=$2 WHERE id=$1 RETURNING *', [req.params.id, contentId]);
                 }
                 if (!result.rows[0]) return res.status(404).json({ error: 'Находка не найдена' });
                 res.json({ success: true, discovery: result.rows[0] });
@@ -4624,6 +4646,9 @@ export function startContentBackgroundTasks() {
     const runScrapeAndExpire = async () => {
         try {
             await query("UPDATE content_discoveries SET lifecycle_status='EXPIRED' WHERE lifecycle_status='DISCOVERED' AND expires_at IS NOT NULL AND expires_at < NOW()");
+            // Чистка старых архивных находок и логов запусков
+            await query("DELETE FROM content_discoveries WHERE lifecycle_status IN ('EXPIRED', 'REJECTED') AND created_at < NOW() - INTERVAL '30 days'");
+            await query("DELETE FROM content_scrape_runs WHERE started_at < NOW() - INTERVAL '14 days'");
             await scrapeAllActiveSources();
         } catch (e) {
             console.error('[CONTENT_BACKGROUND_TASK_ERROR]:', e.message);

@@ -174,7 +174,27 @@ class YandexMusicService:
                     "count": len(tracks[:limit]),
                 }
 
-            # 5. Чарт: /chart
+            # 5. Исполнитель: /artist/<artist>
+            artist_m = ARTIST_RE.search(url_clean)
+            if artist_m:
+                artist_id = artist_m.group(1)
+                aid = int(artist_id) if artist_id.isdigit() else artist_id
+                artist_resp = client.artists(aid)
+                tracks_resp = client.artists_tracks(aid)
+                artist_obj = getattr(artist_resp, "artist", None) or (artist_resp[0] if isinstance(artist_resp, list) and artist_resp else artist_resp)
+                artist_name = getattr(artist_obj, "name", "Исполнитель")
+                tracks_raw = getattr(tracks_resp, "tracks", [])[:limit]
+                tracks = [self._format_track(tr, playlist_title=f"Треки: {artist_name}") for tr in tracks_raw]
+
+                return {
+                    "ok": True,
+                    "type": "artist",
+                    "title": artist_name,
+                    "tracks": tracks,
+                    "count": len(tracks),
+                }
+
+            # 6. Чарт: /chart
             if CHART_RE.search(url_clean):
                 chart = client.chart()
                 tracks = []
@@ -199,6 +219,12 @@ class YandexMusicService:
         except Exception as exc:
             err_str = str(exc)
             logger.warning("Error resolving Yandex Music URL '%s': %s", url_clean, exc)
+            if "401" in err_str or "unauthorized" in err_str.lower():
+                return {
+                    "ok": False,
+                    "error": "TOKEN_EXPIRED",
+                    "message": "Токен Яндекс Музыки истек или недействителен. Требуется обновить YANDEX_MUSIC_TOKEN.",
+                }
             if "451" in err_str:
                 return {
                     "ok": False,

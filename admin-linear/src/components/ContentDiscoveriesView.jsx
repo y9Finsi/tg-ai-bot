@@ -241,15 +241,30 @@ export function ContentDiscoveriesView({ toast }) {
                                 </div>
 
                                 {/* Title & Text snippet */}
-                                <div className="flex flex-col gap-1.5">
-                                    <h4 className="text-[15px] font-medium text-white line-clamp-2 leading-snug">
-                                        {item.title || 'Без названия'}
-                                    </h4>
-                                    {item.raw_text && (
-                                        <p className="text-[13px] text-white/60 line-clamp-3 leading-relaxed">
-                                            {item.raw_text}
-                                        </p>
+                                <div className="flex gap-3 items-start">
+                                    {item.metadata?.thumbnail && (
+                                        <img
+                                            src={item.metadata.thumbnail}
+                                            alt=""
+                                            className="w-14 h-14 rounded-[12px] object-cover border border-white/10 shrink-0 shadow-sm"
+                                            onError={e => { e.target.style.display = 'none'; }}
+                                        />
                                     )}
+                                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                                        <h4 className="text-[15px] font-medium text-white line-clamp-2 leading-snug">
+                                            {item.title || 'Без названия'}
+                                        </h4>
+                                        {item.metadata?.artists && (
+                                            <span className="text-[12px] text-indigo-300 font-medium truncate">
+                                                {item.metadata.artists}
+                                            </span>
+                                        )}
+                                        {item.raw_text && (
+                                            <p className="text-[13px] text-white/60 line-clamp-2 leading-relaxed">
+                                                {item.raw_text}
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* Link & Status badge */}

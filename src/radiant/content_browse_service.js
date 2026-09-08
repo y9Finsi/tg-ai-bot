@@ -4,6 +4,7 @@
  */
 
 import { query, addLeraContent } from '../db/database.js';
+import { StateRepository } from '../db/state_repository.js';
 
 const SPAM_REGEX = /казино|ставка|1xbet|крипт|сигнал[ы]?\s+на|заработ|инвестици|вход\s+в\s+канал|промокод|скидк[аеиоу]|erid:|реклам[аеоуы]|партн[её]рск|спонсор|розыгрыш|giveaway|купить\s+билет|сервис\s+звук|яндекс\s+плюс|подпишись|подписывайся|ддос|турнир\s+по|технические\s+работы|аватарки/i;
 
@@ -96,15 +97,20 @@ export async function executeContentBrowseSession(radiantTaskId = null) {
             try {
                 let leraContentId = item.lera_content_id;
                 if (!leraContentId) {
-                    const saved = await addLeraContent({
-                        telegramType,
-                        url: item.canonical_url,
-                        description: item.title || item.raw_text || item.canonical_url,
-                        allowInDialogue: true,
-                        allowInitiative: true,
-                        allowChannel: false
-                    });
-                    leraContentId = saved.id;
+                    const existing = await query('SELECT id FROM lera_content WHERE url = $1 LIMIT 1', [item.canonical_url]);
+                    if (existing.rows[0]) {
+                        leraContentId = existing.rows[0].id;
+                    } else {
+                        const saved = await addLeraContent({
+                            telegramType,
+                            url: item.canonical_url,
+                            description: item.title || item.raw_text || item.canonical_url,
+                            allowInDialogue: true,
+                            allowInitiative: true,
+                            allowChannel: false
+                        });
+                        leraContentId = saved.id;
+                    }
                 }
 
                 await query(
@@ -117,6 +123,40 @@ export async function executeContentBrowseSession(radiantTaskId = null) {
                     [item.id, score, leraContentId]
                 );
                 savedCount++;
+
+                // Если это музыка — фиксируем событие в жизни Леры и делаем запись в личный дневник
+                if (item.category === 'music' || item.category === 'audio') {
+                    const artists = item.metadata?.artists || '';
+                    const trackTitle = item.metadata?.trackTitle || item.title || 'новый трек';
+                    const narrative = `Залипла в трек «${trackTitle}»${artists ? ` от ${artists}` : ''}, очень зашло, сохранила к себе.`;
+
+                    try {
+                        await StateRepository.addDiaryEntry(null, `Послушала «${trackTitle}» (${artists})`, narrative);
+                        await StateRepository.addFactualEvent(null, {
+                            eventType: 'LISTENED_MUSIC',
+                            taskId: radiantTaskId,
+                            importance: 2,
+                            payload: {
+                                track: trackTitle,
+                                artists,
+                                url: item.canonical_url
+                            },
+                            idempotencyKey: `music-event-${item.id}`
+                        });
+
+                        // Положительный эффект на состояние Леры (снижает скуку, поднимает настроение)
+                        const currentState = await StateRepository.getCurrentState();
+                        if (currentState) {
+                            const needs = currentState.needs || {};
+                            needs.boredom = Math.max(0, (needs.boredom || 50) - 20);
+                            needs.energy = Math.min(100, (needs.energy || 50) + 5);
+                            const mood = Math.min(100, (currentState.mood || 60) + 10);
+                            await StateRepository.updateState(null, { needs, mood });
+                        }
+                    } catch (diaryErr) {
+                        console.warn(`[CONTENT BROWSE DIARY WARN]:`, diaryErr.message);
+                    }
+                }
             } catch (err) {
                 console.warn(`[CONTENT BROWSE] Ошибка добавления находки #${item.id} в банк:`, err.message);
                 decision = 'DEFER';

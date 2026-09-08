@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
 import {
-    Plus, RefreshCw, Trash2, Globe, Send, Film,
+    Plus, RefreshCw, Trash2, Globe, Send, Film, Music, Sparkles,
     Check, X, AlertTriangle, ExternalLink, Play, Radio
 } from 'lucide-react';
 import { api } from '@/lib/api.js';
@@ -8,14 +7,26 @@ import { api } from '@/lib/api.js';
 const SOURCE_TYPE_LABELS = {
     telegram: 'Telegram',
     rss: 'RSS / Atom',
-    youtube: 'YouTube'
+    youtube: 'YouTube',
+    yandex_music: 'Яндекс Музыка'
 };
 
 const SOURCE_TYPE_ICONS = {
     telegram: Send,
     rss: Globe,
-    youtube: Film
+    youtube: Film,
+    yandex_music: Music
 };
+
+const SOURCE_PRESETS = [
+    { name: 'Яндекс Музыка: Местное инди', source_type: 'yandex_music', url: 'https://music.yandex.ru/users/yamusic-top/playlists/1005', topics: 'инди, русский инди, пост-панк, музыка' },
+    { name: 'Яндекс Музыка: Чарт', source_type: 'yandex_music', url: 'https://music.yandex.ru/chart', topics: 'чарт, новинки, популярное, музыка' },
+    { name: 'Яндекс Музыка: Инди лучшее', source_type: 'yandex_music', url: 'https://music.yandex.ru/users/yamusic-top/playlists/1036', topics: 'инди, шугейз, дрим-поп, музыка' },
+    { name: 'Родной Звук (Инди-музыка)', source_type: 'telegram', url: 'rodzvuk', topics: 'музыка, инди, новинки, релизы' },
+    { name: 'КудаГо: Питер', source_type: 'telegram', url: 'kudagospb', topics: 'питер, афиша, куда пойти, спб' },
+    { name: 'The Flow', source_type: 'telegram', url: 'theflowru', topics: 'музыка, культура, релизы, клипы' },
+    { name: 'KEXP Live Sessions', source_type: 'youtube', url: 'https://www.youtube.com/@KEXP', topics: 'live, инди, концерты, музыка' },
+];
 
 export function ContentSourcesView({ toast }) {
     const [sources, setSources] = useState([]);
@@ -125,6 +136,14 @@ export function ContentSourcesView({ toast }) {
         }
     };
 
+    const handleApplyPreset = (preset) => {
+        setName(preset.name);
+        setSourceType(preset.source_type);
+        setUrlOrHandle(preset.url);
+        setTopicsInput(preset.topics);
+        setModalOpen(true);
+    };
+
     return (
         <div className="w-full flex flex-col gap-5">
             {/* Header controls */}
@@ -151,13 +170,38 @@ export function ContentSourcesView({ toast }) {
 
                     <button
                         type="button"
-                        onClick={() => setModalOpen(true)}
+                        onClick={() => {
+                            setName('');
+                            setSourceType('yandex_music');
+                            setUrlOrHandle('');
+                            setTopicsInput('');
+                            setModalOpen(true);
+                        }}
                         className="h-[38px] px-4 rounded-full bg-[#292e5e] hover:bg-[#343b75] text-white text-[15px] font-normal flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98 shadow-sm"
                     >
                         <span>Добавить источник</span>
                         <Plus className="w-4 h-4 text-white stroke-[1.5]" />
                     </button>
                 </div>
+            </div>
+
+            {/* Quick presets pills */}
+            <div className="w-full flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                <span className="text-[12px] text-white/40 font-medium shrink-0 flex items-center gap-1.5 mr-1">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                    Быстрые пресеты:
+                </span>
+                {SOURCE_PRESETS.map((p, idx) => (
+                    <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleApplyPreset(p)}
+                        className="px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/5 text-[12px] text-white/70 hover:text-white shrink-0 transition-colors flex items-center gap-1.5 cursor-pointer active:scale-95"
+                    >
+                        <span>{p.name}</span>
+                        <Plus className="w-3 h-3 text-white/40" />
+                    </button>
+                ))}
             </div>
 
             {/* Sources List */}
@@ -309,13 +353,13 @@ export function ContentSourcesView({ toast }) {
                                 <label className="text-[12px] font-medium uppercase tracking-wider text-white/40">
                                     Тип источника
                                 </label>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-4 gap-2">
                                     {Object.entries(SOURCE_TYPE_LABELS).map(([typeKey, label]) => (
                                         <button
                                             key={typeKey}
                                             type="button"
                                             onClick={() => setSourceType(typeKey)}
-                                            className={`py-2 px-3 rounded-[12px] text-[13px] font-medium transition-all border cursor-pointer ${
+                                            className={`py-2 px-2 rounded-[12px] text-[12px] font-medium transition-all border cursor-pointer flex items-center justify-center text-center ${
                                                 sourceType === typeKey
                                                     ? 'bg-[#292e5e] border-[#434771] text-white shadow-inner'
                                                     : 'bg-[#171717] border-white/5 text-white/50 hover:text-white'
@@ -340,6 +384,8 @@ export function ContentSourcesView({ toast }) {
                                             ? '@channel_name или t.me/s/channel'
                                             : sourceType === 'youtube'
                                             ? 'https://youtube.com/@handle или /channel/UC...'
+                                            : sourceType === 'yandex_music'
+                                            ? 'https://music.yandex.ru/users/.../playlists/... или /chart или /artist/...'
                                             : 'https://example.com/feed.xml'
                                     }
                                     className="w-full px-3.5 py-2.5 rounded-[14px] bg-[#171717] border border-white/10 text-white text-[14px] placeholder:text-white/25 focus:outline-none focus:border-[#434771]"

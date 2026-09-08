@@ -121,15 +121,24 @@ async function parseYandexMusic(target) {
                 }));
             }
 
-            if (data.error === 'GEOBLOCK_451') {
-                console.warn(`[YANDEX MUSIC GEOBLOCK] 451 Unavailable For Legal Reasons for ${target}. Requires YANDEX_MUSIC_TOKEN or YANDEX_MUSIC_PROXY_URL.`);
-                return [];
+            if (data.error === 'TOKEN_EXPIRED') {
+                throw new Error(`Токен Яндекс Музыки протух или недействителен (401). Обновите YANDEX_MUSIC_TOKEN.`);
             }
 
-            console.warn(`[YANDEX MUSIC RESOLVE WARN]: ${data.message || data.error || 'Unknown error'}`);
+            if (data.error === 'GEOBLOCK_451') {
+                throw new Error(`Яндекс Музыка вернула 451 (региональное ограничение). Настройте YANDEX_MUSIC_TOKEN или YANDEX_MUSIC_PROXY_URL.`);
+            }
+
+            if (data.error) {
+                throw new Error(`Ошибка Яндекс Музыки [${data.error}]: ${data.message || 'Сбой запроса'}`);
+            }
+
             return [];
         }
     } catch (err) {
+        if (err.message?.includes('Токен Яндекс Музыки') || err.message?.includes('региональное ограничение')) {
+            throw err;
+        }
         console.warn(`[YANDEX MUSIC SIDECAR FETCH WARN]: ${err.message}. Falling back to direct API check.`);
     }
 

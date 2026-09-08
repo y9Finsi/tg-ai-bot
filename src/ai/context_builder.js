@@ -394,6 +394,7 @@ function humanizeFact(event = {}) {
     }
     if (event.event_type === 'TRAVEL_COMPLETED' && (payload.locationId || payload.to)) return `- Лера приехала ${locationPhrase(payload.locationId || payload.to)}.`;
     if (event.event_type === 'RANDOM_EVENT' && payload.title) return `- ${payload.title}.`;
+    if (event.event_type === 'LISTENED_MUSIC' && payload.track) return `- Лера послушала трек «${payload.track}»${payload.artists ? ` (${payload.artists})` : ''} и сохранила себе.`;
     if (event.event_type === 'WORK_REQUEST_CREATED' || event.event_type === 'SOCIAL_MEETING_PROPOSED') return `- ${EVENT_LABELS[event.event_type]}.`;
     return null;
 }
