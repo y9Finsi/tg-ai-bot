@@ -227,10 +227,14 @@ let botInstance = null;
 
 export function setBotInstanceForServer(bot) {
     botInstance = bot;
+    if (bot) SimulationWorker.setBot(bot);
 }
 
 export function createAdminApp(bot = null) {
-    if (bot) botInstance = bot;
+    if (bot) {
+        botInstance = bot;
+        SimulationWorker.setBot(bot);
+    }
     const app = express();
     const normalizeAdminKey = (val) => {
         if (!val) return '';

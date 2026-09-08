@@ -2010,6 +2010,7 @@ initDatabaseTables()
         });
         memoryOutboxWorker.start();
         startAdminServer();
+        SimulationWorker.setBot(bot);
         SimulationWorker.startWorker();
         MemorySummarizer.startScheduler();
         initChannelPoster(bot);

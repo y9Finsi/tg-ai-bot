@@ -17,6 +17,7 @@ import { applyTaskEffects, FOOD_PRICE_RUBLES } from '../radiant/task_catalog.js'
 import { randomUUID } from 'node:crypto';
 import { memoryRepository } from '../memory/memory_repository.js';
 import { executeContentBrowseSession } from '../radiant/content_browse_service.js';
+import { generateAndPublishChannelPost } from '../channel_poster.js';
 
 const RANDOM_EVENT_IDS = RANDOM_EVENTS.map(event => event.id);
 
@@ -48,6 +49,11 @@ export class SimulationWorker {
     static timer = null;
     static observerRunning = false;
     static workerInstanceId = randomUUID();
+    static bot = null;
+
+    static setBot(bot) {
+        this.bot = bot;
+    }
 
     static async tick({ manual = false, forceChaos = null, bootstrap = false } = {}) {
         if (this.isRunning) return { skipped: true };
@@ -486,6 +492,22 @@ export class SimulationWorker {
                             await executeContentBrowseSession(updated.id);
                         } catch (cbErr) {
                             console.warn('[SIMULATION WORKER CONTENT_BROWSE ERROR]:', cbErr.message);
+                        }
+                    }
+                    if (updated.status === 'COMPLETED' && updated.task_type === 'CHANNEL_POST') {
+                        try {
+                            const bot = SimulationWorker.bot;
+                            if (bot) {
+                                console.log(`📢 [SIMULATION WORKER] Запущена реальная публикация поста в канал для задачи #${updated.id}`);
+                                const postResult = await generateAndPublishChannelPost(bot, {
+                                    idempotency_key: `channel:radiant_task:${updated.id}:${Date.now()}`
+                                });
+                                console.log(`✅ [SIMULATION WORKER] Пост в канал успешно опубликован для задачи #${updated.id}:`, postResult?.text?.slice(0, 60));
+                            } else {
+                                console.warn('⚠️ [SIMULATION WORKER] Telegram-бот не установлен в SimulationWorker для задачи CHANNEL_POST');
+                            }
+                        } catch (postErr) {
+                            console.error('❌ [SIMULATION WORKER CHANNEL_POST ERROR]:', postErr.message);
                         }
                     }
                     await StateRepository.resumeReadyParents(client);

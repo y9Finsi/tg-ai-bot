@@ -623,7 +623,7 @@ export async function generateAndPublishChannelPost(bot, overrideSettings = null
             ? parsedFrequencyHours
             : 12;
         const slot = Math.floor(Date.now() / (frequencyHours * 60 * 60 * 1000));
-        draft.idempotency_key = draft.idempotency_key || `channel:${String(settings.channel_id)}:${slot}`;
+        draft.idempotency_key = overrideSettings?.idempotency_key || draft.idempotency_key || `channel:${String(settings.channel_id)}:${slot}`;
         return await publishChannelDraft(bot, draft, overrideSettings);
     } finally {
         channelPostInFlight = false;
