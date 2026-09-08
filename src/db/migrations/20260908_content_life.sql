@@ -52,21 +52,3 @@ ALTER TABLE content_discoveries ADD COLUMN IF NOT EXISTS quality_score NUMERIC N
 
 CREATE INDEX IF NOT EXISTS content_usage_user_content_idx ON content_usage(user_id, content_id);
 CREATE INDEX IF NOT EXISTS content_scrape_runs_source_idx ON content_scrape_runs(source_id, started_at DESC);
-
--- Initial curated sources for Lera
-INSERT INTO content_sources (name, source_type, url_or_handle, topics, is_trusted, enabled) VALUES
-('Родной Звук (Инди-музыка)', 'telegram', 'rodzvuk', '["музыка", "инди", "новинки", "плейлисты"]'::jsonb, TRUE, TRUE),
-('КудаГо: Питер', 'telegram', 'kudagospb', '["питер", "афиша", "выставки", "куда пойти", "спб"]'::jsonb, TRUE, TRUE),
-('Бумага | Новости Петербурга', 'telegram', 'paperpaper_ru', '["питер", "город", "культура", "новости"]'::jsonb, TRUE, TRUE),
-('The Flow', 'telegram', 'theflowru', '["музыка", "культура", "поп-культура", "релизы", "клипы"]'::jsonb, TRUE, TRUE),
-('DNative — блог про SMM', 'telegram', 'dnative', '["smm", "маркетинг", "соцсети", "тренды", "медиа"]'::jsonb, TRUE, TRUE),
-('KEXP Live Sessions (Инди-лайвы)', 'youtube', 'https://www.youtube.com/@KEXP', '["live", "инди", "концерты", "музыка", "вайб"]'::jsonb, TRUE, TRUE),
-('COLORS Studios (Стильная музыка)', 'youtube', 'https://www.youtube.com/@COLORSxSTUDIOS', '["live", "эстетика", "музыка", "вайб"]'::jsonb, TRUE, TRUE),
-('NPR Tiny Desk Concerts', 'youtube', 'https://www.youtube.com/@nprmusic', '["live", "акустика", "инди", "музыка"]'::jsonb, TRUE, TRUE),
-('Яндекс Музыка: Местное инди', 'yandex_music', 'https://music.yandex.ru/users/yamusic-top/playlists/1005', '["музыка", "инди", "русский инди", "пост-панк", "яндекс музыка"]'::jsonb, TRUE, TRUE),
-('Яндекс Музыка: Инди лучшее', 'yandex_music', 'https://music.yandex.ru/users/yamusic-top/playlists/1036', '["музыка", "инди", "шугейз", "дрим-поп", "яндекс музыка"]'::jsonb, TRUE, TRUE),
-('Manga Read (Рекомендации манги)', 'telegram', 'manga_read', '["манга", "манхва", "mangalib", "хентай", "тайтлы"]'::jsonb, TRUE, TRUE),
-('ReManga (Новинки манхвы и манги)', 'telegram', 'remanga', '["манга", "манхва", "remanga", "главы", "тайтлы"]'::jsonb, TRUE, TRUE),
-('Manga 18+ (Пикантная манга и главы)', 'telegram', 'manga_18_plus', '["хентай", "манга", "18+", "додзинси", "hentai"]'::jsonb, TRUE, TRUE),
-('Инди Музыка (Релизы и Яндекс.Музыка)', 'telegram', 'indie_music', '["музыка", "инди", "яндекс музыка", "пост-панк", "новинки"]'::jsonb, TRUE, TRUE)
-ON CONFLICT (source_type, url_or_handle) DO NOTHING;

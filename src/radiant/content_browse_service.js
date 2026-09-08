@@ -5,7 +5,7 @@
 
 import { query, addLeraContent } from '../db/database.js';
 
-const SPAM_REGEX = /казино|ставка|1xbet|крипт|сигнал[ы]?\s+на|заработ|инвестици|вход\s+в\s+канал/i;
+const SPAM_REGEX = /казино|ставка|1xbet|крипт|сигнал[ы]?\s+на|заработ|инвестици|вход\s+в\s+канал|промокод|скидк[аеиоу]|erid:|реклам[аеоуы]|партн[её]рск|спонсор|розыгрыш|giveaway|купить\s+билет|сервис\s+звук|яндекс\s+плюс|подпишись|подписывайся|ддос|турнир\s+по|технические\s+работы|аватарки/i;
 
 function evaluateDiscoveryQuality(item) {
     let score = 20;
@@ -14,15 +14,25 @@ function evaluateDiscoveryQuality(item) {
     const url = String(item.canonical_url || '').toLowerCase();
 
     if (SPAM_REGEX.test(title) || SPAM_REGEX.test(text)) {
-        return { score: 0, reason: 'Спам или реклама заработка' };
+        return { score: 0, reason: 'Реклама, промокод или спам' };
     }
 
-    if (title.length >= 5) score += 30;
-    if (text.length >= 40 && text.length <= 2500) score += 30;
-    else if (text.length > 0 && text.length < 40) score += 10;
+    const cleanLetters = text.replace(/[^a-zA-Zа-яА-Я0-9]/g, '');
+    if (cleanLetters.length < 20) {
+        return { score: 0, reason: 'Нет смыслового текста (эмодзи или мусор)' };
+    }
+
+    // Отсеиваем одиночные вопросы без содержательного контекста
+    if (text.endsWith('?') && text.length < 60) {
+        return { score: 10, reason: 'Пустой опрос или кликбейт' };
+    }
+
+    if (title.length >= 8) score += 25;
+    if (text.length >= 60 && text.length <= 2500) score += 30;
+    else if (text.length > 0 && text.length < 60) score += 10;
 
     if (['video', 'meme', 'music', 'telegram', 'hentai'].includes(item.category)) {
-        score += 20;
+        score += 15;
     }
 
     // Вкус Леры в музыке: русский инди, пост-панк, шугейз, построк (Дайте танк, Сироткин, Перемотка и др.)
@@ -44,7 +54,7 @@ function evaluateDiscoveryQuality(item) {
         score += 10;
     }
 
-    return { score: Math.min(100, score), reason: score < 40 ? 'Слишком короткий текст или мусор' : null };
+    return { score: Math.min(100, score), reason: score < 50 ? 'Слишком низкое качество или нерелевантный контент' : null };
 }
 
 export async function executeContentBrowseSession(radiantTaskId = null) {
@@ -72,7 +82,7 @@ export async function executeContentBrowseSession(radiantTaskId = null) {
         const { score, reason } = evaluateDiscoveryQuality(item);
         let decision = 'DEFER';
 
-        if (score >= 60) {
+        if (score >= 80) {
             decision = 'SAVE';
             let telegramType = 'link';
             if (item.category === 'video' || /youtube\.com|youtu\.be/i.test(item.canonical_url)) {
@@ -112,7 +122,7 @@ export async function executeContentBrowseSession(radiantTaskId = null) {
                 decision = 'DEFER';
                 deferredCount++;
             }
-        } else if (score < 30) {
+        } else if (score < 50) {
             decision = 'REJECT';
             await query(
                 `UPDATE content_discoveries

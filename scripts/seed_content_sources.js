@@ -56,48 +56,6 @@ export const INITIAL_SOURCES = [
         url_or_handle: 'https://www.youtube.com/@nprmusic',
         topics: ['live', 'акустика', 'инди', 'музыка'],
         is_trusted: true
-    },
-    {
-        name: 'Яндекс Музыка: Местное инди',
-        source_type: 'yandex_music',
-        url_or_handle: 'https://music.yandex.ru/users/yamusic-top/playlists/1005',
-        topics: ['музыка', 'инди', 'русский инди', 'пост-панк', 'яндекс музыка'],
-        is_trusted: true
-    },
-    {
-        name: 'Яндекс Музыка: Инди лучшее',
-        source_type: 'yandex_music',
-        url_or_handle: 'https://music.yandex.ru/users/yamusic-top/playlists/1036',
-        topics: ['музыка', 'инди', 'шугейз', 'дрим-поп', 'яндекс музыка'],
-        is_trusted: true
-    },
-    {
-        name: 'Manga Read (Рекомендации манги)',
-        source_type: 'telegram',
-        url_or_handle: 'manga_read',
-        topics: ['манга', 'манхва', 'mangalib', 'хентай', 'тайтлы'],
-        is_trusted: true
-    },
-    {
-        name: 'ReManga (Новинки манхвы и манги)',
-        source_type: 'telegram',
-        url_or_handle: 'remanga',
-        topics: ['манга', 'манхва', 'remanga', 'главы', 'тайтлы'],
-        is_trusted: true
-    },
-    {
-        name: 'Manga 18+ (Пикантная манга и главы)',
-        source_type: 'telegram',
-        url_or_handle: 'manga_18_plus',
-        topics: ['хентай', 'манга', '18+', 'додзинси', 'hentai'],
-        is_trusted: true
-    },
-    {
-        name: 'Инди Музыка (Релизы и Яндекс.Музыка)',
-        source_type: 'telegram',
-        url_or_handle: 'indie_music',
-        topics: ['музыка', 'инди', 'яндекс музыка', 'пост-панк', 'новинки'],
-        is_trusted: true
     }
 ];
 
