@@ -296,20 +296,167 @@ export function getCycleInfo(cycleDay = 3) {
 export function formatTaskType(type) {
     if (!type) return 'Задача';
     const dict = {
-        'EAT': 'Прием пищи / перекус',
-        'SLEEP': 'Сон и восстановление',
-        'REST': 'Отдых дома',
-        'STUDY': 'Пары в СПбГИК',
-        'WORK_SHOWROOM': 'Работа в шоуруме',
+        // Radiant Engine Task Catalog
+        'IDLE_HOME_REST': 'Спокойный отдых дома',
+        'GO_TO_BATHROOM': 'Ванная комната / туалет',
+        'EMERGENCY_EAT': 'Срочный перекус (голод)',
+        'SLEEP_EXHAUSTED': 'Сон от истощения',
+        'SLEEP_NIGHT': 'Ночной сон',
+        'EAT_BREAKFAST': 'Завтрак дома',
+        'EAT_LUNCH': 'Обед',
+        'EAT_DINNER': 'Ужин',
+        'REST_HOME': 'Отдых и чилл дома',
+        'SHOWER_HOME': 'Душ и уход',
+        'LEISURE_HOME': 'Досуг и отдых',
+        'PRIVATE_RELIEF': 'Личное время / релакс',
+        'WORK_LAPTOP': 'Работа за ноутом (SMM)',
+        'SOCIAL_NASTYA': 'Встреча с Настей',
+        'INVITE_BAR_NASTYA': 'Бар на Рубинштейна с Настей',
+        'SMM_EDITS_REQUIRED': 'Срочные правки по SMM',
+        'EQUIP_OUTFIT': 'Выбор гардероба / лук дня',
+        'BUY_FOOD_STORE': 'Поход за продуктами',
+        'EAT_FOOD_HOME': 'Перекус дома',
+        'ASK_NASTYA_FOR_FOOD': 'Попросить перекус у Насти',
+        'DESPERATE_EAT_TAP_WATER': 'Попить воды из-под крана',
+        'TRAVEL': 'Дорога / Транзит по СПб',
+        'PREPARE_FOR_OUTING': 'Сборы перед выходом',
+        'PERSONAL_TASK': 'Личные дела',
+        'CONTENT_BROWSE': 'Смотрит свежие находки',
+        'CONTENT_FOLLOWUP': 'Отложенная публикация',
+        // Manual & UI shortcuts
         'COFFEE_SLOY': 'Кофе в «Слое»',
+        'WORK_SHOWROOM': 'Смена в шоуруме Макса',
+        'STUDY': 'Пары в СПбГИК',
         'HANG_NASTYA': 'Встреча с Настей',
-        'BAR_EVENING': 'Вечер в баре',
-        'SHOWER': 'Душ и уход',
-        'TRAVEL': 'Дорога / Транзит',
-        'CHANNEL_POST': 'Постинг в канал',
+        'BAR_EVENING': 'Вечер в баре на Рубинштейна',
         'GROCERY_SHOP': 'Покупка продуктов',
-        'CONTENT_BROWSE': 'Лера смотрит свежие находки',
-        'CONTENT_FOLLOWUP': 'Отложенная отправка контента'
+        'SHOWER': 'Душ и уход',
+        'EAT': 'Прием пищи / перекус',
+        'REST': 'Отдых дома',
+        'SLEEP': 'Сон и восстановление',
+        'CHANNEL_POST': 'Пост в Telegram-канал'
     };
     return dict[type] || type.replace(/_/g, ' ');
+}
+
+export function formatTaskReason(reason, createdBy) {
+    if (!reason && !createdBy) return null;
+    const dict = {
+        'food utility': 'Голод / потребность в еде',
+        'sleep utility': 'Усталость / биоритм сна',
+        'hygiene utility': 'Пора освежиться в душе',
+        'bladder utility': 'Естественная потребность',
+        'leisure utility': 'Снятие скуки и чилл',
+        'private relief utility': 'Личное время и релакс',
+        'fresh content and free-time utility': 'Поиск трендов и контента',
+        'NEEDS_HUNGER': 'Критический голод',
+        'NEEDS_BLADDER': 'Срочно в туалет',
+        'NEEDS_FATIGUE': 'Критическая усталость',
+        'DAILY_ROUTINE': 'Плановый биоритм дня',
+        'NPC_NASTYA': 'Приглашение от Насти',
+        'ADMIN_GOD_MODE': 'Прямое вмешательство админа',
+        'DAY_PROFILE': 'Распорядок дня',
+        'ENGINE': 'План движка Radiant'
+    };
+    return dict[reason] || dict[createdBy] || reason || createdBy;
+}
+
+export function getTaskEffects(type) {
+    if (!type) return null;
+    const effects = {
+        'EMERGENCY_EAT': 'Сытость +55%',
+        'EAT_FOOD_HOME': 'Сытость +55%',
+        'EAT_BREAKFAST': 'Сытость +55%',
+        'EAT_LUNCH': 'Сытость +55%',
+        'EAT_DINNER': 'Сытость +55%',
+        'DESPERATE_EAT_TAP_WATER': 'Сытость +20%',
+        'SLEEP_EXHAUSTED': 'Бодрость +70%',
+        'SLEEP_NIGHT': 'Бодрость +85%',
+        'REST_HOME': 'Бодрость +35%',
+        'SHOWER_HOME': 'Чистота 100%',
+        'GO_TO_BATHROOM': 'Комфорт туалета',
+        'LEISURE_HOME': 'Скука -35%',
+        'PRIVATE_RELIEF': 'Вайб +30%, Релакс',
+        'SOCIAL_NASTYA': 'Фан +45%, Бодрость -8%',
+        'INVITE_BAR_NASTYA': 'Фан +50%, Бодрость -15%',
+        'WORK_LAPTOP': 'SMM результат, Усталость +12%',
+        'SMM_EDITS_REQUIRED': 'SMM правки, Усталость +15%',
+        'CONTENT_BROWSE': 'Свежие идеи, Скука -20%'
+    };
+    return effects[type] || null;
+}
+
+export function getNeedUrgencyLevel(needId, val) {
+    const num = Math.max(0, Math.min(100, Number(val) || 0));
+    const cfg = NEEDS_CONFIG.find(c => c.id === needId);
+    if (cfg?.inverted) {
+        if (num <= (cfg.criticalThreshold ?? 25)) return 'critical';
+        if (num <= (cfg.warningThreshold ?? 45)) return 'warning';
+        return 'normal';
+    }
+    if (num >= (cfg?.criticalThreshold ?? 80)) return 'critical';
+    if (num >= (cfg?.warningThreshold ?? 65)) return 'warning';
+    return 'normal';
+}
+
+export function getNeedGradient(needId, val) {
+    const level = getNeedUrgencyLevel(needId, val);
+    
+    // Normal level gradients (healthy & comfortable)
+    if (level === 'normal') {
+        switch (needId) {
+            case 'hunger':
+                return 'linear-gradient(90deg, #1b432a 0%, rgba(52, 168, 83, 0.45) 100%)'; // Calm green
+            case 'fatigue':
+                return 'linear-gradient(90deg, #18374d 0%, rgba(56, 189, 248, 0.45) 100%)'; // Cool rested blue
+            case 'hygiene':
+                return 'linear-gradient(90deg, #164038 0%, rgba(20, 184, 166, 0.45) 100%)'; // Fresh teal
+            case 'bladder':
+                return 'linear-gradient(90deg, #1b432a 0%, rgba(16, 185, 129, 0.45) 100%)'; // Normal emerald
+            case 'boredom':
+                return 'linear-gradient(90deg, #2b2046 0%, rgba(168, 85, 247, 0.45) 100%)'; // Entertained violet
+            case 'horny':
+                return 'linear-gradient(90deg, #382038 0%, rgba(190, 100, 185, 0.35) 100%)'; // Soft plum
+            default:
+                return 'linear-gradient(90deg, #1b432a 0%, rgba(52, 168, 83, 0.45) 100%)';
+        }
+    }
+
+    // Warning level gradients (growing urge / caution)
+    if (level === 'warning') {
+        switch (needId) {
+            case 'hunger':
+                return 'linear-gradient(90deg, #58411c 0%, rgba(245, 158, 11, 0.45) 100%)'; // Amber/orange
+            case 'fatigue':
+                return 'linear-gradient(90deg, #543b22 0%, rgba(245, 158, 11, 0.45) 100%)'; // Tired amber
+            case 'hygiene':
+                return 'linear-gradient(90deg, #52421c 0%, rgba(234, 179, 8, 0.45) 100%)'; // Slightly faded amber
+            case 'bladder':
+                return 'linear-gradient(90deg, #583e28 0%, rgba(245, 158, 11, 0.45) 100%)'; // Urge amber
+            case 'boredom':
+                return 'linear-gradient(90deg, #4d2b40 0%, rgba(217, 70, 239, 0.45) 100%)'; // Restless pink
+            case 'horny':
+                return 'linear-gradient(90deg, #582854 0%, rgba(217, 70, 239, 0.45) 100%)'; // Warm purple/pink
+            default:
+                return 'linear-gradient(90deg, #58411c 0%, rgba(245, 158, 11, 0.45) 100%)';
+        }
+    }
+
+    // Critical level gradients (distress / urgent interrupt required)
+    switch (needId) {
+        case 'hunger':
+            return 'linear-gradient(90deg, #641c1c 0%, rgba(239, 68, 68, 0.55) 100%)'; // Starving crimson
+        case 'fatigue':
+            return 'linear-gradient(90deg, #641c2c 0%, rgba(244, 63, 94, 0.55) 100%)'; // Exhausted rose-red
+        case 'hygiene':
+            return 'linear-gradient(90deg, #641c1c 0%, rgba(239, 68, 68, 0.55) 100%)'; // Urgent dirty red
+        case 'bladder':
+            return 'linear-gradient(90deg, #681f18 0%, rgba(239, 68, 68, 0.55) 100%)'; // Emergency red
+        case 'boredom':
+            return 'linear-gradient(90deg, #582828 0%, rgba(220, 75, 75, 0.55) 100%)'; // Deep boredom dark red
+        case 'horny':
+            return 'linear-gradient(90deg, #6e174b 0%, rgba(244, 63, 142, 0.55) 100%)'; // Peak arousal fuchsia
+        default:
+            return 'linear-gradient(90deg, #641c1c 0%, rgba(239, 68, 68, 0.55) 100%)';
+    }
 }

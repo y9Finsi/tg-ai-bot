@@ -94,28 +94,99 @@ export function App() {
                 api('/api/admin/radiant/day')
             ]);
 
+            let snapshotObj = null;
+            let dayObj = null;
+
             if (overviewRes.status === 'fulfilled') {
                 const s = overviewRes.value.overview || overviewRes.value;
+                snapshotObj = s;
                 setSnapshot(s);
                 setIsPaused(Boolean(s.is_paused || s.state?.is_paused));
                 setActiveTask(s.active_task || s.activeTask || null);
-
-                const queue = Array.isArray(s.queue) ? s.queue : [];
-                setPendingTasks(queue.filter(t => ['PENDING', 'PLANNED', 'ROUTINE'].includes(t.status) || !t.status));
             } else if (overviewRes.reason?.message === 'AUTH_REQUIRED') {
                 setAuthed(false);
             }
 
             if (dayRes.status === 'fulfilled') {
-                const d = dayRes.value || {};
-                const completed = Array.isArray(d.timeline)
-                    ? d.timeline.filter(t => t.type === 'TASK_COMPLETED' || t.status === 'COMPLETED')
-                    : [];
-                setCompletedTasks(completed);
+                dayObj = dayRes.value || {};
+            }
 
-                const cancelled = Array.isArray(d.schedule)
-                    ? d.schedule.filter(t => ['CANCELLED', 'MISSED', 'OVERDUE'].includes(t.status) || t.overdue)
+            // Compose rich tasks for Kanban
+            if (snapshotObj || dayObj) {
+                const s = snapshotObj || {};
+                const d = dayObj || {};
+                const rawSchedule = Array.isArray(d.schedule) ? d.schedule : [];
+
+                // 1. Active task fallback/enrichment
+                if (!s.active_task && !s.activeTask) {
+                    const activeFromSched = rawSchedule.find(t => ['IN_PROGRESS', 'IN_TRANSIT'].includes(t.status));
+                    if (activeFromSched) setActiveTask(activeFromSched);
+                }
+
+                // 2. Pending tasks (queue + upcoming routine/forecast/commitments)
+                const queue = Array.isArray(s.queue) ? s.queue : [];
+                const queuePending = queue.filter(t => ['PENDING', 'PLANNED', 'ROUTINE'].includes(t.status) || !t.status);
+                
+                const upcomingFromSchedule = rawSchedule.filter(t => 
+                    ['PLANNED', 'ROUTINE', 'PENDING'].includes(t.status) && 
+                    t.kind !== 'fact' &&
+                    t.status !== 'IN_PROGRESS'
+                );
+
+                const mergedPending = [...queuePending];
+                for (const schedItem of upcomingFromSchedule) {
+                    const exists = mergedPending.some(p => 
+                        p.id === schedItem.id || 
+                        (p.task_type === schedItem.taskType && Math.abs(new Date(p.created_at || p.start || 0) - new Date(schedItem.start || 0)) < 120000)
+                    );
+                    if (!exists) {
+                        mergedPending.push({
+                            id: schedItem.id,
+                            label: schedItem.label,
+                            task_type: schedItem.taskType,
+                            taskType: schedItem.taskType,
+                            durationMinutes: schedItem.durationMinutes,
+                            start: schedItem.start,
+                            source: schedItem.source,
+                            sourceLabel: schedItem.sourceLabel,
+                            reason: schedItem.reason,
+                            target_location: schedItem.target_location,
+                            status: schedItem.status
+                        });
+                    }
+                }
+                setPendingTasks(mergedPending);
+
+                // 3. Completed tasks (facts from schedule + timeline events)
+                const completedFromSchedule = rawSchedule.filter(t => t.status === 'COMPLETED' || t.kind === 'fact');
+                const completedFromTimeline = Array.isArray(d.timeline)
+                    ? d.timeline.filter(t => t.type === 'TASK_COMPLETED' || t.status === 'COMPLETED').map(t => ({
+                        id: t.id,
+                        label: t.title ? t.title.replace(/^Завершено:\s*/, '') : null,
+                        task_type: t.payload?.taskType,
+                        taskType: t.payload?.taskType,
+                        start: t.at,
+                        at: t.at,
+                        durationMinutes: t.payload?.durationMinutes || 30,
+                        sourceLabel: t.source || 'Факт',
+                        reason: t.payload?.reason,
+                        target_location: t.payload?.targetLocation || t.payload?.location,
+                        status: 'COMPLETED'
+                    }))
                     : [];
+
+                const mergedCompleted = [...completedFromSchedule];
+                for (const item of completedFromTimeline) {
+                    if (!mergedCompleted.some(c => c.id === item.id || (c.taskType === item.taskType && c.start === item.start))) {
+                        mergedCompleted.push(item);
+                    }
+                }
+                setCompletedTasks(mergedCompleted);
+
+                // 4. Cancelled tasks (from schedule)
+                const cancelled = rawSchedule.filter(t => 
+                    ['CANCELLED', 'MISSED', 'OVERDUE'].includes(t.status) || t.overdue
+                );
                 setCancelledTasks(cancelled);
             }
         } catch (err) {
