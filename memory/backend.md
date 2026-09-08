@@ -56,6 +56,7 @@ src/
   - `src/db/migrations/` — инкрементальные миграции:
     - `009_typed_memory.sql` — типизированная семантическая память (`memory_fact`, `memory_outbox`).
     - `011_migrate_legacy_memories.sql` — миграция оставшихся записей из `user_memories` в `memory_fact`.
+    - `20260908_content_life.sql` — таблицы Content Life (`content_sources`, `content_discoveries`, `content_browse_sessions`, `content_browse_decisions`, `content_usage`, `content_scrape_runs`).
 - **Схема v3:** `src/db/schema_v3.sql` содержит полную картину схемы базы данных.
 
 ---
@@ -220,5 +221,11 @@ src/
   - Дневная контентная инициатива (`content_4h`): при 4-12 часах паузы в активном взаимном диалоге (днем 11-21 МСК) Лера отправляет трек, мем или видео из каталога `lera_content`.
   - Утренний `new_day`: подгружает кандидатов контента и может делиться музыкой с утра.
   - Инструменты (Tools Calling): модуль `prompt_tools` подключен к правилам `rule_chat_casual` и `rule_chat_erotic` в базе и профиле, активируя 12 действий (`send_content`, `send_photo`, `send_voice`, `web_search`, `weather`, и др.). Вызов тулзов управляется через модалку инструкций правила в админке.
+- **Пайплайн Content Life (`src/content/`, `src/radiant/content_browse_service.js`):**
+  - **Источники (`content_sources`):** Telegram public previews, RSS/Atom, YouTube (видео и каналы через `videos.xml`). Автопауза при 3 сбоях подряд (`consecutive_errors >= 3`).
+  - **Очередь находок (`content_discoveries`):** дедупликация по каноническому URL, статус жизненного цикла (`DISCOVERED` -> `SAVED`/`REJECTED`/`EXPIRED`), TTL 14 дней.
+  - **Radiant задача `CONTENT_BROWSE`:** воркер выполняет `executeContentBrowseSession`, отбирает свежие находки, оценивает качество, сохраняет отборные в `lera_content` со статусом `SAVED`, отклоняет спам с причиной в `content_browse_decisions` и уменьшает `boredom`.
+  - **Доставка и скоринг (`send_content.js`):** многофакторный подбор контента (+категория, +ключевые слова, +новизна, -недавняя отправка собеседнику), поддержка точного `content_id`, запись фактов отправки в `content_usage`.
+  - **Отложенные обещания:** `schedule_followup` и BullMQ `processFollowupJob` поддерживают точечные `contentId` и `discoveryId` с авто-одобрением находок в каталог перед отправкой.
 
 
