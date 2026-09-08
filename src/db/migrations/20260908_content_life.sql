@@ -52,3 +52,15 @@ ALTER TABLE content_discoveries ADD COLUMN IF NOT EXISTS quality_score NUMERIC N
 
 CREATE INDEX IF NOT EXISTS content_usage_user_content_idx ON content_usage(user_id, content_id);
 CREATE INDEX IF NOT EXISTS content_scrape_runs_source_idx ON content_scrape_runs(source_id, started_at DESC);
+
+-- Initial curated sources for Lera
+INSERT INTO content_sources (name, source_type, url_or_handle, topics, is_trusted, enabled) VALUES
+('Родной Звук (Инди-музыка)', 'telegram', 'rodzvuk', '["музыка", "инди", "новинки", "плейлисты"]'::jsonb, TRUE, TRUE),
+('КудаГо: Питер', 'telegram', 'kudagospb', '["питер", "афиша", "выставки", "куда пойти", "спб"]'::jsonb, TRUE, TRUE),
+('Бумага | Новости Петербурга', 'telegram', 'paperpaper_ru', '["питер", "город", "культура", "новости"]'::jsonb, TRUE, TRUE),
+('The Flow', 'telegram', 'theflowru', '["музыка", "культура", "поп-культура", "релизы", "клипы"]'::jsonb, TRUE, TRUE),
+('DNative — блог про SMM', 'telegram', 'dnative', '["smm", "маркетинг", "соцсети", "тренды", "медиа"]'::jsonb, TRUE, TRUE),
+('KEXP Live Sessions (Инди-лайвы)', 'youtube', 'https://www.youtube.com/@KEXP', '["live", "инди", "концерты", "музыка", "вайб"]'::jsonb, TRUE, TRUE),
+('COLORS Studios (Стильная музыка)', 'youtube', 'https://www.youtube.com/@COLORSxSTUDIOS', '["live", "эстетика", "музыка", "вайб"]'::jsonb, TRUE, TRUE),
+('NPR Tiny Desk Concerts', 'youtube', 'https://www.youtube.com/@nprmusic', '["live", "акустика", "инди", "музыка"]'::jsonb, TRUE, TRUE)
+ON CONFLICT (source_type, url_or_handle) DO NOTHING;
