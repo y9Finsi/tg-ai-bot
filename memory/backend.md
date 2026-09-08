@@ -227,5 +227,7 @@ src/
   - **Radiant задача `CONTENT_BROWSE`:** воркер выполняет `executeContentBrowseSession`, отбирает свежие находки, оценивает качество, сохраняет отборные в `lera_content` со статусом `SAVED`, отклоняет спам с причиной в `content_browse_decisions` и уменьшает `boredom`.
   - **Доставка и скоринг (`send_content.js`):** многофакторный подбор контента (+категория, +ключевые слова, +новизна, -недавняя отправка собеседнику), поддержка точного `content_id`, запись фактов отправки в `content_usage`.
   - **Отложенные обещания:** `schedule_followup` и BullMQ `processFollowupJob` поддерживают точечные `contentId` и `discoveryId` с авто-одобрением находок в каталог перед отправкой.
+  - **Интеграция Яндекс Музыки (`MarshalX/yandex-music-api`):** реализована в Python-микросервисе `semantica-service` (`semantica_service.yandex_music_client.YandexMusicService`) и выставлена через эндпоинты `POST /api/music/yandex/resolve` и `GET /api/music/yandex/search`. Поддерживает параметры `YANDEX_MUSIC_TOKEN` и `YANDEX_MUSIC_PROXY_URL` (обход 451 блока). В `src/content/content_scraper.js` метод `parseYandexMusic` обращается к sidecar эндпоинту, парсит плейлисты, альбомы и треки, преобразуя их в `content_discoveries` с категорией `music`.
+
 
 
