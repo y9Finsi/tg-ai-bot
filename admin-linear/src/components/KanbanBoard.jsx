@@ -205,9 +205,6 @@ export function KanbanBoard({
                         <span className="text-[16px] font-normal text-[#7178a1] leading-tight">
                             В процессе
                         </span>
-                        {activeTask && (
-                            <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
-                        )}
                     </div>
 
                     <div className="flex-1 overflow-y-auto space-y-2 pr-0.5 custom-scrollbar">

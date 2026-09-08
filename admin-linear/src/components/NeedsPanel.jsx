@@ -80,41 +80,28 @@ export function NeedsPanel({ needs = {}, onNeedsChanged, toast }) {
                     return (
                         <div
                             key={cfg.id}
-                            className={`w-full h-[92px] bg-[#000212]/37 border rounded-[23px] p-2 flex flex-col justify-between relative transition-colors ${
-                                urgency === 'critical'
-                                    ? 'border-rose-500/40 shadow-[0_0_15px_rgba(244,63,94,0.15)]'
-                                    : urgency === 'warning'
-                                    ? 'border-amber-500/30'
-                                    : 'border-[#8693ff]/25'
-                            }`}
+                            className="w-full h-[92px] bg-[#000212]/37 border border-[#8693ff]/25 rounded-[23px] p-2 flex flex-col justify-between relative"
                         >
                             {/* Card Top: Label */}
                             <div className="px-1 pt-1 flex items-center justify-between">
                                 <span className="text-[16px] font-normal text-white leading-tight">
                                     {cfg.label}
                                 </span>
-                                {urgency === 'critical' && (
-                                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" title="Критическое значение!" />
-                                )}
                             </div>
 
-                            {/* Card Bottom: Fully filled Value Pill with dynamic color gradient */}
+                            {/* Card Bottom: Value Pill with Figma Linear Gradient (Component 41, 141x43px, r:20px) */}
                             <div 
-                                className="h-[43px] rounded-[20px] px-3 flex items-center justify-between shadow-inner cursor-pointer select-none transition-all hover:brightness-110"
+                                className="h-[43px] rounded-[20px] px-3 flex items-center justify-between shadow-inner cursor-pointer select-none"
                                 style={{ background: dynamicGradient }}
                                 onClick={() => setEditingKey(isEditing ? null : cfg.id)}
-                                title={`Нажмите, чтобы изменить значение (${cfg.description || ''})`}
+                                title="Нажмите, чтобы изменить значение"
                             >
-                                <span className="text-[16px] font-medium text-white/90 drop-shadow-sm">
+                                <span className="text-[16px] font-normal text-white/72">
                                     {val}%
                                 </span>
-                                {isSaving ? (
-                                    <span className="w-2 h-2 rounded-full bg-white/90 animate-ping" />
-                                ) : urgency === 'critical' ? (
-                                    <span className="text-xs text-rose-200/90 font-medium">SOS</span>
-                                ) : urgency === 'warning' ? (
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-300/80" />
-                                ) : null}
+                                {isSaving && (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white/60" />
+                                )}
                             </div>
 
                             {/* Inline Slider Popover with Presets */}

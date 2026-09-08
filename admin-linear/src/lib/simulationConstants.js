@@ -399,64 +399,25 @@ export function getNeedUrgencyLevel(needId, val) {
     return 'normal';
 }
 
+export const FIGMA_GRADIENTS = {
+    green: 'linear-gradient(90deg, #28583b 0%, rgba(86, 190, 128, 0) 100%)',
+    amber: 'linear-gradient(90deg, #583e28 0%, rgba(190, 135, 86, 0) 100%)',
+    red: 'linear-gradient(90deg, #582828 0%, rgba(190, 86, 86, 0) 100%)',
+    purple: 'linear-gradient(90deg, #582854 0%, rgba(190, 86, 181, 0) 100%)'
+};
+
 export function getNeedGradient(needId, val) {
     const level = getNeedUrgencyLevel(needId, val);
-    
-    // Normal level gradients (healthy & comfortable)
-    if (level === 'normal') {
-        switch (needId) {
-            case 'hunger':
-                return 'linear-gradient(90deg, #1b432a 0%, rgba(52, 168, 83, 0.45) 100%)'; // Calm green
-            case 'fatigue':
-                return 'linear-gradient(90deg, #18374d 0%, rgba(56, 189, 248, 0.45) 100%)'; // Cool rested blue
-            case 'hygiene':
-                return 'linear-gradient(90deg, #164038 0%, rgba(20, 184, 166, 0.45) 100%)'; // Fresh teal
-            case 'bladder':
-                return 'linear-gradient(90deg, #1b432a 0%, rgba(16, 185, 129, 0.45) 100%)'; // Normal emerald
-            case 'boredom':
-                return 'linear-gradient(90deg, #2b2046 0%, rgba(168, 85, 247, 0.45) 100%)'; // Entertained violet
-            case 'horny':
-                return 'linear-gradient(90deg, #382038 0%, rgba(190, 100, 185, 0.35) 100%)'; // Soft plum
-            default:
-                return 'linear-gradient(90deg, #1b432a 0%, rgba(52, 168, 83, 0.45) 100%)';
-        }
+
+    if (needId === 'horny') {
+        return level === 'critical' ? FIGMA_GRADIENTS.purple : FIGMA_GRADIENTS.green;
     }
 
-    // Warning level gradients (growing urge / caution)
+    if (level === 'critical') {
+        return FIGMA_GRADIENTS.red;
+    }
     if (level === 'warning') {
-        switch (needId) {
-            case 'hunger':
-                return 'linear-gradient(90deg, #58411c 0%, rgba(245, 158, 11, 0.45) 100%)'; // Amber/orange
-            case 'fatigue':
-                return 'linear-gradient(90deg, #543b22 0%, rgba(245, 158, 11, 0.45) 100%)'; // Tired amber
-            case 'hygiene':
-                return 'linear-gradient(90deg, #52421c 0%, rgba(234, 179, 8, 0.45) 100%)'; // Slightly faded amber
-            case 'bladder':
-                return 'linear-gradient(90deg, #583e28 0%, rgba(245, 158, 11, 0.45) 100%)'; // Urge amber
-            case 'boredom':
-                return 'linear-gradient(90deg, #4d2b40 0%, rgba(217, 70, 239, 0.45) 100%)'; // Restless pink
-            case 'horny':
-                return 'linear-gradient(90deg, #582854 0%, rgba(217, 70, 239, 0.45) 100%)'; // Warm purple/pink
-            default:
-                return 'linear-gradient(90deg, #58411c 0%, rgba(245, 158, 11, 0.45) 100%)';
-        }
+        return FIGMA_GRADIENTS.amber;
     }
-
-    // Critical level gradients (distress / urgent interrupt required)
-    switch (needId) {
-        case 'hunger':
-            return 'linear-gradient(90deg, #641c1c 0%, rgba(239, 68, 68, 0.55) 100%)'; // Starving crimson
-        case 'fatigue':
-            return 'linear-gradient(90deg, #641c2c 0%, rgba(244, 63, 94, 0.55) 100%)'; // Exhausted rose-red
-        case 'hygiene':
-            return 'linear-gradient(90deg, #641c1c 0%, rgba(239, 68, 68, 0.55) 100%)'; // Urgent dirty red
-        case 'bladder':
-            return 'linear-gradient(90deg, #681f18 0%, rgba(239, 68, 68, 0.55) 100%)'; // Emergency red
-        case 'boredom':
-            return 'linear-gradient(90deg, #582828 0%, rgba(220, 75, 75, 0.55) 100%)'; // Deep boredom dark red
-        case 'horny':
-            return 'linear-gradient(90deg, #6e174b 0%, rgba(244, 63, 142, 0.55) 100%)'; // Peak arousal fuchsia
-        default:
-            return 'linear-gradient(90deg, #641c1c 0%, rgba(239, 68, 68, 0.55) 100%)';
-    }
+    return FIGMA_GRADIENTS.green;
 }
