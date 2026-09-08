@@ -10,7 +10,7 @@ import {
     getLeraContent, getActiveOpenThread, deactivateOpenThread
 } from './db/database.js';
 import { evaluateRules } from './ai/profile/rule_evaluator.js';
-import { getRoutedSystemPrompt } from './prompts.js';
+import { getRoutedSystemPrompt, getPromptSection } from './prompts.js';
 import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX } from './constants/intents.js';
 import { requestLlmCompletion } from './ai/llm_client.js';
 import { extractFactsInBackground } from './ai/memory_extractor.js';
@@ -404,13 +404,18 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     let modeInstruction = '';
 
     if (isPublic) {
-        modeInstruction += `\n\n[ГРУППОВОЙ ЧАТ / ГОСТЕВОЙ РЕЖИМ]:
+        const groupPrompt = productionIntentConfig?.prompts?.group_chat || getPromptSection('group_chat');
+        if (groupPrompt) {
+            modeInstruction += `\n\n${groupPrompt}`;
+        } else {
+            modeInstruction += `\n\n[ГРУППОВОЙ ЧАТ / ГОСТЕВОЙ РЕЖИМ]:
 - Ты общаешься в публичной группе Telegram среди нескольких участников.
 - Каждое входящее сообщение от участников оформлено тегом <user name="Имя">текст</user>.
 - Обращай внимание, кто автор текущего сообщения и кому адресованы реплики в треде.
 - Отвечай в своём обычном характере (живой питерский сленг, подколы, дружелюбие), органично используя имя собеседника при необходимости, но не повторяя его механически в начале каждой фразы.
 - СТРОЖАЙШИЙ ЗАПРЕТ НА ЭРОТИКУ/18+ В ГРУППЕ: Если кто-то просит пошлости или интим — дерзко осаживай («ты в своём уме при всех такое просить? го в лс»), не раскрывая приватные темы из лички.
 - ФОТО И ВОЙСЫ: Если просят селфи/фото или войс в группе — генерируй их на лету через доступные инструменты.`;
+        }
     } else if (routingMode === 'EROTIC') {
         const climaxPrompt = getClimaxPromptInstruction(climaxState);
         modeInstruction += `\n\n[РЕЖИМ БЛИЗОСТИ И ВИРТА]:${climaxPrompt}

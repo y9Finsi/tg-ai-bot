@@ -25,7 +25,8 @@ import { api } from '@/lib/api.js';
 const SURFACES = [
     { id: 'CHAT', label: 'Личка' },
     { id: 'CHANNEL', label: 'Тг-канал' },
-    { id: 'INITIATIVE', label: 'Инициатива' }
+    { id: 'INITIATIVE', label: 'Инициатива' },
+    { id: 'GROUP', label: 'Группа / Гость' }
 ];
 
 // Helper: Гарантирует, что канон и системные промпты всегда идут первыми в списке
@@ -58,16 +59,18 @@ export const sortPrompts = (prompts, customOrder = null) => {
         if (pr.id === 'prompt_format') return 9;
         if (pr.id === 'prompt_continuity') return 10;
         if (pr.id === 'prompt_context_rules') return 11;
-        // 7. Канал и инициатива
+        // 7. Канал, инициатива и группа
         if (pr.id === 'prompt_channel_persona') return 12;
         if (pr.id === 'prompt_channel_rules') return 13;
         if (pr.id === 'prompt_initiative') return 14;
+        if (pr.id === 'prompt_group_chat') return 15;
+        if (pr.id === 'prompt_group_welcome') return 16;
         // 8. Вторичные модули
-        if (pr.id === 'prompt_forbidden') return 15;
-        if (pr.id === 'prompt_facts') return 16;
-        if (pr.id === 'prompt_flirt') return 17;
-        if (pr.is_routing_module) return 18;
-        if (pr.is_system) return 19;
+        if (pr.id === 'prompt_forbidden') return 17;
+        if (pr.id === 'prompt_facts') return 18;
+        if (pr.id === 'prompt_flirt') return 19;
+        if (pr.is_routing_module) return 20;
+        if (pr.is_system) return 21;
         // 9. Пользовательские модульные промпты
         return 30;
     };
@@ -323,6 +326,29 @@ export function AiSettingsTab({ toast }) {
                 content: llmPrompts.initiative_directive || ''
             });
 
+            // 4.1. Group & Guest Mode Modules (Style B)
+            rawPrompts.push({
+                id: 'prompt_group_chat',
+                section_key: 'group_chat',
+                is_system_section: true,
+                title: 'Общение в группе и гостевой режим',
+                category_label: 'Группа',
+                style: 'style-b',
+                is_system: true,
+                content: llmPrompts.group_chat || `[РЕЖИМ: ГРУППОВОЙ ЧАТ И ГОСТЕВОЙ РЕЖИМ]\n- Ты общаешься в публичной группе Telegram среди нескольких участников или отвечаешь на гостевой запрос.\n- Каждое входящее сообщение от участников оформлено тегом <user name="Имя">текст</user>.\n- Обращай внимание, кто автор текущего сообщения и кому адресованы реплики в треде.\n- Отвечай в своём обычном характере (живой питерский сленг, подколы, дружелюбие), органично используя имя собеседника при необходимости, но не повторяя его механически в начале каждой фразы.\n- СТРОЖАЙШИЙ ЗАПРЕТ НА ЭРОТИКУ/18+ В ГРУППЕ: Если кто-то просит пошлости или интим — дерзко осаживай («ты в своём уме при всех такое просить? го в лс»), не раскрывая приватные темы из лички.\n- ФОТО И ВОЙСЫ: Если просят селфи/фото или войс в группе — генерируй их на лету через доступные инструменты.`
+            });
+
+            rawPrompts.push({
+                id: 'prompt_group_welcome',
+                section_key: 'group_welcome',
+                is_system_section: true,
+                title: 'Приветствие при добавлении в группу',
+                category_label: 'Группа',
+                style: 'style-b',
+                is_system: true,
+                content: llmPrompts.group_welcome || `[РЕЖИМ: ПРИВЕТСТВИЕ ПРИ ДОБАВЛЕНИИ В ГРУППУ]\n- Тебя (Леру) только что добавили в новую Telegram-группу / чат.\n- Поздоровайся с участниками в своём фирменном стиле (19 лет, студентка из СПб, живая, немного дерзкая, без официоза).\n- Напиши 1-2 короткие фразы без эмодзи и без канцелярита (например: «всем привет, че тут за движ? я лера если че» или «ку всем, кто добавил меня сюда? короче я лера, будем знакомы»).\n- Не начинай с тире, не строй из себя робота-ассистента («я искусственный интеллект, готова помочь»). Ты обычная девчонка.`
+            });
+
             // 5. Dynamic Context & Modular Templates (Style B)
             rawPrompts.push({
                 id: 'prompt_radiant',
@@ -478,11 +504,39 @@ export function AiSettingsTab({ toast }) {
                         temperature: 0.70,
                         provider_id: null,
                         fallback_provider_ids: []
+                    },
+                    {
+                        id: 'rule_group_chat',
+                        title: 'Группа / Общение и гостевой режим',
+                        surface: 'GROUP',
+                        surfaces: ['GROUP'],
+                        mode: 'ALL',
+                        enabled: true,
+                        content: 'Общение в публичной группе Telegram и ответы на гостевые запросы. СТРОЖАЙШИЙ ЗАПРЕТ на эротику и интимные темы при всех. Живой сленг, подколы, обращение по имени.',
+                        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual', 'prompt_group_chat', 'prompt_tools'],
+                        max_tokens: 220,
+                        temperature: 0.70,
+                        provider_id: null,
+                        fallback_provider_ids: []
+                    },
+                    {
+                        id: 'rule_group_welcome',
+                        title: 'Группа / Приветствие при добавлении',
+                        surface: 'GROUP',
+                        surfaces: ['GROUP'],
+                        mode: 'ALL',
+                        enabled: true,
+                        content: 'Короткое и живое приветствие (1-2 фразы), когда Леру добавляют в новую группу. Без эмодзи, без канцелярита и без тире в начале.',
+                        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'prompt_group_welcome'],
+                        max_tokens: 150,
+                        temperature: 0.72,
+                        provider_id: null,
+                        fallback_provider_ids: []
                     }
                 ];
                 setRulesList(initialRules);
             } else {
-                setRulesList(rawRules.map(r => ({
+                const mappedRules = rawRules.map(r => ({
                     id: r.id,
                     title: r.title || 'Правило',
                     surface: r.surface || 'CHAT',
@@ -496,7 +550,42 @@ export function AiSettingsTab({ toast }) {
                     temperature: r.temperature !== undefined ? r.temperature : 0.7,
                     provider_id: r.provider_id ? Number(r.provider_id) : null,
                     fallback_provider_ids: Array.isArray(r.fallback_provider_ids) ? r.fallback_provider_ids.map(Number).filter(Boolean) : []
-                })));
+                }));
+
+                const hasGroupRule = mappedRules.some(r => (r.surfaces || [r.surface]).includes('GROUP'));
+                if (!hasGroupRule) {
+                    mappedRules.push(
+                        {
+                            id: 'rule_group_chat',
+                            title: 'Группа / Общение и гостевой режим',
+                            surface: 'GROUP',
+                            surfaces: ['GROUP'],
+                            mode: 'ALL',
+                            enabled: true,
+                            content: 'Общение в публичной группе Telegram и ответы на гостевые запросы. СТРОЖАЙШИЙ ЗАПРЕТ на эротику и интимные темы при всех. Живой сленг, подколы, обращение по имени.',
+                            attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual', 'prompt_group_chat', 'prompt_tools'],
+                            max_tokens: 220,
+                            temperature: 0.70,
+                            provider_id: null,
+                            fallback_provider_ids: []
+                        },
+                        {
+                            id: 'rule_group_welcome',
+                            title: 'Группа / Приветствие при добавлении',
+                            surface: 'GROUP',
+                            surfaces: ['GROUP'],
+                            mode: 'ALL',
+                            enabled: true,
+                            content: 'Короткое и живое приветствие (1-2 фразы), когда Леру добавляют в новую группу. Без эмодзи, без канцелярита и без тире в начале.',
+                            attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'prompt_group_welcome'],
+                            max_tokens: 150,
+                            temperature: 0.72,
+                            provider_id: null,
+                            fallback_provider_ids: []
+                        }
+                    );
+                }
+                setRulesList(mappedRules);
             }
 
         } catch (err) {
@@ -2168,7 +2257,7 @@ export function AiSettingsTab({ toast }) {
 
                             <div className="flex flex-col gap-1.5">
                                 <label className="text-xs text-white/60 font-medium">Раздел / Поверхности применения</label>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                     {SURFACES.map((s) => {
                                         const isChecked = (editingRule?.surfaces || [activeSurface]).includes(s.id);
                                         return (

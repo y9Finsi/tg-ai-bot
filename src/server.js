@@ -2948,8 +2948,9 @@ export function createAdminApp(bot = null) {
                 const radiantBlock = (context.radiant !== false)
                     ? `\n\n=== СОСТОЯНИЕ ЛЕРЫ (RADIANT) ===\nЛокация: Петроградка, Большой пр.\nПогода: Санкт-Петербург, ${context.weather?.condition || 'ясно'}, +18°C\nПотребности: сытость 75%, бодрость 80%`
                     : '';
+                const groupPrompt = getPromptSection('group_chat');
                 const modeInstruction = isGroup 
-                    ? '\n\n[ГРУППОВОЙ ЧАТ / ГОСТЕВОЙ РЕЖИМ]:\n- Ты общаешься в публичной группе Telegram.\n- СТРОЖАЙШИЙ ЗАПРЕТ НА ЭРОТИКУ И ПРИВАТНУЮ ПАМЯТЬ В ГРУППЕ.'
+                    ? `\n\n${groupPrompt || '[ГРУППОВОЙ ЧАТ / ГОСТЕВОЙ РЕЖИМ]:\n- Ты общаешься в публичной группе Telegram.\n- СТРОЖАЙШИЙ ЗАПРЕТ НА ЭРОТИКУ И ПРИВАТНУЮ ПАМЯТЬ В ГРУППЕ.'}`
                     : (surface === 'INITIATIVE' ? '\n\n[ТИП ИНИЦИАТИВЫ]: weather\n[ПРИЧИНА]: спонтанная мысль о погоде' : '');
                 systemPrompt = `${routedBase}${modeInstruction}${radiantBlock}${memoryFacts}`;
             }

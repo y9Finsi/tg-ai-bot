@@ -101,7 +101,7 @@ function toSettingKey(key) {
 }
 
         // Code-First синхронизация: файлы на диске являются источником правды
-        const allSections = { ...PROMPT_SECTIONS, ...ROUTING_PROMPT_SECTIONS };
+        const allSections = ALL_PROMPT_SECTIONS;
         for (const [key, filename] of Object.entries(allSections)) {
             const diskContent = loadPromptFile(filename);
             if (diskContent && diskContent.trim() !== '') {
@@ -280,6 +280,10 @@ export async function resolveModularRulePrompt(rule, profile, context = {}) {
             content = promptsCache.channel_rules || promptsCache.prompt_channel_rules || '';
         } else if (pId === 'prompt_initiative') {
             content = promptsCache.initiative_directive || promptsCache.prompt_initiative || '';
+        } else if (pId === 'prompt_group_chat') {
+            content = promptsCache.group_chat || promptsCache.prompt_group_chat || '';
+        } else if (pId === 'prompt_group_welcome') {
+            content = promptsCache.group_welcome || promptsCache.prompt_group_welcome || '';
         } else if (pId === 'prompt_context_rules') {
             content = promptsCache.context_template || promptsCache.prompt_context_rules || '';
         } else if (pId === 'routing_core') {

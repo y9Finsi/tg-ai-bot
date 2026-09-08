@@ -20,7 +20,9 @@ import { aiQueue, startWorker, stopWorker as stopAiWorker } from './queue.js';
 import { startTyping, stopTyping } from './typing_manager.js';
 import { Telegraf, Markup } from 'telegraf';
 import { broadcastQueue, startBroadcastWorker, stopBroadcastWorker } from './broadcast.js';
-import { promptTemplates } from './prompts.js';
+import { promptTemplates, getPromptSection } from './prompts.js';
+import { generateResponse } from './ai.js';
+import { cleanResponseText } from './utils/response_text.js';
 
 import { setupHelp } from './handlers/help.js';
 import { setupProfile } from './handlers/profile.js';
@@ -29,7 +31,7 @@ import { PHOTO_INTENT_REGEX, VOICE_INTENT_REGEX } from './constants/intents.js';
 import { SimulationWorker } from './workers/simulation_worker.js';
 import { StateRepository } from './db/state_repository.js';
 import { MemorySummarizer } from './memory/summarizer.js';
-import { initDatabaseTables } from './db/database.js';
+import { initDatabaseTables, claimChannelProcessedMessage } from './db/database.js';
 import { initChannelPoster, stopChannelPoster } from './channel_poster.js';
 import { editContentChannelPost, extractContentFromChannelPost } from './content_service.js';
 import { enqueuePersonalInitiatives } from './initiative_service.js';
@@ -1477,6 +1479,55 @@ bot.on('text', async (ctx) => {
         return;
     }
 
+// ---------------- ОБРАБОТЧИК ДОБАВЛЕНИЯ В ГРУППУ (ПРИВЕТСТВИЕ ЛЕРЫ) ----------------
+const handleBotGroupJoin = async (ctx, reason = 'join') => {
+    try {
+        if (!ctx.chat || (ctx.chat.type !== 'group' && ctx.chat.type !== 'supergroup')) return;
+        const dedupeId = `welcome_${ctx.chat.id}_${Math.floor(Date.now() / 60000)}`;
+        if (!(await claimChannelProcessedMessage(ctx.chat.id, dedupeId))) return;
+
+        console.log(`🤖 [BOT ADDED TO GROUP]: chat ${ctx.chat.id} (${ctx.chat.title || 'no title'}) via ${reason}`);
+        ctx.sendChatAction('typing').catch(() => {});
+
+        const welcomePrompt = getPromptSection('group_welcome') || `[РЕЖИМ: ПРИВЕТСТВИЕ ПРИ ДОБАВЛЕНИИ В ГРУППУ]
+- Тебя (Леру) только что добавили в новую Telegram-группу «${ctx.chat.title || 'чат'}».
+- Поздоровайся с участниками в своём фирменном стиле (19 лет, студентка из СПб, живая, немного дерзкая, без официоза).
+- Напиши 1-2 короткие фразы без эмодзи и без канцелярита. Не начинай с тире.`;
+
+        const inviterName = ctx.from?.first_name || ctx.from?.username || 'Кто-то';
+        const response = await generateResponse(ctx.from?.id || 0, `[СИСТЕМНОЕ СОБЫТИЕ]: Тебя добавили в группу "${ctx.chat.title || 'чат'}" (добавил: ${inviterName}). Поздоровайся со всеми.`, {
+            isPublicContext: true,
+            chatId: ctx.chat.id,
+            senderName: inviterName,
+            systemOverlay: welcomePrompt
+        });
+
+        if (response?.text) {
+            const cleanText = cleanResponseText(response.text).replace(/\|\|\|/g, '\n');
+            await ctx.reply(cleanText);
+        }
+    } catch (err) {
+        console.error('[GROUP WELCOME ERROR]:', err.message);
+    }
+};
+
+bot.on('new_chat_members', async (ctx) => {
+    const newMembers = ctx.message?.new_chat_members || [];
+    const botId = ctx.botInfo?.id;
+    if (newMembers.some(m => m.id === botId)) {
+        await handleBotGroupJoin(ctx, 'new_chat_members');
+    }
+});
+
+bot.on('my_chat_member', async (ctx) => {
+    const update = ctx.myChatMember;
+    const newStatus = update?.new_chat_member?.status;
+    const oldStatus = update?.old_chat_member?.status;
+    if ((oldStatus === 'left' || oldStatus === 'kicked') && (newStatus === 'member' || newStatus === 'administrator')) {
+        await handleBotGroupJoin(ctx, 'my_chat_member');
+    }
+});
+
     const userId = ctx.from.id;
     const text = ctx.message.text;
 
@@ -1837,7 +1888,7 @@ async function safeStartBot() {
             }
 
             await bot.launch({
-                allowedUpdates: ['message', 'message_reaction', 'callback_query', 'pre_checkout_query', 'channel_post', 'edited_channel_post', 'guest_message', 'guest_query', 'inline_query'],
+                allowedUpdates: ['message', 'message_reaction', 'callback_query', 'pre_checkout_query', 'channel_post', 'edited_channel_post', 'guest_message', 'guest_query', 'inline_query', 'my_chat_member', 'chat_member'],
                 dropPendingUpdates: true
             });
             console.log('🚀 Бот успешно запущен и подключен к Telegram!');
