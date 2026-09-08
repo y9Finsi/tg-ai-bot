@@ -441,7 +441,8 @@ export async function handleGroupMention(bot, ctx) {
             threadId: msg.message_thread_id || null,
             senderName,
             replyingTo,
-            eventIds: savedEvent?.id ? [savedEvent.id] : []
+            eventIds: savedEvent?.id ? [savedEvent.id] : [],
+            bot
         });
         clearInterval(typingInterval);
 
@@ -596,7 +597,8 @@ export async function handleGuestQuery(bot, ctx) {
             chatId,
             senderName,
             replyingTo,
-            eventIds: savedEvent?.id ? [savedEvent.id] : []
+            eventIds: savedEvent?.id ? [savedEvent.id] : [],
+            bot
         });
         const replyText = response?.text ? cleanResponseText(response.text).replace(/\|\|\|/g, '\n') : '';
 

@@ -9,7 +9,7 @@ const PRIVATE_ACTIONS = Object.freeze([
 
 export const SURFACE_POLICY = Object.freeze({
     CHAT: { memory: 'private', allowedTools: PRIVATE_READ.concat(PRIVATE_ACTIONS), forbiddenTools: [], output: 'telegram_bubbles' },
-    GROUP: { memory: 'none', allowedTools: SAFE_READ, forbiddenTools: ['search_archive_memory', 'set_reaction', 'schedule_followup', 'schedule_reminder'], output: 'telegram_bubbles' },
+    GROUP: { memory: 'none', allowedTools: SAFE_READ.concat(['send_photo']), forbiddenTools: ['search_archive_memory', 'set_reaction', 'schedule_followup', 'schedule_reminder'], output: 'telegram_bubbles' },
     CHANNEL: { memory: 'public_only', allowedTools: ['web_search', 'weather', 'spb_places', 'get_channel_posts', 'send_content'], forbiddenTools: ['search_archive_memory', 'send_voice', 'schedule_followup', 'schedule_reminder'], output: 'channel_post' },
     COMMENTS: { memory: 'public_only', allowedTools: SAFE_READ, forbiddenTools: ['search_archive_memory', 'set_reaction', 'send_voice', 'schedule_followup', 'schedule_reminder'], output: 'comment_json' },
     INITIATIVE: { memory: 'private_limited', allowedTools: PRIVATE_READ.concat(['send_photo', 'send_voice', 'send_content', 'set_reaction', 'record_open_thread']), forbiddenTools: ['schedule_followup', 'schedule_reminder'], output: 'telegram_bubbles' }

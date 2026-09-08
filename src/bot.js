@@ -23,6 +23,7 @@ import { broadcastQueue, startBroadcastWorker, stopBroadcastWorker } from './bro
 import { promptTemplates, getPromptSection } from './prompts.js';
 import { generateResponse } from './ai.js';
 import { cleanResponseText } from './utils/response_text.js';
+import { setBotInstance } from './utils/bot_instance.js';
 
 import { setupHelp } from './handlers/help.js';
 import { setupProfile } from './handlers/profile.js';
@@ -49,6 +50,7 @@ for (const envName of requiredEnvs) {
 }
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
+setBotInstance(bot);
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 const DEFAULT_CONTENT_CHANNEL_ID = '-1003729264804';
 
@@ -1206,7 +1208,12 @@ bot.on('successful_payment', async (ctx) => {
 bot.start(async (ctx) => {
     clearUserDebounceBuffer(ctx.from.id);
     await processReferral(ctx);
-    if (!(await requireTerms(ctx, ctx.from.id))) return; // <-- ДОБАВИЛИ ЭТО
+    if (!(await requireTerms(ctx, ctx.from.id))) return;
+    const payload = String(ctx.payload || '').trim();
+    if (payload.startsWith('gphoto')) {
+        ctx.reply("О, ты из группы пришёл) Ну привет! Напиши мне что-нибудь в ответ или загляни в меню ниже — теперь общаемся лично без лишних глаз.", getMainKeyboard(ctx.from.id));
+        return;
+    }
     ctx.reply("Привет! Я нейросеть. Воспользуйся меню ниже для настройки и управления профилем 👇", getMainKeyboard(ctx.from.id));
 });
 

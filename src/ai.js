@@ -1121,7 +1121,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                     isPublicContext: Boolean(isPublicContext),
                     chatId: chatId || null,
                     threadId: threadId || null,
-                    anchorEventId: anchorEventId || null
+                    anchorEventId: anchorEventId || null,
+                    bot: envelope.bot || null
                 }
             });
             let toolResultContent = '';
@@ -1166,7 +1167,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                 });
                 if (name === 'send_photo') {
                     toolPhotoAttempted = true;
-                    if (execRes?.status === 'success' && execRes?.data?.photo) {
+                    if (execRes?.status === 'success' && execRes?.data?.photo && !execRes?.data?.sentToPm) {
                         toolPhotoPayload = execRes.data.photo;
                         toolPhotoRecordId = execRes.data.photoRecordId || null;
                         toolPhotoCaption = execRes.data.photoCaption || null;
@@ -1202,9 +1203,12 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                 }
                 if (name === 'send_photo') {
                     if (execRes?.status === 'success') {
+                        const isSentToPm = Boolean(execRes?.data?.sentToPm);
                         messages.push({
                             role: 'system',
-                            content: '[ФОТО ПРИКРЕПЛЕНО]: Фото успешно отправлено собеседнику в чат. Напиши только очень короткую живую подводку («держи», «лови», «зацени», «ну как?») либо оставь пустой ответ, не рассуждая об инструкциях.'
+                            content: isSentToPm
+                                ? '[ФОТО ОТПРАВЛЕНО В ЛС]: Фото успешно отправлено собеседнику в личные сообщения (в ЛС). В текущем групповом чате напиши только очень короткую живую реплику с интригой (например: «в лс скинула, чекай», «в лс загляни, при всех такое показывать не буду») без системных тегов и рассуждений.'
+                                : '[ФОТО ПРИКРЕПЛЕНО]: Фото успешно отправлено собеседнику в чат. Напиши только очень короткую живую подводку («держи», «лови», «зацени», «ну как?») либо оставь пустой ответ, не рассуждая об инструкциях.'
                         });
                     } else {
                         const errMsg = execRes?.error?.message || 'Фото сейчас сделать не получилось.';
