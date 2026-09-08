@@ -18,6 +18,7 @@ import { createPlategaInvoice, checkPlategaInvoice } from './services/platega.js
 import { processReferral } from './services/referral.js';
 import { aiQueue, startWorker, stopWorker as stopAiWorker } from './queue.js';
 import { startTyping, stopTyping } from './typing_manager.js';
+import { recordGroupParticipant } from './services/social_resolver.js';
 import { Telegraf, Markup } from 'telegraf';
 import { broadcastQueue, startBroadcastWorker, stopBroadcastWorker } from './broadcast.js';
 import { promptTemplates, getPromptSection } from './prompts.js';
@@ -1471,6 +1472,15 @@ bot.on('message_reaction', async (ctx) => {
 
 bot.on('text', async (ctx) => {
     if (ctx.chat && (ctx.chat.type === 'supergroup' || ctx.chat.type === 'group')) {
+        if (ctx.from?.id && ctx.chat?.id) {
+            recordGroupParticipant({
+                chatId: ctx.chat.id,
+                userId: ctx.from.id,
+                username: ctx.from.username,
+                firstName: ctx.from.first_name
+            }).catch(() => {});
+        }
+
         const handledMention = await handleGroupMention(bot, ctx).catch(err => {
             console.error('[GROUP MENTION ERROR]:', err.message);
             return false;

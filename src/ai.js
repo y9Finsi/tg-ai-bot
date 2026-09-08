@@ -398,6 +398,18 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         console.warn(`[MEMORY RETRIEVAL FALLBACK] user ${userId}:`, memoryError.message);
     }
     const memories = isPublic ? [] : (memoryRetrieval.facts || []);
+    let socialContextText = '';
+    if (!isPublic) {
+        try {
+            const { getRecentSocialMentionsForUser } = await import('./services/social_resolver.js');
+            const mentions = await getRecentSocialMentionsForUser(userId, null, { limit: 3 });
+            if (mentions.length > 0) {
+                socialContextText = '\n\n[СОЦИАЛЬНЫЙ КОНТЕКСТ И ОБЩИЕ ЗНАКОМЫЕ]:\n' +
+                    mentions.map(m => `- Твоя знакомая/друг ${m.sender_name} передавал(а)/говорил(а): "${m.message_content}"`).join('\n') +
+                    '\nЕсли собеседник спрашивает о друзьях («что Ютя говорила?», «кто мне писал?») или это уместно к разговору — можешь упомянуть это своими словами (живо, с легким подколом, без официоза).';
+            }
+        } catch {}
+    }
     const gapSeconds = Number.isFinite(Number(preMessageGapSeconds))
         ? Math.max(0, Number(preMessageGapSeconds))
         : (lastEvent ? Math.max(0, Math.floor((new Date(firstMessageAt || now).getTime() - new Date(lastEvent.occurred_at).getTime()) / 1000)) : 0);
@@ -433,6 +445,10 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
             ? '\nВАЖНО (ДЛИННАЯ ПАУЗА / НОВЫЙ ДЕНЬ): Прошло много времени с прошлого разговора. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО отвечать на старые ночные реплики или продолжать прошлые обиды/споры. Начинай сообщение с чистого листа в контексте текущего времени (утро/день).'
             : '';
         modeInstruction = `\n\n[ТИП ИНИЦИАТИВЫ]: ${initiativeKind || 'open'}\n[ПРИЧИНА]: ${initiativeReason || 'естественное продолжение разговора'}${freshDayRule}\nНе раскрывай приватные данные других пользователей.${initiativePrompt}`;
+    }
+
+    if (socialContextText) {
+        modeInstruction += socialContextText;
     }
 
     let tamagotchiInstruction = "";

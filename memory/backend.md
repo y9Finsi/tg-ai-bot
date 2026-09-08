@@ -57,6 +57,7 @@ src/
     - `009_typed_memory.sql` — типизированная семантическая память (`memory_fact`, `memory_outbox`).
     - `011_migrate_legacy_memories.sql` — миграция оставшихся записей из `user_memories` в `memory_fact`.
     - `20260908_content_life.sql` — таблицы Content Life (`content_sources`, `content_discoveries`, `content_browse_sessions`, `content_browse_decisions`, `content_usage`, `content_scrape_runs`).
+    - `20260909_social_graph.sql` — социальный граф (`group_participants`, `user_social_edges`, `social_relays`).
 - **Схема v3:** `src/db/schema_v3.sql` содержит полную картину схемы базы данных.
 
 ---
@@ -86,10 +87,15 @@ src/
      - Вызов `generateLeraVoice({ text })` синтезирует живой голос Леры через CosyVoice.
      - Изоляция follow-up шага: текст войса не скармливается обратно в LLM, чтобы исключить утечки мета-рассуждений. В Telegram отправляется чистый войс с нативным индикатором `record_voice`.
      - Нативный статус `upload_photo` и `record_voice` в [`typing_manager.js`](file:///Users/bogdan/Desktop/Telegram-AI-bot-with-payments-main/src/typing_manager.js) вместо текстовых заглушек.
+   - **Социальный граф и передача сообщений (`relay_message_to_friend.js`, `record_friend.js`, `social_resolver.js`):**
+     - Управление кругом общения: автоматический сбор участников общих групп (`group_participants`), реферальные связи (`referrals`), явное объявление («@user мой друг» -> `user_social_edges`).
+     - Entity Resolution: защита от коллизий при совпадении имен (`AMBIGUOUS`), поиск по юзернеймам, запрет отправки незнакомцам без `/start` (`BOT_NEVER_STARTED`).
+     - Отложенная передача сообщений друзьям через BullMQ (`social-relay-deliver`) с имитацией задержки и генерацией текста в характере Леры.
+     - Подмес недавних сплетен/переданных фактов в контекст при вопросе о друзьях.
 
 2. **Pre-flight Response Judge (`src/ai/response_judge.js`):**
    - JSON-валидация ответа: `{ passed, verdict, code, reason, relationshipEvent, arousalEvent }`.
-   - **Контракт `SYSTEM_LEAK`:** Автоматическая отбраковка любых служебных инструкций и мета-мыслей модели («НЕ повторяй...», «Не начинай с...», «Ответь своими словами»).
+   - **Контракт `SYSTEM_LEAK`:** Автоматическая отбраковка любых служебных инструкций и мета-мыслей модели («НЕ повторяй...`, «Не начинай с...», «Ответь своими словами»).
    - **Reflective Retry:** При отклонении реплики передает модели точную причину (`judgeResult.reason`) для естественного исправления.
 
 3. **Ситуационная память с динамическим TTL (`src/ai/memory_extractor.js`):**

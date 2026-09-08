@@ -4,7 +4,8 @@ const SAFE_READ = Object.freeze(['web_search', 'weather', 'spb_places', 'get_cha
 const PRIVATE_READ = Object.freeze([...SAFE_READ, 'search_archive_memory']);
 const PRIVATE_ACTIONS = Object.freeze([
     'send_photo', 'send_voice', 'send_content', 'set_reaction',
-    'schedule_followup', 'schedule_reminder', 'record_open_thread'
+    'schedule_followup', 'schedule_reminder', 'record_open_thread',
+    'relay_message_to_friend', 'record_friend'
 ]);
 
 export const SURFACE_POLICY = Object.freeze({

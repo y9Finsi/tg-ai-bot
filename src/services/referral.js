@@ -18,6 +18,15 @@ export async function processReferral(bot, newUserId, referrerId) {
             [referrerId, newUserId]
         );
 
+        // Создаем двустороннюю связь дружбы в социальном графе
+        try {
+            const { addSocialEdge } = await import('./social_resolver.js');
+            await addSocialEdge({ userId: referrerId, friendUserId: newUserId, relationSource: 'referral' });
+            await addSocialEdge({ userId: newUserId, friendUserId: referrerId, relationSource: 'referral' });
+        } catch (edgeErr) {
+            console.warn('[REFERRAL SOCIAL EDGE ERROR]:', edgeErr.message);
+        }
+
         const BONUS_REQUESTS = 5;
         await addFreeRequests(referrerId, BONUS_REQUESTS);
         await addFreeRequests(newUserId, BONUS_REQUESTS);

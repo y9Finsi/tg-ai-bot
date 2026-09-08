@@ -18,6 +18,7 @@ import { sendCatalogContent, addLeraContent } from './content_service.js';
 import { sendTypingAction, stopTyping } from './typing_manager.js';
 import { getRoutingSettings } from './ai/intent_router.js';
 import { getEffectiveInitiativeLimit } from './initiative_service.js';
+import { markRelayDelivered, setSocialQueue } from './services/social_resolver.js';
 
 // Парсим URL из .env и жестко задаем IPv4 (family: 4)
 const redisUrl = new URL(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
@@ -38,6 +39,7 @@ export const aiQueue = new Queue('ai-requests', {
 });
 aiQueue.on('error', () => {});
 setFollowupQueue(aiQueue);
+setSocialQueue(aiQueue);
 let aiWorker = null;
 const userJobLanes = new Map();
 
@@ -434,6 +436,40 @@ async function processReminderJob(bot, job) {
         console.error(`[USER REMINDER SEND ERROR] user ${userId}:`, sendErr.message);
         if (sendErr.response?.error_code === 403 && sendErr.message?.includes('bot was blocked by the user')) {
             await setBlockStatus(userId, true).catch(() => {});
+        }
+    }
+}
+
+async function processSocialRelayJob(bot, job) {
+    const { relayId, targetId, senderName, targetName, message, vibeTag } = job.data;
+    const [targetUser, mute] = await Promise.all([
+        getUser(targetId),
+        getActiveMute(targetId)
+    ]);
+
+    if (!targetUser || targetUser.is_blocked || mute) {
+        console.log(`[SOCIAL RELAY SKIPPED] target ${targetId}: заблокирован или в муте`);
+        return;
+    }
+
+    const vibeHint = vibeTag ? ` В вайбе/тональности: ${vibeTag}.` : '';
+    const prompt = `[СОЦИАЛЬНАЯ ПЕРЕДАЧА ОТ ЗНАКОМОГО]:
+Твоя подруга/знакомая ${senderName} просила тебя передать ${targetName}: «${message}».${vibeHint}
+Напиши ему в личку своими словами в твоем фирменном питерском стиле (живо, с легким подколом, без официоза, без смайликов и шаблонных фраз). Упомяни, что это ${senderName} просила передать. Не цитируй системные логи.`;
+
+    const response = await generateAiInitiativeResponse(targetId, prompt, { initiativeKind: 'social_relay' });
+    if (!response?.text) return;
+
+    try {
+        await sendTextLadder(bot, targetId, response.text);
+        if (relayId) {
+            await markRelayDelivered(relayId);
+        }
+        console.log(`[SOCIAL RELAY DELIVERED] От ${senderName} к ${targetName} (${targetId})`);
+    } catch (sendErr) {
+        console.error(`[SOCIAL RELAY SEND ERROR] target ${targetId}:`, sendErr.message);
+        if (sendErr.response?.error_code === 403 && sendErr.message?.includes('bot was blocked by the user')) {
+            await setBlockStatus(targetId, true).catch(() => {});
         }
     }
 }
@@ -914,7 +950,7 @@ async function processAiJob(bot, job) {
 export function startWorker(bot) {
     if (aiWorker) return aiWorker;
     aiWorker = new Worker('ai-requests', job => runUserJob(
-        job.data.userId,
+        job.data.targetId || job.data.userId,
         () => job.name === 'initiative'
             ? processInitiativeJob(bot, job)
             : job.name === 'initiative-test'
@@ -925,6 +961,8 @@ export function startWorker(bot) {
                 ? processReminderJob(bot, job)
             : job.name === 'content-delivery'
                 ? processContentDeliveryJob(bot, job)
+            : job.name === 'social-relay-deliver'
+                ? processSocialRelayJob(bot, job)
                 : processAiJob(bot, job)
     ), {
         connection,
