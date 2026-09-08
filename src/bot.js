@@ -1499,6 +1499,7 @@ const handleBotGroupJoin = async (ctx, reason = 'join') => {
             isPublicContext: true,
             chatId: ctx.chat.id,
             senderName: inviterName,
+            ruleId: 'rule_group_welcome',
             systemOverlay: welcomePrompt
         });
 

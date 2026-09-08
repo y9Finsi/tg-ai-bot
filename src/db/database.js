@@ -2344,6 +2344,30 @@ export const DEFAULT_LERA_COMBAT_RULES = Object.freeze([
         max_tokens: 230,
         temperature: 0.70,
         category: 'rule'
+    },
+    {
+        id: 'rule_group_chat',
+        title: 'Группа / Общение и гостевой режим',
+        surface: 'GROUP',
+        surfaces: ['GROUP'],
+        mode: 'ALL',
+        enabled: true,
+        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'routing_core', 'routing_casual', 'prompt_group_chat', 'prompt_tools'],
+        max_tokens: 220,
+        temperature: 0.70,
+        category: 'rule'
+    },
+    {
+        id: 'rule_group_welcome',
+        title: 'Группа / Приветствие при добавлении',
+        surface: 'GROUP',
+        surfaces: ['GROUP'],
+        mode: 'ALL',
+        enabled: true,
+        attachedPromptIds: ['prompt_bio', 'prompt_character', 'prompt_speech', 'prompt_group_welcome'],
+        max_tokens: 150,
+        temperature: 0.72,
+        category: 'rule'
     }
 ]);
 

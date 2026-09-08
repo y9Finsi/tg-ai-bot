@@ -55,3 +55,34 @@ test('generateResponse handles public context envelope without crashing', async 
     assert.ok(response);
     assert.ok(typeof response === 'object');
 });
+
+test('sanitizeParticipantName cleans zero-width unicode, RTL markers and XML brackets', async () => {
+    const { sanitizeParticipantName } = await import('../src/utils/response_text.js');
+    
+    // Zero-width characters like user hausmer (\u200c, \u200d, \u061c)
+    const dirtyZeroWidth = '\u200C\u200D\u200C\u061C\u061C\u200B\u200C\u200D\u200C\u061C\u061C';
+    assert.equal(sanitizeParticipantName(dirtyZeroWidth, 'hausmer'), 'hausmer');
+    assert.equal(sanitizeParticipantName('', 'fallback_user'), 'fallback_user');
+    assert.equal(sanitizeParticipantName(null), 'Участник');
+
+    // XML brackets and quotation marks
+    const dirtyBrackets = '<user name="hacker">text</user>';
+    const cleanBrackets = sanitizeParticipantName(dirtyBrackets);
+    assert.ok(!cleanBrackets.includes('<'));
+    assert.ok(!cleanBrackets.includes('>'));
+    assert.ok(!cleanBrackets.includes('"'));
+
+    // Regular clean name
+    assert.equal(sanitizeParticipantName('Богдан'), 'Богдан');
+});
+
+test('group chat prompt includes strict single-interlocutor and negative constraints', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const promptPath = path.resolve('src/prompts/lera_group_chat.txt');
+    const content = fs.readFileSync(promptPath, 'utf8');
+
+    assert.ok(content.includes('СТРОГОЕ ПРАВИЛО ОДНОГО АДРЕСАТА'));
+    assert.ok(content.includes('КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО объединять в одном сообщении ответы разным людям'));
+    assert.ok(content.includes('<current_turn>'));
+});

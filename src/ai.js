@@ -20,7 +20,7 @@ import { evaluateLeraReply, getQualityFallback, requiresReplyRetry } from './ai/
 import { classifyIntent, getModeGenerationParams, getModeIntentConfig, getRoutingSettings } from './ai/intent_router.js';
 import { computeClimaxState, getClimaxPromptInstruction } from './ai/climax_engine.js';
 import { judgeLeraReply } from './ai/response_judge.js';
-import { cleanResponseText } from './utils/response_text.js';
+import { cleanResponseText, sanitizeParticipantName } from './utils/response_text.js';
 import { generateLeraPhoto } from './services/image_generator.js';
 import { generateLeraVoice } from './services/voice_generator.js';
 import { actionRegistry, executeAction } from './radiant/actions/index.js';
@@ -351,7 +351,7 @@ async function generateVoiceForText(user, voiceText) {
 
 // --- 3. ПАЙПЛАЙН AI ДВИЖКА ---
 
-async function buildMessagePayload(user, userId, { userText, photoUrls = [], isInitiative, routingMode = 'CASUAL', initiativeReason = null, initiativeKind = null, contentCandidates = [], batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, actionResult = null, climaxState = null, isPublicContext = false, chatId = null, threadId = null, senderName = null, replyingTo = null }) {
+async function buildMessagePayload(user, userId, { userText, photoUrls = [], isInitiative, routingMode = 'CASUAL', initiativeReason = null, initiativeKind = null, contentCandidates = [], batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, actionResult = null, climaxState = null, isPublicContext = false, chatId = null, threadId = null, senderName = null, replyingTo = null, systemOverlay = null, ruleId = null }) {
     const isPublic = Boolean(isPublicContext || (chatId && String(chatId) !== String(userId)));
     const productionRoutingSettings = await getRoutingSettings();
     const productionIntentConfig = getModeIntentConfig(routingMode, productionRoutingSettings);
@@ -490,7 +490,9 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         ...productionIntentConfig,
         surface,
         isPublicContext: isPublic,
-        context: templateContext
+        context: templateContext,
+        ruleId,
+        systemOverlay
     });
 
     // Формируем историю предыдущих сообщений для multi-turn контекста (включая контент)
@@ -618,8 +620,15 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
                 if (cleanContent) {
                     if (isPublic && !isLera) {
                         const rawSpeaker = ev.metadata?.sender_name || (user?.first_name || 'Участник');
-                        const speaker = String(rawSpeaker).replace(/[\[\]<>{}\r\n]/g, '').slice(0, 25).trim() || 'Участник';
-                        cleanContent = `<user name="${speaker}">${cleanContent}</user>`;
+                        const speaker = sanitizeParticipantName(rawSpeaker, user?.username);
+                        const repSender = ev.metadata?.replying_to?.sender ? sanitizeParticipantName(ev.metadata.replying_to.sender) : null;
+                        const repAttr = repSender ? ` reply_to="${repSender}"` : '';
+                        cleanContent = `<user name="${speaker}"${repAttr}>${cleanContent}</user>`;
+                    } else if (isPublic && isLera) {
+                        const targetUser = ev.metadata?.replied_to_user ? sanitizeParticipantName(ev.metadata.replied_to_user) : null;
+                        if (targetUser) {
+                            cleanContent = `[ответ для ${targetUser}]: ${cleanContent}`;
+                        }
                     }
                     messages.push({
                         role: isLera ? 'assistant' : 'user',
@@ -777,14 +786,16 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         let currentTurnText = userText;
         if (isPublic && userText) {
             const rawSpeaker = senderName || user?.first_name || 'Участник';
-            const speaker = String(rawSpeaker).replace(/[\[\]<>{}\r\n]/g, '').slice(0, 25).trim() || 'Участник';
-            if (replyingTo) {
-                const repSender = String(replyingTo.sender || 'Участник').replace(/[\[\]<>{}\r\n]/g, '').slice(0, 25).trim();
-                const repSnippet = String(replyingTo.text || '').replace(/[\r\n]+/g, ' ').slice(0, 150).trim();
-                currentTurnText = `<user name="${speaker}">[в ответ на сообщение (${repSender}): «${repSnippet}»]\n${userText}</user>`;
-            } else {
-                currentTurnText = `<user name="${speaker}">${userText}</user>`;
+            const speaker = sanitizeParticipantName(rawSpeaker, user?.username);
+            const repSender = replyingTo?.sender ? sanitizeParticipantName(replyingTo.sender) : null;
+            const repAttr = repSender ? ` reply_to="${repSender}"` : '';
+            let repSnippet = '';
+            const quoteOrText = replyingTo?.quote || replyingTo?.text;
+            if (quoteOrText) {
+                const snippet = String(quoteOrText).replace(/[\r\n]+/g, ' ').slice(0, 120).trim();
+                repSnippet = `[в ответ на сообщение (${repSender || 'Участник'}): «${snippet}»]\n`;
             }
+            currentTurnText = `<current_turn from="${speaker}"${repAttr}>\n${repSnippet}${userText}\n</current_turn>`;
         }
 
         const lastMsg = messages.at(-1);
@@ -942,7 +953,7 @@ async function recordAiTransaction(userId, usage) {
 
 // --- 4. ДЕКЛАРАТИВНЫЙ ЕДИНЫЙ ДВИЖОК ---
 
-async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', isVoiceRequest = false, classifierResult = null, actionRouting = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, climaxState = null, isPublicContext = false, chatId = null, threadId = null, senderName = null, replyingTo = null, sendPhoto = false, followupTopic = null } = {}) {
+async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', isVoiceRequest = false, classifierResult = null, actionRouting = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, climaxState = null, isPublicContext = false, chatId = null, threadId = null, senderName = null, replyingTo = null, sendPhoto = false, followupTopic = null, systemOverlay = null, ruleId = null } = {}) {
     const user = await getUser(userId);
     if (!user) return null;
 
@@ -957,7 +968,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         userText, photoUrls, isInitiative, routingMode, initiativeReason,
         initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds,
         firstMessageAt, actionResult: resolvedActionRouting?.actionResult || null,
-        climaxState, isPublicContext, chatId, threadId, senderName, replyingTo
+        climaxState, isPublicContext, chatId, threadId, senderName, replyingTo,
+        systemOverlay, ruleId
     });
     const effectivePhotoRequest = isPhotoRequest || Boolean(sendPhoto);
     const surface = isInitiative ? 'INITIATIVE' : (isPublicContext ? (chatId ? 'GROUP' : 'CHANNEL') : 'CHAT');
@@ -1868,7 +1880,9 @@ export async function generateResponse(userId, text, envelope = {}) {
         chatId: scopeChatId,
         threadId: scopeThreadId,
         senderName: envelope.senderName,
-        replyingTo: envelope.replyingTo
+        replyingTo: envelope.replyingTo,
+        systemOverlay: envelope.systemOverlay || null,
+        ruleId: envelope.ruleId || null
     });
 
     return aiResponse;

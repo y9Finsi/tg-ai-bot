@@ -16,7 +16,7 @@ import { getCachedOpenAIClient, logLlmTrace } from './ai/llm_client.js';
 import { parseLlmJson } from './utils/robust_json.js';
 import { getRoutingSettings, getModeGenerationParams } from './ai/intent_router.js';
 import { getRoutedSystemPrompt } from './prompts.js';
-import { cleanResponseText } from './utils/response_text.js';
+import { cleanResponseText, sanitizeParticipantName } from './utils/response_text.js';
 import { judgeLeraReply } from './ai/response_judge.js';
 
 // Valid Telegram emoji reactions
@@ -399,24 +399,25 @@ export async function handleGroupMention(bot, ctx) {
     }
 
     const rawName = msg.from?.first_name || msg.from?.username || 'Участник';
-    const senderName = String(rawName).replace(/[\[\]<>{}\r\n]/g, '').slice(0, 25).trim() || 'Участник';
+    const senderName = sanitizeParticipantName(rawName, msg.from?.username || 'Участник');
 
     // Контекст реплая
     let replyingTo = null;
     if (msg.reply_to_message) {
-        const isReplyToLera = msg.reply_to_message.from?.id === ctx.botInfo?.id;
+        const isReplyToLera = msg.reply_to_message.from?.id === ctx.botInfo?.id || msg.reply_to_message.from?.username?.toLowerCase() === botUsername;
         const repRawName = isReplyToLera
             ? 'Лера'
             : (msg.reply_to_message.from?.first_name || msg.reply_to_message.from?.username || 'Участник');
-        const repSender = String(repRawName).replace(/[\[\]<>{}\r\n]/g, '').slice(0, 25).trim();
-        const repText = msg.reply_to_message.text
+        const repSender = sanitizeParticipantName(repRawName, msg.reply_to_message.from?.username || 'Участник');
+        const repText = msg.quote?.text
+            || msg.reply_to_message.text
             || msg.reply_to_message.caption
             || (msg.reply_to_message.sticker ? '[Стикер]' : (msg.reply_to_message.photo ? '[Фото]' : (msg.reply_to_message.voice ? '[Голосовое]' : '[Медиа]')));
-        replyingTo = { sender: repSender, text: repText, isReplyToLera };
+        replyingTo = { sender: repSender, text: repText, isReplyToLera, quote: msg.quote?.text || null };
     }
 
     // Сохраняем входящее сообщение в историю группы
-    await appendConversationEvent({
+    const savedEvent = await appendConversationEvent({
         userId,
         chatId: ctx.chat.id,
         threadId: msg.message_thread_id || null,
@@ -439,7 +440,8 @@ export async function handleGroupMention(bot, ctx) {
             chatId: ctx.chat.id,
             threadId: msg.message_thread_id || null,
             senderName,
-            replyingTo
+            replyingTo,
+            eventIds: savedEvent?.id ? [savedEvent.id] : []
         });
         clearInterval(typingInterval);
 
@@ -536,11 +538,19 @@ export async function handleGuestQuery(bot, ctx) {
     if (!guestQueryId) return false;
 
     try {
-        const botUsername = ctx.botInfo?.username?.toLowerCase() || 'gexyy_bot';
-        let userQuery = String(gq.text || gq.query || gq.caption || ctx.message?.text || '').replace(new RegExp(`@${botUsername}`, 'gi'), '').trim();
         const fromUser = gq.from || gq.guest_bot_caller_user || ctx.from;
         const userId = fromUser?.id || 0;
         const chatId = gq.chat?.id || ctx.chat?.id || userId;
+
+        // Защита от параллельных дублирующихся вызовов одного guest_query
+        const dedupeKey = `gq_${guestQueryId}`;
+        if (!(await claimChannelProcessedMessage(chatId, dedupeKey))) {
+            console.log(`[GUEST QUERY] Пропуск дублирующегося запроса: ${guestQueryId}`);
+            return false;
+        }
+
+        const botUsername = ctx.botInfo?.username?.toLowerCase() || 'gexyy_bot';
+        let userQuery = String(gq.text || gq.query || gq.caption || ctx.message?.text || '').replace(new RegExp(`@${botUsername}`, 'gi'), '').trim();
 
         if (userId > 0 && fromUser) {
             updateUserMeta(userId, {
@@ -551,23 +561,42 @@ export async function handleGuestQuery(bot, ctx) {
         }
 
         const rawName = fromUser?.first_name || fromUser?.username || 'Участник';
-        const senderName = String(rawName).replace(/[\[\]<>{}\r\n]/g, '').slice(0, 25).trim() || 'Участник';
+        const senderName = sanitizeParticipantName(rawName, fromUser?.username || 'Участник');
+
+        // Контекст реплая в гостевом запросе
+        let replyingTo = null;
+        const repMsg = gq.reply_to_message;
+        if (repMsg) {
+            const isReplyToLera = repMsg.from?.id === ctx.botInfo?.id || repMsg.from?.username?.toLowerCase() === botUsername;
+            const repCaller = repMsg.guest_bot_caller_user;
+            const repRawName = isReplyToLera
+                ? 'Лера'
+                : (repCaller?.first_name || repCaller?.username || repMsg.from?.first_name || repMsg.from?.username || 'Участник');
+            const repSender = sanitizeParticipantName(repRawName, repCaller?.username || repMsg.from?.username || 'Участник');
+            const repText = gq.quote?.text
+                || repMsg.text
+                || repMsg.caption
+                || (repMsg.sticker ? '[Стикер]' : (repMsg.photo ? '[Фото]' : (repMsg.voice ? '[Голосовое]' : '[Медиа]')));
+            replyingTo = { sender: repSender, text: repText, isReplyToLera, quote: gq.quote?.text || null };
+        }
 
         // Сохраняем входящее событие
-        await appendConversationEvent({
+        const savedEvent = await appendConversationEvent({
             userId,
             chatId,
             eventType: 'MESSAGE',
             role: 'user',
             content: userQuery || 'привет',
-            metadata: { sender_name: senderName },
+            metadata: { sender_name: senderName, replying_to: replyingTo },
             status: 'COMPLETED'
         }).catch(() => null);
 
         const response = await generateResponse(userId, userQuery || 'привет', {
             isPublicContext: true,
             chatId,
-            senderName
+            senderName,
+            replyingTo,
+            eventIds: savedEvent?.id ? [savedEvent.id] : []
         });
         const replyText = response?.text ? cleanResponseText(response.text).replace(/\|\|\|/g, '\n') : '';
 
@@ -592,15 +621,17 @@ export async function handleGuestQuery(bot, ctx) {
         }
 
         // Сохраняем исходящее событие
-        await appendConversationEvent({
-            userId,
-            chatId,
-            eventType: 'MESSAGE',
-            role: 'assistant',
-            content: replyText,
-            metadata: { replied_to_user: senderName },
-            status: 'COMPLETED'
-        }).catch(() => null);
+        if (replyText) {
+            await appendConversationEvent({
+                userId,
+                chatId,
+                eventType: 'MESSAGE',
+                role: 'assistant',
+                content: replyText,
+                metadata: { replied_to_user: senderName },
+                status: 'COMPLETED'
+            }).catch(() => null);
+        }
 
         return true;
     } catch (err) {

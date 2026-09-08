@@ -2980,7 +2980,9 @@ export function createAdminApp(bot = null) {
             prompt_context_rules: getPromptSection('context_template'),
             prompt_channel_persona: getPromptSection('channel_persona'),
             prompt_channel_rules: getPromptSection('channel_rules'),
-            prompt_initiative: getPromptSection('initiative_directive')
+            prompt_initiative: getPromptSection('initiative_directive'),
+            prompt_group_chat: getPromptSection('group_chat'),
+            prompt_group_welcome: getPromptSection('group_welcome')
         };
         const customBlocks = Array.isArray(p.blocks) ? p.blocks.filter(b => b.category === 'prompt_module') : [];
         for (const cb of customBlocks) {

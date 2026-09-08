@@ -71,3 +71,18 @@ export function splitResponseMessages(text) {
 export function findResponseFormatIssues(text) {
     return [];
 }
+
+export function sanitizeParticipantName(rawName, fallback = 'Участник') {
+    const clean = String(rawName || '')
+        .replace(/[\u200B-\u200D\uFEFF\u061C\u200E\u200F\u202A-\u202E\u0000-\u001F]/gu, '')
+        .replace(/["'<>\[\]{}]/g, '')
+        .trim()
+        .slice(0, 25);
+    if (clean) return clean;
+    const cleanFallback = String(fallback || '')
+        .replace(/[\u200B-\u200D\uFEFF\u061C\u200E\u200F\u202A-\u202E\u0000-\u001F]/gu, '')
+        .replace(/["'<>\[\]{}]/g, '')
+        .trim()
+        .slice(0, 25);
+    return cleanFallback || 'Участник';
+}
