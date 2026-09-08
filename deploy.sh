@@ -26,6 +26,7 @@ rsync -avz --delete \
   --exclude='.git' \
   --exclude='node_modules' \
   --exclude='.DS_Store' \
+  --exclude='.env' \
   ./ "$SERVER:$REMOTE_DIR/"
 
 echo "📦 Rebuilding & restarting Docker containers on server..."
