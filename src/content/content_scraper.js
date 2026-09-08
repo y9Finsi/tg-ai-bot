@@ -62,6 +62,42 @@ function parseYoutube(html, sourceUrl) {
     }] : [];
 }
 
+async function parseYandexMusic(target) {
+    const playlistMatch = target.match(/\/users\/([^\/]+)\/playlists\/(\d+)/i);
+    if (playlistMatch) {
+        const [, owner, kind] = playlistMatch;
+        const apiUrl = `https://api.music.yandex.net/users/${owner}/playlists/${kind}`;
+        const res = await fetch(apiUrl, { headers: { 'User-Agent': 'Yandex-Music-API' }, signal: AbortSignal.timeout(10000) });
+        if (!res.ok) throw new Error(`Yandex Music API ${res.status}`);
+        const data = await res.json();
+        const playlistTitle = data.result?.title || 'Плейлист Яндекс Музыки';
+        const tracks = (data.result?.tracks || []).slice(0, 30);
+        return tracks.map(t => {
+            const track = t.track || t;
+            const albumId = track.albums?.[0]?.id;
+            const artists = track.artists?.map(a => a.name).join(', ') || 'Неизвестный исполнитель';
+            const trackUrl = albumId ? `https://music.yandex.ru/album/${albumId}/track/${track.id}` : `https://music.yandex.ru/track/${track.id}`;
+            const cover = track.coverUri ? `https://${track.coverUri.replace('%%', '400x400')}` : null;
+            return {
+                externalId: String(track.id),
+                canonicalUrl: canonicalUrl(trackUrl),
+                title: `${track.title} — ${artists}`,
+                rawText: `Трек «${track.title}» от ${artists} из подборки «${playlistTitle}» на Яндекс Музыке`,
+                category: 'music',
+                metadata: {
+                    sourceUrl: target,
+                    artists,
+                    trackTitle: track.title,
+                    albumId,
+                    thumbnail: cover,
+                    durationMs: track.durationMs
+                }
+            };
+        });
+    }
+    return [];
+}
+
 export async function scrapeSource(source) {
     const url = String(source.url_or_handle || '').trim();
     let target = url;
@@ -70,6 +106,10 @@ export async function scrapeSource(source) {
     }
 
     const headers = { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 LeraContentBot/1.0' };
+
+    if (source.source_type === 'yandex_music' || /music\.yandex\./i.test(target)) {
+        return parseYandexMusic(target);
+    }
 
     if (source.source_type === 'youtube') {
         const isChannel = /channel\/|@|c\/|user\//i.test(target);
@@ -105,7 +145,14 @@ export async function scrapeSource(source) {
     const response = await fetch(target, { headers, signal: AbortSignal.timeout(10000) });
     if (!response.ok) throw new Error('HTTP ' + response.status);
     const body = await response.text();
-    if (source.source_type === 'telegram') return parseTelegram(body, target);
+    if (source.source_type === 'telegram') {
+        const items = parseTelegram(body, target);
+        const isHentaiSource = Array.isArray(source.topics) && source.topics.some(t => /хентай|манга|манхва|hentai|manga/i.test(t));
+        if (isHentaiSource) {
+            items.forEach(it => { it.category = 'hentai'; });
+        }
+        return items;
+    }
     if (source.source_type === 'youtube') return parseYoutube(body, target);
     return parseRss(body, target);
 }

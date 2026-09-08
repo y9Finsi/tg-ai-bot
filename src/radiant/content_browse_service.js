@@ -21,11 +21,26 @@ function evaluateDiscoveryQuality(item) {
     if (text.length >= 40 && text.length <= 2500) score += 30;
     else if (text.length > 0 && text.length < 40) score += 10;
 
-    if (['video', 'meme', 'music', 'telegram'].includes(item.category)) {
+    if (['video', 'meme', 'music', 'telegram', 'hentai'].includes(item.category)) {
         score += 20;
     }
 
-    if (url.includes('youtube.com') || url.includes('youtu.be') || url.includes('t.me/')) {
+    // Вкус Леры в музыке: русский инди, пост-панк, шугейз, построк (Дайте танк, Сироткин, Перемотка и др.)
+    if (item.category === 'music') {
+        const musicKeywords = /инди|пост-панк|шугейз|построк|дайте танк|сироткин|перемотк|молчат дома|буерак|пасош|ploho|автоспорт|источник|щенки|бонд с кнопкой|монеточка|settlers|питер|спб/i;
+        if (musicKeywords.test(title) || musicKeywords.test(text)) {
+            score += 25;
+        }
+    }
+
+    // Хентай и манга: фреймы, манхва, тайтлы, mangalib, remanga
+    if (item.category === 'hentai') {
+        if (/manga|манга|манхва|хентай|hentai|mangalib|remanga|глав[аы]|главу/i.test(title) || /manga|манга|манхва|хентай|hentai|mangalib|remanga|глав[аы]|главу/i.test(text) || url.includes('mangalib') || url.includes('remanga')) {
+            score += 25;
+        }
+    }
+
+    if (url.includes('youtube.com') || url.includes('youtu.be') || url.includes('t.me/') || url.includes('music.yandex.')) {
         score += 10;
     }
 
