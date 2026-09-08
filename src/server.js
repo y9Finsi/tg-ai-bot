@@ -124,6 +124,7 @@ import { evaluateLeraReply } from './ai/response_quality.js';
 import { CONTENT_CHANNEL_GUIDE } from './content_service.js';
 import { getDayProfile, isWithinWindow } from './radiant/day_profile.js';
 import { taskDefinition } from './radiant/task_catalog.js';
+import { scrapeSource, scrapeAllActiveSources } from './content/content_scraper.js';
 import { normalizePersonality, DEFAULT_PERSONALITY, personalityModifiers } from './radiant/personality.js';
 import { RANDOM_EVENTS } from './radiant/random_events.js';
 import { runContinuousDay } from './radiant/day_runner.js';
@@ -2053,6 +2054,170 @@ export function createAdminApp(bot = null) {
             res.status(500).json({ error: e.message });
         }
     });
+
+    app.get('/api/admin/content/sources', async (req, res) => {
+        try { const { rows } = await query('SELECT * FROM content_sources ORDER BY id DESC'); res.json({ success: true, sources: rows }); }
+        catch (e) { res.status(500).json({ error: e.message }); }
+    });
+    app.post('/api/admin/content/sources', async (req, res) => {
+        try {
+            const { name, source_type = 'rss', url_or_handle, topics = [] } = req.body || {};
+            if (!name || !url_or_handle) return res.status(400).json({ error: 'name и url_or_handle обязательны' });
+            const { rows } = await query('INSERT INTO content_sources (name, source_type, url_or_handle, topics) VALUES ($1,$2,$3,$4) ON CONFLICT (source_type,url_or_handle) DO UPDATE SET name=EXCLUDED.name, topics=EXCLUDED.topics RETURNING *', [name, source_type, url_or_handle, JSON.stringify(topics)]);
+            res.json({ success: true, source: rows[0] });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+    app.patch('/api/admin/content/sources/:id', async (req, res) => {
+        try {
+            const { rows } = await query(
+                'UPDATE content_sources SET enabled=COALESCE($2,enabled), name=COALESCE($3,name), last_error=NULL WHERE id=$1 RETURNING *',
+                [req.params.id, req.body?.enabled, req.body?.name]
+            );
+            if (!rows[0]) return res.status(404).json({ error: 'Источник не найден' });
+            res.json({ success: true, source: rows[0] });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+    app.delete('/api/admin/content/sources/:id', async (req, res) => {
+        try {
+            const { rows } = await query('DELETE FROM content_sources WHERE id = $1 RETURNING *', [req.params.id]);
+            if (!rows[0]) return res.status(404).json({ error: 'Источник не найден' });
+            res.json({ success: true, deleted: rows[0] });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+    app.get('/api/admin/content/runs', async (req, res) => {
+        try {
+            const { rows } = await query(`
+                SELECT r.*, s.name AS source_name, s.source_type, s.url_or_handle
+                FROM content_scrape_runs r
+                LEFT JOIN content_sources s ON s.id = r.source_id
+                ORDER BY r.started_at DESC
+                LIMIT 50
+            `);
+            res.json({ success: true, runs: rows });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+    app.get('/api/admin/content/discoveries', async (req, res) => {
+        try {
+            const params = [];
+            const conditions = [];
+
+            const status = String(req.query.status || '').trim().toUpperCase();
+            if (status && status !== 'ALL') {
+                params.push(status);
+                conditions.push(`d.lifecycle_status = $${params.length}`);
+            }
+
+            const sourceId = Number(req.query.source_id);
+            if (sourceId && !isNaN(sourceId)) {
+                params.push(sourceId);
+                conditions.push(`d.source_id = $${params.length}`);
+            }
+
+            const category = String(req.query.category || '').trim();
+            if (category && category !== 'all') {
+                params.push(category);
+                conditions.push(`d.category = $${params.length}`);
+            }
+
+            const q = String(req.query.q || '').trim();
+            if (q) {
+                params.push(`%${q}%`);
+                conditions.push(`(d.title ILIKE $${params.length} OR d.raw_text ILIKE $${params.length})`);
+            }
+
+            const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+
+            const [itemsRes, countsRes] = await Promise.all([
+                query(`
+                    SELECT d.*, s.name AS source_name, s.source_type
+                    FROM content_discoveries d
+                    LEFT JOIN content_sources s ON s.id = d.source_id
+                    ${where}
+                    ORDER BY d.created_at DESC
+                    LIMIT 200
+                `, params),
+                query(`
+                    SELECT
+                        COUNT(*)::int AS total,
+                        COUNT(CASE WHEN lifecycle_status = 'DISCOVERED' THEN 1 END)::int AS discovered,
+                        COUNT(CASE WHEN lifecycle_status = 'SAVED' THEN 1 END)::int AS saved,
+                        COUNT(CASE WHEN lifecycle_status = 'REJECTED' THEN 1 END)::int AS rejected,
+                        COUNT(CASE WHEN lifecycle_status = 'EXPIRED' THEN 1 END)::int AS expired
+                    FROM content_discoveries
+                `)
+            ]);
+
+            const counts = countsRes.rows[0] || { total: 0, discovered: 0, saved: 0, rejected: 0, expired: 0 };
+            res.json({ success: true, discoveries: itemsRes.rows, counts });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+    app.post('/api/admin/content/sources/:id/run', async (req, res) => {
+        const sourceId = Number(req.params.id);
+        try {
+            const sourceResult = await query('SELECT * FROM content_sources WHERE id=$1 AND enabled=TRUE', [sourceId]);
+            if (!sourceResult.rows[0]) return res.status(404).json({ error: 'Источник не найден или выключен' });
+            const source = sourceResult.rows[0];
+            const run = await query('INSERT INTO content_scrape_runs (source_id) VALUES ($1) RETURNING *', [sourceId]);
+            let items;
+            try {
+                items = await scrapeSource(source);
+            } catch (error) {
+                const nextErrors = (source.consecutive_errors || 0) + 1;
+                const shouldPause = nextErrors >= 3;
+                await query('UPDATE content_scrape_runs SET status=\'FAILED\', finished_at=NOW(), error=$2, error_count=1 WHERE id=$1', [run.rows[0].id, error.message]);
+                await query('UPDATE content_sources SET last_error=$2, consecutive_errors=$3, enabled=CASE WHEN $4=TRUE THEN FALSE ELSE enabled END WHERE id=$1', [sourceId, error.message, nextErrors, shouldPause]);
+                return res.status(502).json({ error: error.message, run: run.rows[0], consecutive_errors: nextErrors, auto_paused: shouldPause });
+            }
+            let added = 0;
+            for (const item of items) {
+                const inserted = await query('INSERT INTO content_discoveries (source_id, external_id, canonical_url, title, raw_text, metadata, category, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW() + INTERVAL \'14 days\') ON CONFLICT (canonical_url) DO NOTHING RETURNING id', [sourceId, item.externalId, item.canonicalUrl, item.title, item.rawText, JSON.stringify(item.metadata || {}), item.category]);
+                if (inserted.rowCount) added += 1;
+            }
+            await query('UPDATE content_scrape_runs SET status=\'COMPLETED\', finished_at=NOW(), found_count=$2, new_count=$3, duplicate_count=$4 WHERE id=$1', [run.rows[0].id, items.length, added, items.length - added]);
+            await query('UPDATE content_sources SET last_success_at=NOW(), last_error=NULL, consecutive_errors=0 WHERE id=$1', [sourceId]);
+            res.json({ success: true, runId: run.rows[0].id, found: items.length, added });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+    for (const [action, status] of [['approve', 'SAVED'], ['reject', 'REJECTED'], ['expire', 'EXPIRED']]) {
+        app.post('/api/admin/content/discoveries/:id/' + action, async (req, res) => {
+            try {
+                const rejectionReason = req.body?.rejection_reason || null;
+                let result = await query(
+                    `UPDATE content_discoveries
+                     SET lifecycle_status = $2,
+                         viewed_at = COALESCE(viewed_at, NOW()),
+                         rejection_reason = COALESCE($3, rejection_reason),
+                         expires_at = CASE WHEN $2 = 'EXPIRED' THEN NOW() ELSE expires_at END
+                     WHERE id = $1
+                     RETURNING *`,
+                    [req.params.id, status, rejectionReason]
+                );
+                if (status === 'SAVED' && result.rows[0] && !result.rows[0].lera_content_id) {
+                    const d = result.rows[0];
+                    let telegramType = 'link';
+                    if (d.category === 'video' || /youtube\.com|youtu\.be/i.test(d.canonical_url)) {
+                        telegramType = 'video';
+                    } else if (d.category === 'photo' || d.category === 'meme') {
+                        telegramType = 'photo';
+                    } else if (d.category === 'music' || d.category === 'audio') {
+                        telegramType = 'audio';
+                    }
+
+                    const saved = await addLeraContent({
+                        telegramType,
+                        url: d.canonical_url,
+                        description: d.title || d.raw_text || d.canonical_url,
+                        allowInDialogue: true,
+                        allowInitiative: true,
+                        allowChannel: false
+                    });
+                    result = await query('UPDATE content_discoveries SET lera_content_id=$2 WHERE id=$1 RETURNING *', [req.params.id, saved.id]);
+                }
+                if (!result.rows[0]) return res.status(404).json({ error: 'Находка не найдена' });
+                res.json({ success: true, discovery: result.rows[0] });
+            } catch (e) { res.status(500).json({ error: e.message }); }
+        });
+    }
 
     app.patch('/api/admin/content/settings', async (req, res) => {
         try {
@@ -4454,12 +4619,28 @@ export function createAdminApp(bot = null) {
     return app;
 }
 
+export function startContentBackgroundTasks() {
+    const INTERVAL_MS = 30 * 60 * 1000;
+    const runScrapeAndExpire = async () => {
+        try {
+            await query("UPDATE content_discoveries SET lifecycle_status='EXPIRED' WHERE lifecycle_status='DISCOVERED' AND expires_at IS NOT NULL AND expires_at < NOW()");
+            await scrapeAllActiveSources();
+        } catch (e) {
+            console.error('[CONTENT_BACKGROUND_TASK_ERROR]:', e.message);
+        }
+    };
+    const timer = setInterval(runScrapeAndExpire, INTERVAL_MS);
+    if (timer.unref) timer.unref();
+    return timer;
+}
+
 export function startAdminServer() {
     const app = createAdminApp();
     const PORT = process.env.ADMIN_PORT || 3000;
     const server = app.listen(PORT, () => {
         console.log(`🌐 [ADMIN WEB] Локальная веб-админка Radiant Admin Ultimate 2.0 запущена: http://localhost:${PORT}`);
     });
+    startContentBackgroundTasks();
     return server;
 }
 

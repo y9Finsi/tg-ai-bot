@@ -6,6 +6,15 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api.js';
 import { ContentModal } from './ContentModal.jsx';
+import { FigmaListItemRow } from './FigmaListItemRow.jsx';
+import { ContentSourcesView } from './ContentSourcesView.jsx';
+import { ContentDiscoveriesView } from './ContentDiscoveriesView.jsx';
+
+const TOP_TABS = [
+    { id: 'bank', label: 'Банк материалов' },
+    { id: 'discoveries', label: 'Находки скрапера' },
+    { id: 'sources', label: 'Источники' }
+];
 
 const FILTER_TABS = [
     { id: 'all', label: 'Все' },
@@ -35,6 +44,7 @@ const TYPE_LABELS = {
 };
 
 export function ContentBankTab({ toast }) {
+    const [topTab, setTopTab] = useState('bank'); // 'bank' | 'discoveries' | 'sources'
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -190,12 +200,44 @@ export function ContentBankTab({ toast }) {
 
     return (
         <main className="flex-1 w-full flex flex-col items-center animate-in fade-in duration-150">
+            {/* Main Content Container matching Figma 1005px / 1042px */}
             <div className="w-full max-w-[1042px] px-4 md:px-[20px] pt-[24px] pb-[60px] flex flex-col gap-[20px]">
                 
-                {/* Top Bar matching Figma Surface Tabs (Frame 212) + Action Button */}
+                {/* Level 1 Navigation Tabs: Bank / Discoveries / Sources */}
+                <div className="w-full flex items-center gap-2 p-1 bg-[#181818] rounded-[16px] border border-white/5 select-none">
+                    {TOP_TABS.map(tab => {
+                        const isActive = topTab === tab.id;
+                        return (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setTopTab(tab.id)}
+                                className={`flex-1 h-[40px] rounded-[12px] text-[15px] font-medium transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                                    isActive
+                                        ? 'bg-[#292e5e] text-white shadow-sm border border-[#434771]'
+                                        : 'text-white/50 hover:text-white hover:bg-white/5'
+                                }`}
+                            >
+                                {tab.label}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {topTab === 'discoveries' && (
+                    <ContentDiscoveriesView toast={toast} />
+                )}
+
+                {topTab === 'sources' && (
+                    <ContentSourcesView toast={toast} />
+                )}
+
+                {topTab === 'bank' && (
+                    <>
+                        {/* Top Bar: Surface Filter Tabs (Figma Frame 212) + Action Buttons (Frame 201) */}
                 <div className="w-full flex items-center justify-between gap-3 flex-wrap">
-                    {/* Category Filter Tabs matching Figma Surface selector */}
-                    <div className="flex items-center gap-[8px] overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+                    {/* Category Filter Tabs matching Figma Frame 212 Surface selector */}
+                    <div className="flex items-center gap-[10px] overflow-x-auto pb-1 md:pb-0 scrollbar-none">
                         {FILTER_TABS.map((surf) => {
                             const isActive = selectedTab === surf.id;
                             return (
@@ -215,35 +257,35 @@ export function ContentBankTab({ toast }) {
                         })}
                     </div>
 
-                    {/* Right Controls: View Toggle, Channel Settings & Add Button */}
+                    {/* Right Controls matching Figma Frame 201 */}
                     <div className="flex items-center gap-2 shrink-0">
-                        {/* View Switcher matching Figma Pill style */}
+                        {/* View Switcher (Pill with #292e5e active tab) */}
                         <div className="flex items-center h-[38px] px-1 bg-[#1b1d22] rounded-full border border-white/10">
                             <button
                                 type="button"
                                 onClick={() => setViewMode('list')}
-                                title="Список"
-                                className={`h-[30px] px-3 rounded-full text-[13px] font-normal transition-all cursor-pointer flex items-center gap-1.5 ${
+                                title="Список (FigmaListItemRow)"
+                                className={`h-[30px] px-3 rounded-full text-[14px] font-normal transition-all cursor-pointer flex items-center gap-1.5 ${
                                     viewMode === 'list'
                                         ? 'bg-[#292e5e] border border-[#434771] text-white shadow-sm'
                                         : 'text-white/50 hover:text-white'
                                 }`}
                             >
                                 <List className="w-3.5 h-3.5 stroke-[1.5]" />
-                                <span className="hidden sm:inline">Список</span>
+                                <span>Список</span>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setViewMode('grid')}
-                                title="Сетка"
-                                className={`h-[30px] px-3 rounded-full text-[13px] font-normal transition-all cursor-pointer flex items-center gap-1.5 ${
+                                title="Сетка (Frame 216)"
+                                className={`h-[30px] px-3 rounded-full text-[14px] font-normal transition-all cursor-pointer flex items-center gap-1.5 ${
                                     viewMode === 'grid'
                                         ? 'bg-[#292e5e] border border-[#434771] text-white shadow-sm'
                                         : 'text-white/50 hover:text-white'
                                 }`}
                             >
                                 <Grid className="w-3.5 h-3.5 stroke-[1.5]" />
-                                <span className="hidden sm:inline">Сетка</span>
+                                <span>Сетка</span>
                             </button>
                         </div>
 
@@ -274,7 +316,7 @@ export function ContentBankTab({ toast }) {
 
                 {/* Sub-bar: Search Input and Status Stats Counter */}
                 <div className="w-full flex items-center justify-between gap-3 flex-wrap">
-                    {/* Search Field styled like Figma input / Linear input */}
+                    {/* Search Field styled like Figma input */}
                     <div className="relative flex-1 min-w-[280px]">
                         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
                         <input
@@ -320,113 +362,83 @@ export function ContentBankTab({ toast }) {
                         </p>
                     </div>
                 ) : viewMode === 'list' ? (
-                    /* LIST VIEW: Rows styled exactly like FigmaListItemRow / Rule items */
-                    <div className="flex flex-col gap-[10px]">
+                    /* LIST VIEW: Using FigmaListItemRow (Figma 14:2253 Frame 221) */
+                    <div className="flex flex-col gap-2">
                         {filteredItems.map((item) => {
-                            const Icon = TYPE_ICONS[item.telegram_type] || LinkIcon;
                             const typeLabel = TYPE_LABELS[item.telegram_type] || item.telegram_type;
-                            return (
-                                <div
-                                    key={item.id}
-                                    className={`w-full rounded-[23px] p-2 flex flex-col transition-all bg-gradient-to-b from-[#171717] to-[#232425]/0 border ${
-                                        item.enabled ? 'border-white/10 hover:border-white/20' : 'border-white/5 opacity-50'
-                                    }`}
-                                >
-                                    {/* Header Row */}
-                                    <div className="px-3 py-1.5 flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-2.5 overflow-hidden">
-                                            <div className="w-7 h-7 rounded-[10px] bg-[#272727] border border-white/10 flex items-center justify-center shrink-0 text-white/80">
-                                                <Icon className="w-3.5 h-3.5 stroke-[1.5]" />
-                                            </div>
-                                            <span className="text-[15px] font-medium text-white truncate select-none">
-                                                {item.description || 'Без описания'}
-                                            </span>
-                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/60 font-normal select-none shrink-0">
-                                                {typeLabel}
-                                            </span>
-                                            {!item.enabled && (
-                                                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 select-none shrink-0">
-                                                    Выкл
-                                                </span>
-                                            )}
-                                        </div>
+                            const subtitleText = item.url
+                                ? item.url
+                                : (item.telegram_file_id ? `TG File: ${item.telegram_file_id.slice(0, 26)}...` : typeLabel);
 
-                                        {/* Right Actions */}
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            {/* Status Indicators */}
-                                            <div className="hidden sm:flex items-center gap-1.5 mr-2 select-none">
+                            return (
+                                <FigmaListItemRow
+                                    key={item.id}
+                                    title={item.description || `${typeLabel} #${item.id}`}
+                                    subtitle={subtitleText}
+                                    className={!item.enabled ? 'opacity-50' : ''}
+                                    rightContent={
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            {/* Badges */}
+                                            <div className="hidden sm:flex items-center gap-1.5 select-none">
                                                 {item.allow_in_dialogue && (
-                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#292e5e]/40 border border-[#434771]/50 text-indigo-200">
+                                                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-[#292e5e]/40 border border-[#434771]/50 text-indigo-200">
                                                         Диалог
                                                     </span>
                                                 )}
                                                 {item.allow_initiative && (
-                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-200">
+                                                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-200">
                                                         Инициатива
                                                     </span>
                                                 )}
                                                 {item.allow_channel && (
-                                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-200">
+                                                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-200">
                                                         Канал
+                                                    </span>
+                                                )}
+                                                {!item.enabled && (
+                                                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40">
+                                                        Выкл
                                                     </span>
                                                 )}
                                             </div>
 
+                                            {/* Action Pill Button matching Figma */}
                                             <button
                                                 type="button"
                                                 onClick={() => handleTestSend(item.id)}
                                                 disabled={testingId === item.id}
-                                                title="Отправить мне в Telegram для теста"
-                                                className="p-1.5 text-white/50 hover:text-sky-400 transition-colors cursor-pointer rounded-lg hover:bg-white/5"
+                                                title="Отправить мне в Telegram для проверки"
+                                                className="shrink-0 px-3 py-1.5 rounded-full text-[14px] font-normal text-white bg-[#292e5e] hover:bg-[#343b78] active:bg-[#22264e] transition-all cursor-pointer flex items-center gap-1.5"
                                             >
                                                 <Send className={`w-3.5 h-3.5 stroke-[1.5] ${testingId === item.id ? 'animate-pulse' : ''}`} />
+                                                <span className="hidden md:inline">Тест</span>
                                             </button>
+
+                                            {/* Edit Button */}
                                             <button
                                                 type="button"
                                                 onClick={() => {
                                                     setEditingItem(item);
                                                     setModalOpen(true);
                                                 }}
-                                                title="Редактировать материал"
+                                                title="Редактировать параметры"
                                                 className="p-1.5 text-white/50 hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/5"
                                             >
-                                                <Pencil className="w-3.5 h-3.5 stroke-[1.5]" />
+                                                <Pencil className="w-4 h-4 stroke-[1.5]" />
                                             </button>
+
+                                            {/* Delete Button */}
                                             <button
                                                 type="button"
                                                 onClick={() => handleDeleteItem(item.id, item.description)}
                                                 title="Удалить материал"
                                                 className="p-1.5 text-white/40 hover:text-red-400 transition-colors cursor-pointer rounded-lg hover:bg-white/5"
                                             >
-                                                <Trash2 className="w-3.5 h-3.5 stroke-[1.5]" />
+                                                <Trash2 className="w-4 h-4 stroke-[1.5]" />
                                             </button>
                                         </div>
-                                    </div>
-
-                                    {/* Bottom Container (Component 41 style: bg-[#272727] rounded-[20px]) */}
-                                    <div className="w-full rounded-[20px] p-3 flex items-center justify-between gap-3 bg-[#272727]">
-                                        <div className="flex-1 min-w-0">
-                                            {item.url ? (
-                                                <a
-                                                    href={item.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-[13px] text-sky-400 hover:text-sky-300 hover:underline truncate inline-flex items-center gap-1.5"
-                                                >
-                                                    <span className="truncate">{item.url}</span>
-                                                    <ExternalLink className="w-3 h-3 shrink-0" />
-                                                </a>
-                                            ) : item.telegram_file_id ? (
-                                                <span className="text-[12px] font-mono text-white/40 truncate">
-                                                    TG File: {item.telegram_file_id}
-                                                </span>
-                                            ) : (
-                                                <span className="text-[12px] text-white/30">Источник не указан</span>
-                                            )}
-                                        </div>
-                                        <span className="text-[11px] text-white/30 font-mono shrink-0">#{item.id}</span>
-                                    </div>
-                                </div>
+                                    }
+                                />
                             );
                         })}
                     </div>
@@ -489,7 +501,7 @@ export function ContentBankTab({ toast }) {
 
                                     {/* Card Content (Component 41: bg-[#272727] rounded-[20px]) */}
                                     <div className="w-full h-[96px] rounded-[20px] p-3 flex flex-col justify-between overflow-hidden bg-[#272727]">
-                                        <p className="text-[13px] font-normal leading-relaxed line-clamp-2 text-white/70 select-none">
+                                        <p className="text-[14px] font-normal leading-relaxed line-clamp-2 text-white/70 select-none">
                                             {item.description || 'Без описания'}
                                         </p>
                                         {item.url ? (
@@ -497,20 +509,20 @@ export function ContentBankTab({ toast }) {
                                                 href={item.url}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="text-[11px] text-sky-400 hover:text-sky-300 hover:underline truncate inline-flex items-center gap-1"
+                                                className="text-[12px] text-sky-400 hover:text-sky-300 hover:underline truncate inline-flex items-center gap-1"
                                             >
                                                 <span className="truncate">{item.url}</span>
                                                 <ExternalLink className="w-2.5 h-2.5 shrink-0" />
                                             </a>
                                         ) : (
-                                            <span className="text-[10px] text-white/30 font-mono truncate">
-                                                {item.telegram_file_id ? `TG: ${item.telegram_file_id.slice(0, 18)}...` : 'Локальный'}
+                                            <span className="text-[11px] text-white/30 font-mono truncate">
+                                                {item.telegram_file_id ? `TG: ${item.telegram_file_id.slice(0, 22)}...` : 'Локальный'}
                                             </span>
                                         )}
                                     </div>
 
                                     {/* Bottom Badges */}
-                                    <div className="px-2 pb-0.5 flex items-center justify-between text-[10px] select-none">
+                                    <div className="px-2 pb-0.5 flex items-center justify-between text-[11px] select-none">
                                         <div className="flex items-center gap-1 flex-wrap">
                                             {item.allow_in_dialogue && (
                                                 <span className="px-1.5 py-0.5 rounded bg-[#292e5e]/40 border border-[#434771]/50 text-indigo-200">
@@ -528,7 +540,7 @@ export function ContentBankTab({ toast }) {
                                                 </span>
                                             )}
                                         </div>
-                                        <span className={`uppercase font-bold tracking-wider ${item.enabled ? 'text-emerald-400' : 'text-red-400'}`}>
+                                        <span className={`uppercase font-bold tracking-wider text-[10px] ${item.enabled ? 'text-emerald-400' : 'text-red-400'}`}>
                                             {item.enabled ? 'Активен' : 'Выкл'}
                                         </span>
                                     </div>
@@ -536,6 +548,8 @@ export function ContentBankTab({ toast }) {
                             );
                         })}
                     </div>
+                )}
+                    </>
                 )}
 
                 {/* Modal: Add/Edit Item */}
@@ -552,9 +566,9 @@ export function ContentBankTab({ toast }) {
 
                 {/* Modal: Service Channel Settings */}
                 {channelModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150 select-none">
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 select-none">
                         <div className="relative w-full max-w-[480px] rounded-[24px] bg-[#151515] border border-white/10 shadow-[0_16px_48px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col">
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.08] bg-[#1b1d22]/50">
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.08] bg-[#1b1d22]/60">
                                 <h3 className="text-[17px] font-medium text-white">
                                     Канал пополнения контента
                                 </h3>
@@ -581,7 +595,7 @@ export function ContentBankTab({ toast }) {
                                         value={contentChannelId}
                                         onChange={(e) => setContentChannelId(e.target.value)}
                                         placeholder="-100..."
-                                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#171717] border border-white/10 text-white text-[14px] font-mono placeholder:text-white/25 focus:outline-none focus:border-[#434771]"
+                                        className="w-full px-3.5 py-2.5 rounded-[14px] bg-[#171717] border border-white/10 text-white text-[14px] font-mono placeholder:text-white/25 focus:outline-none focus:border-[#434771]"
                                     />
                                 </div>
 
@@ -589,7 +603,7 @@ export function ContentBankTab({ toast }) {
                                     type="button"
                                     onClick={handlePublishGuide}
                                     disabled={publishingGuide}
-                                    className="w-full py-2.5 px-4 rounded-xl bg-[#171717] hover:bg-white/5 border border-white/10 text-white/80 hover:text-white text-[13px] transition-all cursor-pointer flex items-center justify-center gap-2"
+                                    className="w-full py-2.5 px-4 rounded-[14px] bg-[#171717] hover:bg-white/5 border border-white/10 text-white/80 hover:text-white text-[13px] transition-all cursor-pointer flex items-center justify-center gap-2"
                                 >
                                     <Radio className="w-4 h-4 stroke-[1.5] text-sky-400" />
                                     <span>{publishingGuide ? 'Отправка...' : 'Опубликовать памятку в канал'}</span>

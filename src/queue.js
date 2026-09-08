@@ -4,7 +4,7 @@ import {
     decrementFreeRequest, appendConversationEvent, updateConversationEventStatus, refundReservedRequest,
     getUser, getActiveMute, getCompletedEvent, getLatestMeaningfulEvent, getInitiativeDailyCounts,
     hasInitiativeStage, getLeraContent, wasContentSent, recordPhotoSent, getChatHistoryClearedAt,
-    toLocalDateString, setBlockStatus, getAdminDebugLogEnabled, deactivateOpenThread
+    toLocalDateString, setBlockStatus, getAdminDebugLogEnabled, deactivateOpenThread, query
 } from './db/database.js';
 import {
     setFollowupQueue,
@@ -14,7 +14,7 @@ import {
     pendingFollowupMap
 } from './services/followup_service.js';
 import { splitResponseMessages } from './utils/response_text.js';
-import { sendCatalogContent } from './content_service.js';
+import { sendCatalogContent, addLeraContent } from './content_service.js';
 import { sendTypingAction, stopTyping } from './typing_manager.js';
 import { getRoutingSettings } from './ai/intent_router.js';
 import { getEffectiveInitiativeLimit } from './initiative_service.js';
@@ -439,7 +439,7 @@ async function processReminderJob(bot, job) {
 }
 
 async function processFollowupJob(bot, job) {
-    const { userId, chatId, topic, sendPhoto, scheduledAt, anchorEventId, isMorningReschedule = false } = job.data;
+    const { userId, chatId, topic, sendPhoto, scheduledAt, anchorEventId, contentId = null, discoveryId = null, isMorningReschedule = false } = job.data;
     pendingFollowupMap.delete(String(userId));
 
     const [user, mute, historyClearedAt, latestEvent] = await Promise.all([
@@ -456,6 +456,77 @@ async function processFollowupJob(bot, job) {
 
     if (historyClearedAt && scheduledAt && new Date(historyClearedAt).getTime() > Number(scheduledAt)) {
         console.log(`[FOLLOWUP PROMISE SKIPPED] user ${userId}: история чата была очищена после планирования`);
+        return;
+    }
+
+    let effectiveContentId = contentId ? Number(contentId) : null;
+    if (!effectiveContentId && discoveryId) {
+        try {
+            const discRes = await query('SELECT * FROM content_discoveries WHERE id = $1', [Number(discoveryId)]);
+            const disc = discRes.rows[0];
+            if (disc) {
+                if (disc.lera_content_id) {
+                    effectiveContentId = Number(disc.lera_content_id);
+                } else {
+                    let telegramType = 'link';
+                    if (disc.category === 'video' || /youtube\.com|youtu\.be/i.test(disc.canonical_url)) {
+                        telegramType = 'video';
+                    } else if (disc.category === 'photo' || disc.category === 'meme') {
+                        telegramType = 'photo';
+                    } else if (disc.category === 'music' || disc.category === 'audio') {
+                        telegramType = 'audio';
+                    }
+                    const saved = await addLeraContent({
+                        telegramType,
+                        url: disc.canonical_url,
+                        description: disc.title || disc.raw_text || disc.canonical_url,
+                        allowInDialogue: true,
+                        allowInitiative: true,
+                        allowChannel: false
+                    });
+                    if (saved?.id) {
+                        effectiveContentId = Number(saved.id);
+                        await query(
+                            `UPDATE content_discoveries
+                             SET lifecycle_status = 'SAVED', viewed_at = NOW(), lera_content_id = $2
+                             WHERE id = $1`,
+                            [disc.id, effectiveContentId]
+                        );
+                    }
+                }
+            }
+        } catch (discErr) {
+            console.warn(`[FOLLOWUP DISCOVERY APPROVE ERROR]:`, discErr.message);
+        }
+    }
+
+    if (effectiveContentId) {
+        if (await wasContentSent(userId, effectiveContentId)) return;
+        const selectedContent = await getLeraContent(effectiveContentId);
+        if (!selectedContent?.enabled || !selectedContent.allow_in_dialogue) return;
+        try {
+            const sent = await sendCatalogContent(bot.telegram, chatId, selectedContent);
+            await appendConversationEvent({
+                userId,
+                eventType: 'CONTENT',
+                role: 'lera',
+                content: selectedContent.description || selectedContent.url || '',
+                occurredAt: new Date(),
+                telegramMessageId: sent?.message_id || null,
+                metadata: {
+                    content_id: Number(selectedContent.id),
+                    source: 'followup',
+                    discovery_id: discoveryId ? Number(discoveryId) : null,
+                    followup_topic: topic
+                },
+                status: 'COMPLETED'
+            });
+            await query(
+                `INSERT INTO content_usage (content_id, user_id, surface, result)
+                 VALUES ($1, $2, $3, $4)`,
+                [Number(selectedContent.id), Number(userId), 'followup', 'SUCCESS']
+            );
+        } catch (error) { console.warn(`[FOLLOWUP CONTENT ERROR] user ${userId}:`, error.message); }
         return;
     }
 
@@ -494,6 +565,8 @@ async function processFollowupJob(bot, job) {
             sendPhoto,
             scheduledAt,
             anchorEventId,
+            contentId: effectiveContentId || contentId,
+            discoveryId,
             isMorningReschedule: true
         }, {
             jobId: `followup-${userId}-morning-${Date.now()}`,

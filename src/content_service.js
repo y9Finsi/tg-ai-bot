@@ -1,3 +1,4 @@
+export { getLeraContent, addLeraContent } from './database.js';
 import { getLeraContent } from './database.js';
 
 const CONTENT_STATUS_MARKER = '📚 Каталог Леры';
@@ -144,6 +145,9 @@ export async function sendCatalogContent(telegram, chatId, contentOrId) {
     const content = typeof contentOrId === 'object' ? contentOrId : await getLeraContent(contentOrId);
     if (!content || !content.enabled) throw new Error('Контент не найден или выключен');
     const fileId = content.telegram_file_id;
+    if (!fileId && content.url) {
+        return telegram.sendMessage(chatId, content.url);
+    }
     switch (content.telegram_type) {
         case 'audio': return telegram.sendAudio(chatId, fileId);
         case 'video': return telegram.sendVideo(chatId, fileId);

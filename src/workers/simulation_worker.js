@@ -16,6 +16,7 @@ import { getSetting, getSettingsByPrefix } from '../db/database.js';
 import { applyTaskEffects, FOOD_PRICE_RUBLES } from '../radiant/task_catalog.js';
 import { randomUUID } from 'node:crypto';
 import { memoryRepository } from '../memory/memory_repository.js';
+import { executeContentBrowseSession } from '../radiant/content_browse_service.js';
 
 const RANDOM_EVENT_IDS = RANDOM_EVENTS.map(event => event.id);
 
@@ -480,6 +481,13 @@ export class SimulationWorker {
                     }
                     const commitmentAction = ['WORK_LAPTOP', 'SOCIAL_NASTYA', 'PERSONAL_TASK'].includes(updated.task_type);
                     if (updated.result?.commitmentId && updated.status === 'COMPLETED' && commitmentAction) await StateRepository.updateCommitmentStatus(client, updated.result.commitmentId, COMMITMENT_STATUS.COMPLETED);
+                    if (updated.status === 'COMPLETED' && updated.task_type === 'CONTENT_BROWSE') {
+                        try {
+                            await executeContentBrowseSession(updated.id);
+                        } catch (cbErr) {
+                            console.warn('[SIMULATION WORKER CONTENT_BROWSE ERROR]:', cbErr.message);
+                        }
+                    }
                     await StateRepository.resumeReadyParents(client);
                     const completedParents = updated.status === 'COMPLETED'
                         ? await StateRepository.completeReadyDependencyParents(client)

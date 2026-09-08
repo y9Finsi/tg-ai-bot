@@ -307,7 +307,9 @@ export function formatTaskType(type) {
         'SHOWER': 'Душ и уход',
         'TRAVEL': 'Дорога / Транзит',
         'CHANNEL_POST': 'Постинг в канал',
-        'GROCERY_SHOP': 'Покупка продуктов'
+        'GROCERY_SHOP': 'Покупка продуктов',
+        'CONTENT_BROWSE': 'Лера смотрит свежие находки',
+        'CONTENT_FOLLOWUP': 'Отложенная отправка контента'
     };
     return dict[type] || type.replace(/_/g, ' ');
 }

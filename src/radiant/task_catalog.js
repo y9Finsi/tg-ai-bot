@@ -24,7 +24,9 @@ export const TASK_DEFINITIONS = {
     DESPERATE_EAT_TAP_WATER: { category: 'dependency', durationMinutes: 15, priority: 86 },
     TRAVEL: { category: 'transit', durationMinutes: 15, priority: 92 }
     ,PREPARE_FOR_OUTING: { category: 'commitment', durationMinutes: 20, priority: 50 },
-    PERSONAL_TASK: { category: 'commitment', durationMinutes: 30, priority: 40 }
+    PERSONAL_TASK: { category: 'commitment', durationMinutes: 30, priority: 40 },
+    CONTENT_BROWSE: { category: 'utility', durationMinutes: 20, priority: 25 },
+    CONTENT_FOLLOWUP: { category: 'commitment', durationMinutes: 10, priority: 60 }
 };
 
 export function taskDefinition(taskType) {
@@ -68,6 +70,9 @@ export function applyTaskEffects(needs, taskType, context = {}) {
         case 'SMM_EDITS_REQUIRED':
             next.boredom = Math.min(100, Number(next.boredom || 0) + 8);
             next.fatigue = Math.min(100, Number(next.fatigue || 0) + 12);
+            break;
+        case 'CONTENT_BROWSE':
+            next.boredom = Math.max(0, Number(next.boredom || 0) - 20);
             break;
         default:
             break;

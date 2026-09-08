@@ -28,6 +28,8 @@ export const scheduleFollowupAction = {
                 type: 'boolean',
                 description: 'Планируешь ли прислать фото по завершении действия (например: фото чашки кофе, селфи в новом луке, вид за окном). По умолчанию false.'
             }
+            ,content_id: { type: 'integer', description: 'Точный ID материала из банка для отправки при возвращении.' }
+            ,discovery_id: { type: 'integer', description: 'ID находки скрапера, если материал еще не перенесен в банк.' }
         },
         required: ['delay_minutes', 'topic']
     },
@@ -60,6 +62,8 @@ export const scheduleFollowupAction = {
         const delayMinutes = Math.min(Math.max(parseInt(args.delay_minutes, 10) || 5, 1), 2880);
         const topic = String(args.topic || '').trim();
         const sendPhoto = Boolean(args.send_photo);
+        const contentId = args.content_id ? Number(args.content_id) : null;
+        const discoveryId = args.discovery_id ? Number(args.discovery_id) : null;
 
         if (!topic) {
             return {
@@ -73,7 +77,9 @@ export const scheduleFollowupAction = {
                 delayMinutes,
                 topic,
                 sendPhoto,
-                anchorEventId: context.anchorEventId || null
+                anchorEventId: context.anchorEventId || null,
+                contentId,
+                discoveryId
             });
 
             return {
@@ -82,6 +88,8 @@ export const scheduleFollowupAction = {
                     delay_minutes: delayMinutes,
                     topic,
                     send_photo: sendPhoto,
+                    content_id: contentId,
+                    discovery_id: discoveryId,
                     scheduled: true,
                     text: `Отложенное обещание запланировано: вернуться через ${delayMinutes} мин с темой "${topic}".`
                 }

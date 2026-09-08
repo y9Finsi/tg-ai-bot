@@ -23,7 +23,7 @@ async function resolveQueue() {
     return followupQueueInstance;
 }
 
-export async function enqueueFollowupPromise(userId, chatId, { delayMinutes = 15, topic = '', sendPhoto = false, anchorEventId = null } = {}) {
+export async function enqueueFollowupPromise(userId, chatId, { delayMinutes = 15, topic = '', sendPhoto = false, anchorEventId = null, contentId = null, discoveryId = null } = {}) {
     const numericUserId = Number(userId);
     const numericChatId = Number(chatId || userId);
     if (!numericUserId) throw new Error('Не указан userId для отложенного обещания');
@@ -36,7 +36,9 @@ export async function enqueueFollowupPromise(userId, chatId, { delayMinutes = 15
         sendPhoto: Boolean(sendPhoto),
         dueAt,
         scheduledAt: Date.now(),
-        anchorEventId: anchorEventId ? Number(anchorEventId) : null
+        anchorEventId: anchorEventId ? Number(anchorEventId) : null,
+        contentId: contentId ? Number(contentId) : null,
+        discoveryId: discoveryId ? Number(discoveryId) : null
     };
 
     const jobId = `followup-${numericUserId}`;
@@ -59,7 +61,9 @@ export async function enqueueFollowupPromise(userId, chatId, { delayMinutes = 15
                 topic,
                 sendPhoto: Boolean(sendPhoto),
                 scheduledAt: Date.now(),
-                anchorEventId: anchorEventId ? Number(anchorEventId) : null
+                anchorEventId: anchorEventId ? Number(anchorEventId) : null,
+                contentId: contentId ? Number(contentId) : null,
+                discoveryId: discoveryId ? Number(discoveryId) : null
             }, {
                 jobId,
                 delay: delayMs,
