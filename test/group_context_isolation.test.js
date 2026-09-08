@@ -86,3 +86,34 @@ test('group chat prompt includes strict single-interlocutor and negative constra
     assert.ok(content.includes('КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО объединять в одном сообщении ответы разным людям'));
     assert.ok(content.includes('<current_turn>'));
 });
+
+test('claimChannelProcessedMessage safely handles non-numeric dedupe strings without NaN or crash', async () => {
+    const { claimChannelProcessedMessage } = await import('../src/db/database.js');
+    const guestRes = await claimChannelProcessedMessage(12345, 'gq_test_query_999');
+    assert.ok(typeof guestRes === 'boolean');
+    const welcomeRes = await claimChannelProcessedMessage(-100123456, 'welcome_-100123456_555');
+    assert.ok(typeof welcomeRes === 'boolean');
+});
+
+test('cleanResponseText removes hallucinated [ответ для ...] prefixes', async () => {
+    const { cleanResponseText } = await import('../src/utils/response_text.js');
+    const dirty = '[ответ для Богдан]: привет, как дела?';
+    assert.equal(cleanResponseText(dirty), 'привет, как дела?');
+});
+
+test('getRoutedSystemPrompt resolves rule_group_chat and rule_group_welcome from DEFAULT_LERA_COMBAT_RULES fallback', async () => {
+    const { getRoutedSystemPrompt } = await import('../src/prompts.js');
+    const welcomeResult = await getRoutedSystemPrompt('CASUAL', {
+        ruleId: 'rule_group_welcome',
+        surface: 'GROUP'
+    });
+    assert.ok(welcomeResult);
+    assert.ok(welcomeResult.prompt.includes('ПРИВЕТСТВИЕ') || welcomeResult.prompt.includes('Лера'));
+
+    const groupResult = await getRoutedSystemPrompt('CASUAL', {
+        surface: 'GROUP',
+        isPublicContext: true
+    });
+    assert.ok(groupResult);
+    assert.ok(groupResult.prompt.includes('ГРУПП') || groupResult.prompt.includes('СТРОГОЕ ПРАВИЛО'));
+});

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getSetting, setSetting, getLeraProfile, getLeraProfileProjection } from './db/database.js';
+import { getSetting, setSetting, getLeraProfile, getLeraProfileProjection, DEFAULT_LERA_COMBAT_RULES } from './db/database.js';
 import { ALL_PROMPT_SECTIONS, PROMPT_SECTIONS, ROUTING_PROMPT_SECTIONS, SYSTEM_CONTRACT_SECTIONS } from './prompt_sections.js';
 import { renderPromptTemplate, DEFAULT_PROMPT_TEMPLATES } from './ai/prompt_renderer.js';
 import { evaluateRules } from './ai/profile/rule_evaluator.js';
@@ -335,11 +335,16 @@ export async function getRoutedSystemPrompt(mode = 'CASUAL', config = {}) {
     let targetRule = config.rule || null;
     if (!targetRule) {
         if (config.ruleId) {
-            targetRule = blocks.find(b => b.id === config.ruleId);
+            targetRule = blocks.find(b => b.id === config.ruleId)
+                || (Array.isArray(DEFAULT_LERA_COMBAT_RULES) ? DEFAULT_LERA_COMBAT_RULES.find(b => b.id === config.ruleId) : null);
         } else {
             const rulesOnly = blocks.filter(b => b.category !== 'prompt_module');
             const evaluated = evaluateRules(rulesOnly, context);
             targetRule = evaluated.active?.[0] || null;
+            if (!targetRule && Array.isArray(DEFAULT_LERA_COMBAT_RULES)) {
+                const defaultEvaluated = evaluateRules(DEFAULT_LERA_COMBAT_RULES, context);
+                targetRule = defaultEvaluated.active?.[0] || null;
+            }
         }
     }
 

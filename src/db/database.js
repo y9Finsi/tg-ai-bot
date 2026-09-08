@@ -2155,14 +2155,29 @@ export async function getChannelPostByTelegramMessageId(channelId, messageId) {
 
 export async function claimChannelProcessedMessage(channelId, messageId) {
     if (!channelId || !messageId) return true;
-    const result = await query(
-        `INSERT INTO channel_processed_messages (channel_id, message_id)
-         VALUES ($1, $2)
-         ON CONFLICT (channel_id, message_id) DO NOTHING
-         RETURNING message_id`,
-        [String(channelId), Number(messageId)]
-    );
-    return result.rowCount > 0;
+    try {
+        let numericId = Number(messageId);
+        if (isNaN(numericId) || !Number.isSafeInteger(numericId)) {
+            const str = String(messageId);
+            let hash = 5381;
+            for (let i = 0; i < str.length; i++) {
+                hash = ((hash << 5) + hash) + str.charCodeAt(i);
+                hash = hash & 0x7fffffff;
+            }
+            numericId = hash;
+        }
+        const result = await query(
+            `INSERT INTO channel_processed_messages (channel_id, message_id)
+             VALUES ($1, $2)
+             ON CONFLICT (channel_id, message_id) DO NOTHING
+             RETURNING message_id`,
+            [String(channelId), numericId]
+        );
+        return result.rowCount > 0;
+    } catch (err) {
+        console.warn(`⚠️ [DEDUPE WARNING] Не удалось проверить дедупликацию сообщения ${messageId} в ${channelId}:`, err.message);
+        return true;
+    }
 }
 
 export async function getChannelDiscussionThread(channelId, rootMessageId) {
