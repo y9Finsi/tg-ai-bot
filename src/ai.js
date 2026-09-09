@@ -976,7 +976,7 @@ async function recordAiTransaction(userId, usage) {
 
 // --- 4. ДЕКЛАРАТИВНЫЙ ЕДИНЫЙ ДВИЖОК ---
 
-async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', isVoiceRequest = false, classifierResult = null, actionRouting = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, climaxState = null, isPublicContext = false, chatId = null, threadId = null, senderName = null, replyingTo = null, sendPhoto = false, followupTopic = null, systemOverlay = null, ruleId = null } = {}) {
+async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiative = false, routingMode = 'CASUAL', isVoiceRequest = false, classifierResult = null, actionRouting = null, initiativeReason = null, initiativeKind = null, anchorEventId = null, contentCandidates = [], commandGate = null, batchId = null, eventIds = [], preMessageGapSeconds = null, firstMessageAt = null, climaxState = null, isPublicContext = false, chatId = null, threadId = null, senderName = null, replyingTo = null, sendPhoto = false, followupTopic = null, systemOverlay = null, ruleId = null, bot = null } = {}) {
     const user = await getUser(userId);
     if (!user) return null;
 
@@ -1154,7 +1154,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                     chatId: chatId || null,
                     threadId: threadId || null,
                     anchorEventId: anchorEventId || null,
-                    bot: envelope.bot || null
+                    bot: bot || null
                 }
             });
             let toolResultContent = '';
@@ -1281,6 +1281,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                         content: `[РЕАЛЬНЫЕ ДАННЫЕ ИЗ ИНСТРУМЕНТА ${name}]:\n${content}\n\nВАЖНО: Ответь собеседнику своими словами в живом характере Леры (сленг, лесенка).`
                     });
                 }
+            } else {
+                console.error('❌ [TOOL EXECUTION PROMISE REJECTED]:', settled.reason);
             }
         }
 
@@ -1918,7 +1920,8 @@ export async function generateResponse(userId, text, envelope = {}) {
         senderName: envelope.senderName,
         replyingTo: envelope.replyingTo,
         systemOverlay: envelope.systemOverlay || null,
-        ruleId: envelope.ruleId || null
+        ruleId: envelope.ruleId || null,
+        bot: envelope.bot || null
     });
 
     return aiResponse;
