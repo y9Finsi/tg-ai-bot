@@ -23,7 +23,7 @@ export class UtilitySelector {
             { taskType: 'PRIVATE_RELIEF', score: clamp(Number(needs.horny) * 0.8), reason: 'private relief utility', threshold: 70 },
             { taskType: 'WORK_LAPTOP', score: clamp(maxUrgency * 0.8 + (isWorkWindow ? 20 : 0) + (Number(state.wallet_rubles) < 1000 ? 15 : 0)), reason: 'work utility', threshold: 45 },
             { taskType: 'SOCIAL_NASTYA', score: clamp(drama * 0.7 + (hour >= 18 && hour <= 22 ? 15 : 0)), reason: 'social utility', threshold: 50 },
-            { taskType: 'CONTENT_BROWSE', score: clamp(Number(needs.boredom) * 0.55), reason: 'fresh content and free-time utility', threshold: 58 },
+            { taskType: 'CONTENT_BROWSE', score: clamp(Number(needs.boredom) * 0.8), reason: 'fresh content and free-time utility', threshold: 40 },
             { taskType: 'IDLE_HOME_REST', score: 10, reason: 'idle fallback', threshold: 0 }
         ];
         const excluded = new Set(excludedTaskTypes);

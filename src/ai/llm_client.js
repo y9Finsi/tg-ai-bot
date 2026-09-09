@@ -60,9 +60,13 @@ export function buildLlmRequestParams({ model, messages, calculatedMaxTokens, ll
         if (canSend(key) && value !== undefined && value !== null) requestParams[key] = value;
     };
 
-    add('max_tokens', canSend('max_tokens') && Number(traceContext.maxTokens) > 0
+    let resolvedMaxTokens = canSend('max_tokens') && Number(traceContext.maxTokens) > 0
         ? Number(traceContext.maxTokens)
-        : (!strictSampling ? calculatedMaxTokens : null));
+        : (!strictSampling ? calculatedMaxTokens : null);
+    if (Array.isArray(traceContext.tools) && traceContext.tools.length > 0 && resolvedMaxTokens && resolvedMaxTokens < 450) {
+        resolvedMaxTokens = 450;
+    }
+    add('max_tokens', resolvedMaxTokens);
     add('temperature', traceContext.temperature ?? (!strictSampling ? llmParams.temperature ?? 0.7 : null));
     add('top_p', traceContext.top_p ?? (!strictSampling ? 1 : null));
     add('presence_penalty', traceContext.presence_penalty ?? (!strictSampling ? llmParams.presence_penalty ?? 0.1 : null));
@@ -90,12 +94,11 @@ export function buildLlmRequestParams({ model, messages, calculatedMaxTokens, ll
 
 export function extractTextToolCalls(content) {
     if (!content || typeof content !== 'string') return null;
-    const toolCallRegex = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
-    const matches = [...content.matchAll(toolCallRegex)];
-    if (matches.length === 0) return null;
-
     const toolCalls = [];
-    for (const match of matches) {
+
+    // 1. Стандартный <tool_call> JSON
+    const toolCallRegex = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
+    for (const match of content.matchAll(toolCallRegex)) {
         try {
             const parsed = JSON.parse(match[1]);
             if (parsed.name) {
@@ -112,6 +115,43 @@ export function extractTextToolCalls(content) {
             // Игнорируем некорректный JSON
         }
     }
+
+    // 2. DeepSeek DSML: <｜DSML｜invoke name="tool_name"> ... </｜DSML｜invoke>
+    const dsmlInvokeRegex = /<[｜|\uFF5C]?\s*(?:DSML[｜|\uFF5C]?\s*)?invoke\s+name="([^"]+)"\s*>([\s\S]*?)(?:<\/[｜|\uFF5C]?\s*(?:DSML[｜|\uFF5C]?\s*)?invoke>|$)/gi;
+    for (const match of content.matchAll(dsmlInvokeRegex)) {
+        const fnName = match[1];
+        const body = match[2];
+        const args = {};
+        const paramRegex = /<[｜|\uFF5C]?\s*(?:DSML[｜|\uFF5C]?\s*)?parameter\s+name="([^"]+)"[^>]*>([\s\S]*?)(?:<\/[｜|\uFF5C]?\s*(?:DSML[｜|\uFF5C]?\s*)?parameter>|$)/gi;
+        for (const pMatch of body.matchAll(paramRegex)) {
+            const pName = pMatch[1];
+            let pVal = pMatch[2].trim();
+            try {
+                if ((pVal.startsWith('{') && pVal.endsWith('}')) || (pVal.startsWith('[') && pVal.endsWith(']'))) {
+                    args[pName] = JSON.parse(pVal);
+                } else if (pVal === 'true') {
+                    args[pName] = true;
+                } else if (pVal === 'false') {
+                    args[pName] = false;
+                } else {
+                    args[pName] = pVal;
+                }
+            } catch {
+                args[pName] = pVal;
+            }
+        }
+        if (fnName && Object.keys(args).length > 0) {
+            toolCalls.push({
+                id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                type: 'function',
+                function: {
+                    name: fnName,
+                    arguments: JSON.stringify(args)
+                }
+            });
+        }
+    }
+
     return toolCalls.length > 0 ? toolCalls : null;
 }
 
@@ -237,12 +277,16 @@ export async function requestLlmCompletion(user, messages, isPhotoRequest, getOp
                 let toolCalls = choiceMessage.tool_calls || null;
                 let rawContent = choiceMessage.content || null;
 
-                // Dual-mode fallback: парсим текстовые <tool_call> теги, если провайдер вернул их в контенте
+                // Dual-mode fallback: парсим текстовые <tool_call> теги или DSML, если провайдер вернул их в контенте
                 if (!toolCalls && rawContent) {
                     const parsedTextCalls = extractTextToolCalls(rawContent);
                     if (parsedTextCalls) {
                         toolCalls = parsedTextCalls;
-                        rawContent = rawContent.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '').trim() || null;
+                        rawContent = rawContent
+                            .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+                            .replace(/<[｜|\uFF5C]?\s*(?:DSML|tool_calls?)[\s\S]*$/gi, '')
+                            .replace(/<[｜|\uFF5C]?\s*invoke[\s\S]*?<\/[｜|\uFF5C]?\s*invoke>/gi, '')
+                            .trim() || null;
                     }
                 }
 

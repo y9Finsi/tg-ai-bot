@@ -678,7 +678,7 @@ export async function getRecentConversationEvents(userId, limit = 20, chatHistor
         const result = await query(
             `SELECT * FROM (
                 SELECT * FROM conversation_events
-                WHERE user_id = $1 AND status <> 'FAILED'
+                WHERE user_id = $1 AND (chat_id = $1 OR chat_id IS NULL) AND status <> 'FAILED'
                   AND occurred_at > COALESCE(($3)::timestamptz, '-infinity'::timestamptz)
                 ORDER BY occurred_at DESC, id DESC LIMIT $2
              ) events
@@ -690,7 +690,7 @@ export async function getRecentConversationEvents(userId, limit = 20, chatHistor
     const result = await query(
         `SELECT * FROM (
             SELECT * FROM conversation_events
-            WHERE user_id = $1 AND status <> 'FAILED'
+            WHERE user_id = $1 AND (chat_id = $1 OR chat_id IS NULL) AND status <> 'FAILED'
               AND occurred_at > COALESCE((
                     SELECT chat_history_cleared_at
                     FROM users
@@ -848,7 +848,7 @@ export async function getCompletedEvent(eventId, userId) {
 export async function getLatestMeaningfulEvent(userId) {
     const result = await query(
         `SELECT * FROM conversation_events
-         WHERE user_id = $1 AND status = 'COMPLETED'
+         WHERE user_id = $1 AND (chat_id = $1 OR chat_id IS NULL) AND status = 'COMPLETED'
            AND event_type IN ('MESSAGE', 'INITIATIVE', 'CONTENT')
          ORDER BY occurred_at DESC, id DESC LIMIT 1`,
         [userId]

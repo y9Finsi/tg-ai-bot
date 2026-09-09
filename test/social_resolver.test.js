@@ -242,3 +242,15 @@ test('surface policy allows relay_message_to_friend and record_friend in CHAT', 
     assert.equal(isToolAllowed('relay_message_to_friend', 'CHANNEL'), false);
     assert.equal(isToolAllowed('record_friend', 'CHANNEL'), false);
 });
+
+test('getTargetNameVariants handles inflections and transliterations (Юте -> youtya, Богдану -> bogdan)', async () => {
+    const { getTargetNameVariants } = await import('../src/services/social_resolver.js');
+    const yuteVariants = getTargetNameVariants('Юте');
+    assert.ok(yuteVariants.includes('youtya'));
+    assert.ok(yuteVariants.includes('ютя'));
+
+    const bogdanVariants = getTargetNameVariants('Богдану');
+    assert.ok(bogdanVariants.includes('богдан'));
+    assert.ok(bogdanVariants.includes('bogdan'));
+});
+

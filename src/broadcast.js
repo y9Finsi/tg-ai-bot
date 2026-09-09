@@ -27,9 +27,25 @@ export function startBroadcastWorker(bot) {
         const data = msgData || { type: 'text', text: job.data.messageText, btn: 'none' };
 
         let replyMarkup = {};
-            if (data.btn && data.btn !== 'none') {
-                const btnNames = { profile: '👤 Профиль', ai: '🧠 Настройка ИИ', refs: '👥 Рефералы', help: '🆘 Помощь', store: '⭐️ Магазин' };
-                const cbData = { profile: 'menu_profile', ai: 'menu_ai', refs: 'menu_refs', help: 'menu_help', store: 'trigger_buy' };
+            if (data.reply_markup || data.replyMarkup) {
+                replyMarkup = data.reply_markup || data.replyMarkup;
+            } else if (data.btn && data.btn !== 'none') {
+                const btnNames = {
+                    profile: '👤 Профиль',
+                    ai: '🧠 Настройка ИИ',
+                    refs: '👥 Рефералы',
+                    help: '🆘 Помощь',
+                    store: '⭐️ Магазин',
+                    try_new: '✨ Попробовать'
+                };
+                const cbData = {
+                    profile: 'menu_profile',
+                    ai: 'menu_ai',
+                    refs: 'menu_refs',
+                    help: 'menu_help',
+                    store: 'trigger_buy',
+                    try_new: 'lera_try_ladder'
+                };
                 replyMarkup = {
                     inline_keyboard: [[{ text: btnNames[data.btn] || data.btn, callback_data: cbData[data.btn] || data.btn }]]
                 };
@@ -41,7 +57,10 @@ export function startBroadcastWorker(bot) {
                     reply_markup: replyMarkup.inline_keyboard ? replyMarkup : undefined
                 });
             } else if (data.type === 'photo') {
-                await bot.telegram.sendPhoto(userId, data.file_id, {
+                const photoPayload = (typeof data.file_id === 'string' && (data.file_id.startsWith('/') || data.file_id.startsWith('./')))
+                    ? { source: data.file_id }
+                    : data.file_id;
+                await bot.telegram.sendPhoto(userId, photoPayload, {
                     caption: data.caption,
                     parse_mode: 'HTML',
                     reply_markup: replyMarkup.inline_keyboard ? replyMarkup : undefined

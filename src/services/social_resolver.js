@@ -67,6 +67,119 @@ export function normalizeTargetInput(rawInput) {
 }
 
 /**
+ * Получение вариантов имени для транслитерации и сопоставления (RU <-> EN)
+ */
+export function getTargetNameVariants(rawInput) {
+    const clean = normalizeTargetInput(rawInput).toLowerCase();
+    if (!clean) return [];
+
+    const variants = new Set([clean]);
+
+    const RU_EN = {
+        'а': 'a', 'б': 'b', 'в': ['v', 'w'], 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
+        'з': 'z', 'и': ['i', 'y'], 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
+        'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': ['h', 'kh'], 'ц': ['ts', 'c'],
+        'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': ['yu', 'you'],
+        'я': ['ya', 'ia']
+    };
+
+    let expansions = [''];
+    let isCyrillic = false;
+
+    for (const ch of clean) {
+        if (RU_EN[ch] !== undefined) {
+            isCyrillic = true;
+            const subs = Array.isArray(RU_EN[ch]) ? RU_EN[ch] : [RU_EN[ch]];
+            const next = [];
+            for (const prefix of expansions) {
+                for (const sub of subs) {
+                    next.push(prefix + sub);
+                }
+            }
+            expansions = next.slice(0, 16); // Ограничиваем комбинаторный взрыв
+        } else {
+            expansions = expansions.map(prefix => prefix + ch);
+        }
+    }
+
+    function transliterateCyrillic(str) {
+        let results = [''];
+        for (const ch of str) {
+            if (RU_EN[ch] !== undefined) {
+                const subs = Array.isArray(RU_EN[ch]) ? RU_EN[ch] : [RU_EN[ch]];
+                const next = [];
+                for (const prefix of results) {
+                    for (const sub of subs) {
+                        next.push(prefix + sub);
+                    }
+                }
+                results = next.slice(0, 16);
+            } else {
+                results = results.map(prefix => prefix + ch);
+            }
+        }
+        return results;
+    }
+
+    if (isCyrillic) {
+        for (const exp of expansions) {
+            variants.add(exp);
+            if (exp.includes('ks')) variants.add(exp.replace(/ks/g, 'x'));
+        }
+
+        // Поддержка падежных форм имен (дательный/винительный: Богдану -> Богдан, Юте -> Ютя/Юта, Саше -> Саша)
+        if (clean.length >= 3) {
+            const stems = [];
+            if (clean.endsWith('у') || clean.endsWith('а')) {
+                stems.push(clean.slice(0, -1));
+            } else if (clean.endsWith('е')) {
+                const root = clean.slice(0, -1);
+                stems.push(root + 'а', root + 'я', root);
+            } else if (clean.endsWith('ю')) {
+                const root = clean.slice(0, -1);
+                stems.push(root + 'ь', root + 'я', root);
+            }
+
+            for (const stem of stems) {
+                if (stem.length >= 2) {
+                    variants.add(stem);
+                    const latinVariants = transliterateCyrillic(stem);
+                    for (const lv of latinVariants) {
+                        variants.add(lv);
+                    }
+                }
+            }
+        }
+    }
+
+    if (clean.startsWith('ют')) {
+        variants.add('youtya');
+        variants.add('youtyay');
+        variants.add('yutya');
+        variants.add('yuta');
+        variants.add('ютя');
+        variants.add('юта');
+    }
+
+    if (/^[a-z0-9_]+$/.test(clean)) {
+        if (clean.includes('x')) {
+            variants.add(clean.replace(/x/g, 'ks'));
+        }
+        if (clean.startsWith('you')) {
+            variants.add('ю' + clean.slice(3));
+        } else if (clean.startsWith('yu')) {
+            variants.add('ю' + clean.slice(2));
+        }
+        if (clean.endsWith('tya') || clean.endsWith('ta')) {
+            variants.add('ютя');
+            variants.add('юта');
+        }
+    }
+
+    return Array.from(variants);
+}
+
+/**
  * Пассивное сохранение участника группы при любом входящем сообщении
  */
 export async function recordGroupParticipant({ chatId, userId, username = null, firstName = null, queryFn = defaultQuery }) {
@@ -180,6 +293,7 @@ export async function resolveSocialTarget(senderId, rawTargetText, { queryFn = d
 
     // 2. Поиск по имени среди подтвержденных связей (социальные ребра, общие группы, рефералы)
     const candidatesMap = new Map();
+    const variants = getTargetNameVariants(raw);
 
     // 2а. Явные ребра друзей
     try {
@@ -187,8 +301,12 @@ export async function resolveSocialTarget(senderId, rawTargetText, { queryFn = d
             SELECT friend_user_id as user_id, friend_username as username, friend_first_name as first_name, relation_source
             FROM user_social_edges
             WHERE user_id = $1 AND friend_user_id IS NOT NULL
-              AND (LOWER(friend_first_name) = LOWER($2) OR LOWER(friend_first_name) LIKE LOWER($2) || '%')
-        `, [senderId, clean]).then(r => r.rows || []);
+              AND (
+                (friend_username IS NOT NULL AND LOWER(friend_username) = ANY($2))
+                OR (friend_first_name IS NOT NULL AND LOWER(friend_first_name) = ANY($2))
+                OR EXISTS (SELECT 1 FROM unnest($2::text[]) v WHERE friend_first_name IS NOT NULL AND LOWER(friend_first_name) LIKE v || '%')
+              )
+        `, [senderId, variants]).then(r => r.rows || []);
         for (const row of edgeRows) {
             candidatesMap.set(String(row.user_id), {
                 userId: row.user_id,
@@ -206,8 +324,12 @@ export async function resolveSocialTarget(senderId, rawTargetText, { queryFn = d
             FROM group_participants gp1
             JOIN group_participants gp2 ON gp1.chat_id = gp2.chat_id
             WHERE gp1.user_id = $1 AND gp2.user_id != $1
-              AND (LOWER(gp2.first_name) = LOWER($2) OR LOWER(gp2.first_name) LIKE LOWER($2) || '%')
-        `, [senderId, clean]).then(r => r.rows || []);
+              AND (
+                (gp2.username IS NOT NULL AND LOWER(gp2.username) = ANY($2))
+                OR (gp2.first_name IS NOT NULL AND LOWER(gp2.first_name) = ANY($2))
+                OR EXISTS (SELECT 1 FROM unnest($2::text[]) v WHERE gp2.first_name IS NOT NULL AND LOWER(gp2.first_name) LIKE v || '%')
+              )
+        `, [senderId, variants]).then(r => r.rows || []);
         for (const row of groupRows) {
             if (!candidatesMap.has(String(row.user_id))) {
                 candidatesMap.set(String(row.user_id), {
@@ -227,8 +349,12 @@ export async function resolveSocialTarget(senderId, rawTargetText, { queryFn = d
             FROM referrals r
             JOIN users u ON (CASE WHEN r.referrer_id = $1 THEN r.referred_id ELSE r.referrer_id END) = u.telegram_id
             WHERE (r.referrer_id = $1 OR r.referred_id = $1)
-              AND (LOWER(u.first_name) = LOWER($2) OR LOWER(u.first_name) LIKE LOWER($2) || '%')
-        `, [senderId, clean]).then(r => r.rows || []);
+              AND (
+                (u.username IS NOT NULL AND LOWER(u.username) = ANY($2))
+                OR (u.first_name IS NOT NULL AND LOWER(u.first_name) = ANY($2))
+                OR EXISTS (SELECT 1 FROM unnest($2::text[]) v WHERE u.first_name IS NOT NULL AND LOWER(u.first_name) LIKE v || '%')
+              )
+        `, [senderId, variants]).then(r => r.rows || []);
         for (const row of refRows) {
             if (!candidatesMap.has(String(row.user_id))) {
                 candidatesMap.set(String(row.user_id), {
@@ -240,6 +366,31 @@ export async function resolveSocialTarget(senderId, rawTargetText, { queryFn = d
             }
         }
     } catch {}
+
+    // 2г. Точный поиск по пользователям системы (если в друзьях и группах не нашли)
+    if (candidatesMap.size === 0 && variants.length > 0) {
+        try {
+            const directUserRows = await queryFn(`
+                SELECT telegram_id as user_id, username, first_name
+                FROM users
+                WHERE is_blocked = FALSE AND telegram_id != $1
+                  AND (
+                    (username IS NOT NULL AND LOWER(username) = ANY($2))
+                    OR (first_name IS NOT NULL AND LOWER(first_name) = ANY($2))
+                  )
+                LIMIT 2
+            `, [senderId, variants]).then(r => r.rows || []);
+            if (directUserRows.length === 1) {
+                const u = directUserRows[0];
+                candidatesMap.set(String(u.user_id), {
+                    userId: u.user_id,
+                    username: u.username,
+                    firstName: u.first_name,
+                    source: 'user_directory'
+                });
+            }
+        } catch {}
+    }
 
     const candidates = Array.from(candidatesMap.values());
 
@@ -335,6 +486,19 @@ export async function markRelayDelivered(relayId, { queryFn = defaultQuery } = {
         await queryFn(`
             UPDATE social_relays
             SET status = 'delivered', delivered_at = NOW()
+            WHERE id = $1
+        `, [relayId]);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+export async function markRelayFailed(relayId, { queryFn = defaultQuery } = {}) {
+    try {
+        await queryFn(`
+            UPDATE social_relays
+            SET status = 'failed', delivered_at = NOW()
             WHERE id = $1
         `, [relayId]);
         return true;

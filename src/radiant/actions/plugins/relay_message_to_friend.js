@@ -110,6 +110,15 @@ export const relayMessageToFriendAction = {
         }
 
         const target = resolution.candidate;
+        if (String(target.userId) === String(senderId)) {
+            return {
+                status: 'error',
+                error: {
+                    code: 'SELF_RELAY',
+                    message: 'Ты просишь меня передать сообщение самому себе) Если хочешь что-то записать для себя — лучше просто скажи мне запомнить это.'
+                }
+            };
+        }
         const delayMinutes = Math.max(1, Math.min(1440, parseInt(args.delay_minutes, 10) || 3));
 
         try {

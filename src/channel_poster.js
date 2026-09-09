@@ -573,7 +573,7 @@ export async function publishChannelDraft(bot, draft = {}, overrideSettings = nu
             sentResult = bot.telegram?.sendAudio
                 ? await bot.telegram.sendAudio(channelId, contentMedia.telegram_file_id, { caption: cleanedText })
                 : await bot.sendAudio(channelId, contentMedia.telegram_file_id, { caption: cleanedText });
-        } else if (contentMedia.telegram_type === 'link' && contentMedia.url) {
+        } else if (contentMedia.url && !contentMedia.telegram_file_id) {
             const suffix = `\n\n${contentMedia.url}`;
             const availableTextLength = Math.max(1, 4096 - suffix.length);
             cleanedText = cleanedText.slice(0, availableTextLength).trim();

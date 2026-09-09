@@ -21,6 +21,7 @@ export function personalityModifiers({ personality = DEFAULT_PERSONALITY, taskTy
         SOCIAL_NASTYA: clamp((traits.sociability - 50) * 0.3),
         INVITE_BAR_NASTYA: clamp((traits.sociability - 50) * 0.3),
         LEISURE_HOME: clamp((traits.procrastination - 50) * 0.2 + (traits.homebody - 50) * 0.15),
+        CONTENT_BROWSE: clamp((traits.procrastination - 50) * 0.25 + (traits.homebody - 50) * 0.1),
         IDLE_HOME_REST: clamp((traits.homebody - 50) * 0.15),
         TRAVEL: clamp((50 - traits.homebody) * 0.1 - (traits.rainSensitivity - 50) * 0.1)
     };

@@ -91,3 +91,17 @@ test('response format validator trusts newline-separated raw replies', () => {
         []
     );
 });
+
+test('cleanResponseText strips russian media tags and standalone tokens', () => {
+    const dirty = 'щас скину трек\n[ФОТО]\nвот держи';
+    assert.equal(cleanResponseText(dirty), 'щас скину трек\nвот держи');
+
+    const dirtyStandalone = 'щас\nФОТО\nлови';
+    assert.equal(cleanResponseText(dirtyStandalone), 'щас\nлови');
+});
+
+test('cleanResponseText strips truncated DSML tool call blocks', () => {
+    const truncated = 'щас черкану ему\n<｜DSML｜tool_calls>\n<｜DSML｜invoke name="relay_message_to_friend">\n<｜DSML｜parameter name="target" string="true">Ютя</｜DSML｜parameter>';
+    assert.equal(cleanResponseText(truncated), 'щас черкану ему');
+});
+

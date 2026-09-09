@@ -475,6 +475,13 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         ].filter(Boolean).join('');
     } catch (tamagotchiErr) {
         console.error("⚠️ Ошибка формирования контекста Леры:", tamagotchiErr.message);
+        const promptModules = productionIntentConfig?.promptModules || {};
+        if (promptModules.memory !== false) {
+            const memoryText = memories.length > 0
+                ? memories.slice(0, 5).map(m => `- ${m.text ?? m.fact ?? m.normalizedText ?? ''}`).filter(line => line !== '- ').join('\n')
+                : 'Пока нет сохраненных фактов о пользователе.';
+            tamagotchiInstruction = `\n\n=== 🧠 ДОЛГОСРОЧНАЯ ПАМЯТЬ О ПОЛЬЗОВАТЕЛЕ ===\n${memoryText}`;
+        }
     }
 
     // Подготовка контекста для модульного шаблонизатора (переменные {{time}}, {{weather}}, {{needs}}, ...)
@@ -1006,6 +1013,15 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             }
             if (Number.isFinite(matchedRule.temperature) && matchedRule.temperature >= 0) {
                 generationParams.temperature = matchedRule.temperature;
+            }
+            if (Number.isFinite(matchedRule.top_p) && matchedRule.top_p >= 0) {
+                generationParams.top_p = matchedRule.top_p;
+            }
+            if (Number.isFinite(matchedRule.frequency_penalty)) {
+                generationParams.frequency_penalty = matchedRule.frequency_penalty;
+            }
+            if (Number.isFinite(matchedRule.presence_penalty)) {
+                generationParams.presence_penalty = matchedRule.presence_penalty;
             }
             if (matchedRule.provider_id) {
                 const allProviders = await getOrderedAiProviders();

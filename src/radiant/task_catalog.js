@@ -25,7 +25,7 @@ export const TASK_DEFINITIONS = {
     TRAVEL: { category: 'transit', durationMinutes: 15, priority: 92 }
     ,PREPARE_FOR_OUTING: { category: 'commitment', durationMinutes: 20, priority: 50 },
     PERSONAL_TASK: { category: 'commitment', durationMinutes: 30, priority: 40 },
-    CONTENT_BROWSE: { category: 'utility', durationMinutes: 20, priority: 25 },
+    CONTENT_BROWSE: { category: 'utility', durationMinutes: 20, priority: 45 },
     CONTENT_FOLLOWUP: { category: 'commitment', durationMinutes: 10, priority: 60 },
     CHANNEL_POST: { category: 'utility', durationMinutes: 30, priority: 50 }
 };

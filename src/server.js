@@ -2725,10 +2725,10 @@ export function createAdminApp(bot = null) {
 
     app.post('/api/admin/llm-settings', async (req, res) => {
         try {
-            const { temperature, presence_penalty, frequency_penalty, prompts, routingSettings, memorySettings } = req.body;
+            const { temperature, top_p, presence_penalty, frequency_penalty, prompts, routingSettings, memorySettings } = req.body;
             let llmParams = null;
-            if (temperature !== undefined || presence_penalty !== undefined || frequency_penalty !== undefined) {
-                llmParams = await updateLlmParams({ temperature, presence_penalty, frequency_penalty });
+            if (temperature !== undefined || top_p !== undefined || presence_penalty !== undefined || frequency_penalty !== undefined) {
+                llmParams = await updateLlmParams({ temperature, top_p, presence_penalty, frequency_penalty });
             } else {
                 llmParams = await getLlmParams();
             }

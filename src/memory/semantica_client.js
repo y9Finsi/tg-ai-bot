@@ -60,7 +60,7 @@ export class SemanticaClient {
     } = {}) {
         this.baseUrl = String(baseUrl || '').replace(/\/$/, '');
         this.fetchImpl = fetchImpl;
-        this.timeoutMs = Math.min(200, Math.max(150, numberOr(timeoutMs, DEFAULT_TIMEOUT_MS)));
+        this.timeoutMs = Math.min(5000, Math.max(150, numberOr(timeoutMs, DEFAULT_TIMEOUT_MS)));
         this.mutationTimeoutMs = Math.max(250, numberOr(mutationTimeoutMs, DEFAULT_MUTATION_TIMEOUT_MS));
         this.mode = ['disabled', 'shadow', 'active'].includes(String(mode)) ? String(mode) : 'disabled';
         this.threshold = numberOr(threshold, DEFAULT_THRESHOLD);

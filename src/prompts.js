@@ -12,9 +12,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const DEFAULT_LLM_PARAMS = {
-    temperature: 0.66,
-    presence_penalty: 0.1,
-    frequency_penalty: 0.1
+    temperature: 0.8,
+    top_p: 0.95,
+    presence_penalty: 0.2,
+    frequency_penalty: 0.3
 };
 
 const PROMPT_ORDER = [
@@ -80,12 +81,17 @@ let isDbInitialized = false;
 export async function initPromptsFromDb() {
     try {
         const tempStr = await getSetting('llm_temperature', null);
+        const topPStr = await getSetting('llm_top_p', null);
         const presStr = await getSetting('llm_presence_penalty', null);
         const freqStr = await getSetting('llm_frequency_penalty', null);
 
         if (tempStr !== null && tempStr !== undefined) {
             const parsed = parseFloat(tempStr);
             if (!isNaN(parsed)) llmParamsCache.temperature = parsed;
+        }
+        if (topPStr !== null && topPStr !== undefined) {
+            const parsed = parseFloat(topPStr);
+            if (!isNaN(parsed)) llmParamsCache.top_p = parsed;
         }
         if (presStr !== null && presStr !== undefined) {
             const parsed = parseFloat(presStr);
@@ -145,6 +151,13 @@ export async function updateLlmParams(newParams) {
         if (!isNaN(val)) {
             llmParamsCache.temperature = val;
             await setSetting('llm_temperature', String(val));
+        }
+    }
+    if (newParams.top_p !== undefined) {
+        const val = parseFloat(newParams.top_p);
+        if (!isNaN(val)) {
+            llmParamsCache.top_p = val;
+            await setSetting('llm_top_p', String(val));
         }
     }
     if (newParams.presence_penalty !== undefined) {

@@ -1009,7 +1009,10 @@ export function AiSettingsTab({ toast }) {
             conditions: Array.isArray(rule.conditions) ? JSON.parse(JSON.stringify(rule.conditions)) : [],
             attachedPromptIds: Array.isArray(rule.attachedPromptIds) ? [...rule.attachedPromptIds] : ['prompt_bio'],
             max_tokens: rule.max_tokens || 230,
-            temperature: rule.temperature !== undefined ? rule.temperature : 0.7,
+            temperature: rule.temperature !== undefined ? rule.temperature : 0.8,
+            top_p: rule.top_p !== undefined ? rule.top_p : 0.95,
+            frequency_penalty: rule.frequency_penalty !== undefined ? rule.frequency_penalty : 0.3,
+            presence_penalty: rule.presence_penalty !== undefined ? rule.presence_penalty : 0.2,
             provider_id: rule.provider_id ? Number(rule.provider_id) : null,
             fallback_provider_ids: Array.isArray(rule.fallback_provider_ids) ? [...rule.fallback_provider_ids] : [],
             enabled: true,
@@ -1930,6 +1933,49 @@ export function AiSettingsTab({ toast }) {
                                                     <ChevronRight className="w-4 h-4 text-white/50 stroke-[2]" />
                                                 </button>
 
+                                                {/* Card 2.5: Sampling Params (Top P, Freq, Pres) */}
+                                                <div className="grid grid-cols-3 gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setParamPopover(
+                                                            paramPopover?.ruleId === rule.id && paramPopover?.type === 'top_p'
+                                                                ? null
+                                                                : { ruleId: rule.id, type: 'top_p', value: rule.top_p !== undefined ? rule.top_p : 0.95 }
+                                                        )}
+                                                        className="py-1.5 px-2 rounded-[14px] bg-[#272727] hover:bg-[#323232] text-[11px] text-[#9a9a9a] hover:text-white flex flex-col items-center justify-center cursor-pointer transition-all active:scale-95 select-none border border-white/[0.04]"
+                                                        title="Top P (вероятностная выборка)"
+                                                    >
+                                                        <span className="text-[10px] text-white/40">top_p</span>
+                                                        <span className="font-semibold text-white/90 font-mono">{rule.top_p !== undefined ? rule.top_p : 0.95}</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setParamPopover(
+                                                            paramPopover?.ruleId === rule.id && paramPopover?.type === 'frequency_penalty'
+                                                                ? null
+                                                                : { ruleId: rule.id, type: 'frequency_penalty', value: rule.frequency_penalty !== undefined ? rule.frequency_penalty : 0.3 }
+                                                        )}
+                                                        className="py-1.5 px-2 rounded-[14px] bg-[#272727] hover:bg-[#323232] text-[11px] text-[#9a9a9a] hover:text-white flex flex-col items-center justify-center cursor-pointer transition-all active:scale-95 select-none border border-white/[0.04]"
+                                                        title="Frequency Penalty (штраф за повторение одних и тех же слов)"
+                                                    >
+                                                        <span className="text-[10px] text-white/40">freq</span>
+                                                        <span className="font-semibold text-white/90 font-mono">{rule.frequency_penalty !== undefined ? rule.frequency_penalty : 0.3}</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setParamPopover(
+                                                            paramPopover?.ruleId === rule.id && paramPopover?.type === 'presence_penalty'
+                                                                ? null
+                                                                : { ruleId: rule.id, type: 'presence_penalty', value: rule.presence_penalty !== undefined ? rule.presence_penalty : 0.2 }
+                                                        )}
+                                                        className="py-1.5 px-2 rounded-[14px] bg-[#272727] hover:bg-[#323232] text-[11px] text-[#9a9a9a] hover:text-white flex flex-col items-center justify-center cursor-pointer transition-all active:scale-95 select-none border border-white/[0.04]"
+                                                        title="Presence Penalty (штраф за возврат к старым темам)"
+                                                    >
+                                                        <span className="text-[10px] text-white/40">pres</span>
+                                                        <span className="font-semibold text-white/90 font-mono">{rule.presence_penalty !== undefined ? rule.presence_penalty : 0.2}</span>
+                                                    </button>
+                                                </div>
+
                                                 {/* Card 3: Посмотреть сырой промпт (в пустой области под Токенами и Темпом) */}
                                                 <button
                                                     type="button"
@@ -1946,7 +1992,11 @@ export function AiSettingsTab({ toast }) {
                                                     <div className="absolute top-0 right-0 z-30 w-full bg-[#1e1e1e] border border-white/10 rounded-[20px] p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-100 flex flex-col gap-2">
                                                         <div className="flex items-center justify-between text-xs text-white/70 font-medium">
                                                             <span>
-                                                                {paramPopover.type === 'tokens' ? 'Лимит токенов' : 'Температура креативности'}
+                                                                {paramPopover.type === 'tokens' ? 'Лимит токенов'
+                                                                    : paramPopover.type === 'temp' ? 'Температура креативности'
+                                                                    : paramPopover.type === 'top_p' ? 'Выборка Top P'
+                                                                    : paramPopover.type === 'frequency_penalty' ? 'Штраф за слова (Frequency Penalty)'
+                                                                    : 'Штраф за темы (Presence Penalty)'}
                                                             </span>
                                                             <button
                                                                 type="button"
@@ -1991,21 +2041,26 @@ export function AiSettingsTab({ toast }) {
                                                             <div className="flex flex-col gap-2">
                                                                 <input
                                                                     type="range"
-                                                                    min="0.1"
-                                                                    max="1.5"
-                                                                    step="0.05"
+                                                                    min={paramPopover.type === 'temp' ? '0.1' : paramPopover.type === 'top_p' ? '0.1' : '-2'}
+                                                                    max={paramPopover.type === 'temp' ? '1.5' : paramPopover.type === 'top_p' ? '1.0' : '2'}
+                                                                    step={paramPopover.type === 'top_p' ? '0.01' : '0.05'}
                                                                     value={paramPopover.value}
                                                                     onChange={(e) => setParamPopover({ ...paramPopover, value: Number(e.target.value) })}
                                                                     className="w-full accent-[#292e5e] cursor-pointer"
                                                                 />
                                                                 <div className="flex items-center justify-between">
-                                                                    <span className="text-sm font-semibold text-white px-2">
-                                                                        {String(paramPopover.value).replace('.', ',')}
-                                                                    </span>
+                                                                    <input
+                                                                        type="number"
+                                                                        step={paramPopover.type === 'top_p' ? '0.01' : '0.05'}
+                                                                        value={paramPopover.value}
+                                                                        onChange={(e) => setParamPopover({ ...paramPopover, value: Number(e.target.value) })}
+                                                                        className="w-20 bg-[#121212] border border-white/10 rounded-lg px-2 py-1 text-sm text-white text-center font-mono"
+                                                                    />
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => {
-                                                                            handleUpdateParam(rule.id, 'temperature', paramPopover.value);
+                                                                            const fieldName = paramPopover.type === 'temp' ? 'temperature' : paramPopover.type;
+                                                                            handleUpdateParam(rule.id, fieldName, paramPopover.value);
                                                                             setParamPopover(null);
                                                                         }}
                                                                         className="px-3 py-1 rounded-full bg-[#292e5e] hover:bg-[#343b75] text-white text-xs font-medium cursor-pointer"
@@ -2187,7 +2242,10 @@ export function AiSettingsTab({ toast }) {
                                     enabled: editingRule?.enabled !== false,
                                     attachedPromptIds: ruleSelectedPromptIds.length ? ruleSelectedPromptIds : (promptsList.length ? [promptsList[0].id] : ['prompt_bio']),
                                     max_tokens: Number(formData.get('max_tokens')) || 230,
-                                    temperature: Number(formData.get('temperature')) || 0.7,
+                                    temperature: Number(formData.get('temperature')) || 0.8,
+                                    top_p: formData.get('top_p') !== null && formData.get('top_p') !== '' ? Number(formData.get('top_p')) : 0.95,
+                                    frequency_penalty: formData.get('frequency_penalty') !== null && formData.get('frequency_penalty') !== '' ? Number(formData.get('frequency_penalty')) : 0.3,
+                                    presence_penalty: formData.get('presence_penalty') !== null && formData.get('presence_penalty') !== '' ? Number(formData.get('presence_penalty')) : 0.2,
                                     content: ''
                                 });
                             }}
@@ -2400,8 +2458,49 @@ export function AiSettingsTab({ toast }) {
                                         step="0.05"
                                         min="0.1"
                                         max="1.5"
-                                        defaultValue={editingRule?.temperature !== undefined ? editingRule.temperature : 0.7}
+                                        defaultValue={editingRule?.temperature !== undefined ? editingRule.temperature : 0.8}
                                         className="bg-[#202020] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-[#8693ff]/50"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-3">
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs text-white/60 font-medium" title="Выборка Top P (0.1 - 1.0)">Top P</label>
+                                    <input
+                                        type="number"
+                                        name="top_p"
+                                        step="0.01"
+                                        min="0.1"
+                                        max="1.0"
+                                        defaultValue={editingRule?.top_p !== undefined ? editingRule.top_p : 0.95}
+                                        className="bg-[#202020] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-[#8693ff]/50 font-mono"
+                                    />
+                                </div>
+
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs text-white/60 font-medium" title="Frequency Penalty (-2.0 - 2.0) — штраф за повтор одних и тех же слов">Freq Penalty</label>
+                                    <input
+                                        type="number"
+                                        name="frequency_penalty"
+                                        step="0.05"
+                                        min="-2"
+                                        max="2"
+                                        defaultValue={editingRule?.frequency_penalty !== undefined ? editingRule.frequency_penalty : 0.3}
+                                        className="bg-[#202020] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-[#8693ff]/50 font-mono"
+                                    />
+                                </div>
+
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs text-white/60 font-medium" title="Presence Penalty (-2.0 - 2.0) — штраф за повтор тем">Pres Penalty</label>
+                                    <input
+                                        type="number"
+                                        name="presence_penalty"
+                                        step="0.05"
+                                        min="-2"
+                                        max="2"
+                                        defaultValue={editingRule?.presence_penalty !== undefined ? editingRule.presence_penalty : 0.2}
+                                        className="bg-[#202020] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-[#8693ff]/50 font-mono"
                                     />
                                 </div>
                             </div>

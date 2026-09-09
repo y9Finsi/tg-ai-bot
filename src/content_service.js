@@ -145,16 +145,23 @@ export async function sendCatalogContent(telegram, chatId, contentOrId) {
     const content = typeof contentOrId === 'object' ? contentOrId : await getLeraContent(contentOrId);
     if (!content || !content.enabled) throw new Error('Контент не найден или выключен');
     const fileId = content.telegram_file_id;
+    const caption = content.description ? String(content.description).trim() : undefined;
+    const extra = caption ? { caption } : undefined;
+
     if (!fileId && content.url) {
-        return telegram.sendMessage(chatId, content.url);
+        const text = caption ? `${caption}\n\n${content.url}` : content.url;
+        return telegram.sendMessage(chatId, text);
     }
     switch (content.telegram_type) {
-        case 'audio': return telegram.sendAudio(chatId, fileId);
-        case 'video': return telegram.sendVideo(chatId, fileId);
-        case 'animation': return telegram.sendAnimation(chatId, fileId);
-        case 'document': return telegram.sendDocument(chatId, fileId);
-        case 'photo': return telegram.sendPhoto(chatId, fileId);
-        case 'link': return telegram.sendMessage(chatId, content.url);
+        case 'audio': return telegram.sendAudio(chatId, fileId, extra);
+        case 'video': return telegram.sendVideo(chatId, fileId, extra);
+        case 'animation': return telegram.sendAnimation(chatId, fileId, extra);
+        case 'document': return telegram.sendDocument(chatId, fileId, extra);
+        case 'photo': return telegram.sendPhoto(chatId, fileId, extra);
+        case 'link': {
+            const text = caption ? `${caption}\n\n${content.url}` : content.url;
+            return telegram.sendMessage(chatId, text);
+        }
         default: throw new Error(`Неподдерживаемый тип контента: ${content.telegram_type}`);
     }
 }

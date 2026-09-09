@@ -11,6 +11,7 @@ export function cleanResponseText(rawText) {
 
     // Удаляем вызовы инструментов (DSML, tool_call, invoke, function_call и др.) вместе с содержимым/аргументами
     text = text.replace(/<[｜|\uFF5C]?\s*(?:DSML|tool_calls?|function_calls?|tool_call|invoke)[\s\S]*?<\/[｜|\uFF5C]?\s*(?:DSML|tool_calls?|function_calls?|tool_call|invoke)>/gi, '').trim();
+    text = text.replace(/<[｜|\uFF5C]?\s*(?:DSML|tool_calls?)[\s\S]*$/gi, '').trim();
     text = text.replace(/<\/?(?:tool_call|tool_calls|invoke|function_call|arg|parameter)[^>]*>[\s\S]*?<\/(?:tool_call|tool_calls|invoke|function_call|arg|parameter)>/gi, '').trim();
     text = text.replace(/<\/?(?:tool_call|tool_calls|invoke|function_call|arg|parameter)[^>]*>/gi, '').trim();
     // Удаляем любые спец-теги моделей с пайпами (DeepSeek <｜end_of_sentence｜>, <｜tool_calls｜> и т.д.)
@@ -37,7 +38,8 @@ export function cleanResponseText(rawText) {
     text = text.replace(/\[СИСТЕМНОЕ СОБЫТИЕ[\s\S]*?\]/gi, '').trim();
     text = text.replace(/\[Лера отправила[\s\S]*?\]/gi, '').trim();
     text = text.replace(/\[Лера переслала[\s\S]*?\]/gi, '').trim();
-    text = text.replace(/\[D:[^\]]+\]|\[(?:M|R|PHOTO|VOICE|VIDEO|STICKER|INITIATIVE|REMEMBER|FORGET|MUTE|SYSTEM)[^\]]*\]/gi, '').trim();
+    text = text.replace(/\[D:[^\]]+\]|\[(?:M|R|PHOTO|VOICE|VIDEO|STICKER|INITIATIVE|REMEMBER|FORGET|MUTE|SYSTEM|ФОТО|ГОЛОСОВОЕ|ТРЕК|ВИДЕО|АУДИО|КАРТИНКА)[^\]]*\]/gi, '').trim();
+    text = text.replace(/^(?:ФОТО|ГОЛОСОВОЕ|ТРЕК|ВИДЕО|АУДИО|КАРТИНКА)\s*$/gim, '').trim();
     text = text.replace(/\[?(?:ТЕГ|ТИП|НАЗВАНИЕ|ССЫЛКА|TAG|TYPE|TITLE|LINK|ТРЕК|АУДИО|ВИДЕО|МАТЕРИАЛ):\s*[^\]\n]+\]?/gi, '').trim();
     text = text.replace(/^(?:ТЕГ|ТИП|НАЗВАНИЕ|ССЫЛКА|TAG|TYPE|TITLE|LINK|ТРЕК|АУДИО|ВИДЕО|МАТЕРИАЛ):\s*.*$/gim, '').trim();
     text = text.replace(/Лера отправила личное фото:?[\s\S]*/gi, '').trim();

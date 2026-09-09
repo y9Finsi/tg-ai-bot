@@ -18,7 +18,7 @@ import { sendCatalogContent, addLeraContent } from './content_service.js';
 import { sendTypingAction, stopTyping } from './typing_manager.js';
 import { getRoutingSettings } from './ai/intent_router.js';
 import { getEffectiveInitiativeLimit } from './initiative_service.js';
-import { markRelayDelivered, setSocialQueue } from './services/social_resolver.js';
+import { markRelayDelivered, markRelayFailed, setSocialQueue } from './services/social_resolver.js';
 
 // Парсим URL из .env и жестко задаем IPv4 (family: 4)
 const redisUrl = new URL(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
@@ -449,16 +449,24 @@ async function processSocialRelayJob(bot, job) {
 
     if (!targetUser || targetUser.is_blocked || mute) {
         console.log(`[SOCIAL RELAY SKIPPED] target ${targetId}: заблокирован или в муте`);
+        if (relayId) {
+            await markRelayFailed(relayId).catch(() => {});
+        }
         return;
     }
 
     const vibeHint = vibeTag ? ` В вайбе/тональности: ${vibeTag}.` : '';
     const prompt = `[СОЦИАЛЬНАЯ ПЕРЕДАЧА ОТ ЗНАКОМОГО]:
-Твоя подруга/знакомая ${senderName} просила тебя передать ${targetName}: «${message}».${vibeHint}
-Напиши ему в личку своими словами в твоем фирменном питерском стиле (живо, с легким подколом, без официоза, без смайликов и шаблонных фраз). Упомяни, что это ${senderName} просила передать. Не цитируй системные логи.`;
+${senderName} просил(а) тебя передать ${targetName}: «${message}».${vibeHint}
+Напиши ему в личку своими словами в твоем фирменном питерском стиле (живо, с легким подколом, без официоза, без смайликов и шаблонных фраз). Упомяни, что это ${senderName} просил(а) передать. Не цитируй системные логи.`;
 
     const response = await generateAiInitiativeResponse(targetId, prompt, { initiativeKind: 'social_relay' });
-    if (!response?.text) return;
+    if (!response?.text) {
+        if (relayId) {
+            await markRelayFailed(relayId).catch(() => {});
+        }
+        return;
+    }
 
     try {
         await sendTextLadder(bot, targetId, response.text);
@@ -468,6 +476,9 @@ async function processSocialRelayJob(bot, job) {
         console.log(`[SOCIAL RELAY DELIVERED] От ${senderName} к ${targetName} (${targetId})`);
     } catch (sendErr) {
         console.error(`[SOCIAL RELAY SEND ERROR] target ${targetId}:`, sendErr.message);
+        if (relayId) {
+            await markRelayFailed(relayId).catch(() => {});
+        }
         if (sendErr.response?.error_code === 403 && sendErr.message?.includes('bot was blocked by the user')) {
             await setBlockStatus(targetId, true).catch(() => {});
         }
@@ -714,7 +725,15 @@ async function processAiJob(bot, job) {
             }).catch(error => console.error(`[CONVERSATION OUT EVENT ERROR] user ${userId}:`, error.message));
         };
         try {
-            response = await generateResponse(userId, text, { batchId, eventIds, firstMessageAt, preMessageGapSeconds, photoUrls: job.data.photoUrls || [] });
+            response = await generateResponse(userId, text, {
+                batchId,
+                eventIds,
+                firstMessageAt,
+                preMessageGapSeconds,
+                photoUrls: job.data.photoUrls || [],
+                chatId: job.data.chatId,
+                replyingTo: job.data.replyingTo || null
+            });
             const historyClearedAtAfterGeneration = await getChatHistoryClearedAt(userId);
             if (String(historyClearedAtBeforeGeneration || '') !== String(historyClearedAtAfterGeneration || '')) {
                 await refundReservation();

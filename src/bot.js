@@ -10,7 +10,7 @@ import {
     processPlategaPayment, updateLastActive, setStoreOpened, getUsersForRetargetingStore, markStorePromoSent,
     createPromocode, activatePromocode, getPaymentHistory,
     getAllPromocodes, getPromocodeById, togglePromoStatus, togglePromoNewUsersOnly, deletePromocode, updatePromoField, getUsersForBonusNotify, markBonusNotified,
-    addLeraPhoto, addLeraContent, findDuplicateLeraContent, appendConversationEvent, updateConversationEventStatus,
+    addLeraPhoto, addLeraContent, findDuplicateLeraContent, getRandomChannelContent, appendConversationEvent, updateConversationEventStatus,
     reserveFreeRequest, reserveImageRequest, reserveVoiceRequest, refundReservedRequest,
     getAdminDebugLogEnabled, setAdminDebugLogEnabled, closeDB
 } from './db/database.js';
@@ -35,7 +35,7 @@ import { StateRepository } from './db/state_repository.js';
 import { MemorySummarizer } from './memory/summarizer.js';
 import { initDatabaseTables, claimChannelProcessedMessage } from './db/database.js';
 import { initChannelPoster, stopChannelPoster } from './channel_poster.js';
-import { editContentChannelPost, extractContentFromChannelPost } from './content_service.js';
+import { editContentChannelPost, extractContentFromChannelPost, sendCatalogContent } from './content_service.js';
 import { enqueuePersonalInitiatives } from './initiative_service.js';
 import { handleChannelDiscussionMessage, handleGroupMention, handleGuestQuery } from './channel_comments.js';
 import { createSemanticaClient } from './memory/semantica_client.js';
@@ -170,7 +170,8 @@ async function flushUserBuffer(userId) {
             batchId: buf.batchId || null,
             firstMessageAt: buf.firstMessageAt || null,
             preMessageGapSeconds: buf.preMessageGapSeconds,
-            reactionMessageId: buf.reactionMessageId || null
+            reactionMessageId: buf.reactionMessageId || null,
+            replyingTo: buf.replyingTo || null
         });
     } catch (e) {
         stopBufferedTyping();
@@ -873,6 +874,66 @@ bot.action('reset_free_limits', async (ctx) => {
     return ctx.answerCbQuery('Лимиты всем пользователям успешно сброшены до 10 текстов и 1 фото!', { show_alert: true });
 });
 
+const activeTryLadders = new Set();
+export async function sendLeraTryLadder(telegram, chatId) {
+    if (activeTryLadders.has(chatId)) return;
+    activeTryLadders.add(chatId);
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    try {
+        await telegram.sendChatAction(chatId, 'typing').catch(() => null);
+        await sleep(800);
+        await telegram.sendMessage(chatId, 'о привет');
+
+        await sleep(1000);
+        await telegram.sendChatAction(chatId, 'typing').catch(() => null);
+        await sleep(900);
+        await telegram.sendMessage(chatId, 'зацени кстати что теперь умею');
+
+        await sleep(1100);
+        await telegram.sendChatAction(chatId, 'typing').catch(() => null);
+        await sleep(800);
+        await telegram.sendMessage(chatId, 'много всякого да?');
+
+        await sleep(1200);
+        await telegram.sendChatAction(chatId, 'typing').catch(() => null);
+        await sleep(800);
+        await telegram.sendMessage(chatId, 'ща падажди');
+
+        await sleep(1400);
+
+        let sentContent = false;
+        try {
+            const randomContent = await getRandomChannelContent({ excludeRecent: false });
+            if (randomContent && randomContent.enabled) {
+                await telegram.sendMessage(chatId, 'опа!');
+                await sleep(600);
+                await sendCatalogContent(telegram, chatId, randomContent);
+                sentContent = true;
+            }
+        } catch (e) {
+            console.warn('[LERA TRY LADDER] fallback to curated track:', e?.message);
+        }
+
+        if (!sentContent) {
+            await telegram.sendMessage(chatId, 'опа!\n\nзалипни вот в этот трек на вечер — чисто питерский осенний вайб под дождь:\nhttps://music.yandex.ru/album/22442220/track/104278451');
+        }
+
+        await sleep(1300);
+        await telegram.sendChatAction(chatId, 'typing').catch(() => null);
+        await sleep(700);
+        await telegram.sendMessage(chatId, 'ахуенски?');
+    } catch (err) {
+        console.error('[LERA TRY LADDER] error:', err);
+    } finally {
+        activeTryLadders.delete(chatId);
+    }
+}
+
+bot.action('lera_try_ladder', async (ctx) => {
+    await ctx.answerCbQuery().catch(() => null);
+    return sendLeraTryLadder(ctx.telegram, ctx.from.id);
+});
+
 // --- ОТРИСОВКА МАГАЗИНА ---
 async function getSafePkg(key, defaultVal) {
     let val = await getSetting(key, defaultVal);
@@ -1211,6 +1272,9 @@ bot.start(async (ctx) => {
     await processReferral(ctx);
     if (!(await requireTerms(ctx, ctx.from.id))) return;
     const payload = String(ctx.payload || '').trim();
+    if (payload === 'try_new' || payload === 'try') {
+        return sendLeraTryLadder(ctx.telegram, ctx.from.id);
+    }
     if (payload.startsWith('gphoto')) {
         ctx.reply("О, ты из группы пришёл) Ну привет! Напиши мне что-нибудь в ответ или загляни в меню ниже — теперь общаемся лично без лишних глаз.", getMainKeyboard(ctx.from.id));
         return;
@@ -1778,6 +1842,18 @@ bot.on('my_chat_member', async (ctx) => {
     }
 
     // --- БУФЕРИЗАЦИЯ СООБЩЕНИЙ («ЛЕСЕНКА») ---
+    let replyingTo = null;
+    if (ctx.message?.reply_to_message) {
+        const botUsername = ctx.botInfo?.username?.toLowerCase() || '';
+        const isReplyToLera = ctx.message.reply_to_message.from?.id === ctx.botInfo?.id || ctx.message.reply_to_message.from?.username?.toLowerCase() === botUsername;
+        const repRawName = isReplyToLera ? 'Лера' : (ctx.message.reply_to_message.from?.first_name || ctx.message.reply_to_message.from?.username || 'Собеседник');
+        const repText = ctx.message.quote?.text
+            || ctx.message.reply_to_message.text
+            || ctx.message.reply_to_message.caption
+            || (ctx.message.reply_to_message.sticker ? '[Стикер]' : (ctx.message.reply_to_message.photo ? '[Фото]' : (ctx.message.reply_to_message.voice ? '[Голосовое]' : '[Медиа]')));
+        replyingTo = { sender: repRawName, text: repText, isReplyToLera, quote: ctx.message.quote?.text || null };
+    }
+
     if (!userDebounceBuffer[userId]) {
         userDebounceBuffer[userId] = {
             textParts: [],
@@ -1789,7 +1865,8 @@ bot.on('my_chat_member', async (ctx) => {
             firstMsgTime: Date.now(),
             firstMessageAt: ctx.message?.date ? new Date(Number(ctx.message.date) * 1000).toISOString() : new Date().toISOString(),
             preMessageGapSeconds: null,
-            reactionMessageId: ctx.message?.message_id || null
+            reactionMessageId: ctx.message?.message_id || null,
+            replyingTo: replyingTo || null
         };
         if (!PHOTO_INTENT_REGEX.test(text)) {
             startTyping(bot, ctx.chat.id, userDebounceBuffer[userId].batchId);
@@ -1797,6 +1874,9 @@ bot.on('my_chat_member', async (ctx) => {
     } else {
         if (userDebounceBuffer[userId].timer) {
             clearTimeout(userDebounceBuffer[userId].timer);
+        }
+        if (replyingTo && !userDebounceBuffer[userId].replyingTo) {
+            userDebounceBuffer[userId].replyingTo = replyingTo;
         }
     }
 
@@ -1807,13 +1887,14 @@ bot.on('my_chat_member', async (ctx) => {
     try {
         const event = await appendConversationEvent({
             userId,
+            chatId: ctx.chat.id,
             eventType: 'MESSAGE',
             role: 'user',
             content: text,
             occurredAt: ctx.message?.date ? new Date(Number(ctx.message.date) * 1000) : new Date(),
             telegramMessageId: ctx.message?.message_id || null,
             batchId: userDebounceBuffer[userId].batchId,
-            metadata: { chat_id: ctx.chat?.id || null, message_type: 'text' },
+            metadata: { chat_id: ctx.chat?.id || null, message_type: 'text', replying_to: replyingTo },
             status: 'PENDING'
         });
         if (event?.id) {
