@@ -237,8 +237,44 @@ export async function resolveSocialTarget(senderId, rawTargetText, { queryFn = d
         return { status: 'INVALID_INPUT', error: 'Имя получателя не указано' };
     }
 
-    const isExplicitHandle = raw.startsWith('@') || /^[a-zA-Z0-9_]{4,32}$/.test(raw);
     const clean = normalizeTargetInput(raw);
+
+    // 0. Если указано местоимение или ответ («ему», «ей», «в ответ», «обратно», «тому кто писал»)
+    const isPronounReply = /^(?:ему|ей|им|тому|автору|отправителю|обратно|назад|в\s+ответ)$/i.test(clean) || /^(?:ему|ей|обратно|в\s+ответ)/i.test(raw);
+    if (isPronounReply) {
+        try {
+            const lastIncoming = await queryFn(`
+                SELECT sender_id, sender_name 
+                FROM social_relays 
+                WHERE target_id = $1 AND status = 'delivered'
+                ORDER BY delivered_at DESC LIMIT 1
+            `, [senderId]).then(r => r.rows || []).catch(() => []);
+
+            if (lastIncoming.length > 0) {
+                const senderUser = await queryFn(`
+                    SELECT telegram_id as user_id, username, first_name 
+                    FROM users 
+                    WHERE telegram_id = $1 LIMIT 1
+                `, [lastIncoming[0].sender_id]).then(r => r.rows?.[0]).catch(() => null);
+
+                if (senderUser) {
+                    return {
+                        status: 'RESOLVED',
+                        candidate: {
+                            userId: senderUser.user_id,
+                            username: senderUser.username,
+                            firstName: senderUser.first_name || lastIncoming[0].sender_name,
+                            source: 'last_incoming_relay'
+                        }
+                    };
+                }
+            }
+        } catch (err) {
+            console.warn('[SOCIAL RESOLVER] Ошибка резолвинга местоимения через social_relays:', err.message);
+        }
+    }
+
+    const isExplicitHandle = raw.startsWith('@') || /^[a-zA-Z0-9_]{4,32}$/.test(raw);
 
     // 1. Поиск по точному @username
     if (isExplicitHandle) {

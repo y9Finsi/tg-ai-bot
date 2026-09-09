@@ -900,9 +900,15 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
     }
 
     // Защита от утечек системных мета-мыслей модели в пользовательский чат
-    if (/^(НЕ|не)\s+(повторяй|начинай|пиши|используй)|^(Инструкция|Ответь своими словами|Служебн|System:|System prompt)|(Если уместно|добавь одну короткую фразу|Не пиши\s+[«"]?вот фото[»"]?|не отвечай одним тегом|\[IMAGE\]|\[IMAGE)/iu.test(finalAiText)) {
+    if (/^(?:НЕ|не)\s+(?:повторяй|начинай|пиши|используй|упоминай)|^(?:Инструкция|Ответь своими словами|Служебн|System:|System prompt)|(?:Если уместно|добавь одну короткую фразу|Не пиши\s+[«"]?вот фото[»"]?|не отвечай одним тегом|\[IMAGE\]|\[IMAGE)/iu.test(finalAiText)) {
         console.warn('[AI SYSTEM LEAK SANITIZED]:', finalAiText);
-        finalAiText = '';
+        const paragraphs = finalAiText.split(/\n\s*\n/);
+        const validParagraphs = paragraphs.filter(p => !/^(?:НЕ|не)\s+(?:повторяй|начинай|пиши|используй|упоминай)|^(?:Инструкция|Ответь своими словами|Служебн|System:|System prompt)/iu.test(p.trim()));
+        if (validParagraphs.length > 0) {
+            finalAiText = validParagraphs.join('\n\n').trim();
+        } else {
+            finalAiText = '';
+        }
     }
 
     if (!photoSendPayload && preselectedPhoto && !photoAttempted) {
@@ -1558,7 +1564,17 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                         response: text
                     });
                 } else {
-                    text = cleanResponseText(text || rawText);
+                    const candidateText = text ? cleanResponseText(text) : '';
+                    if (candidateText) {
+                        text = candidateText;
+                    } else {
+                        text = getQualityFallback(routingMode, {
+                            reason: 'RETRY_REJECTED',
+                            userText,
+                            recentReplies: recentReplyTexts,
+                            lastAssistantText: lastLeraText
+                        });
+                    }
                     generationTrace.push({
                         step: 'second_attempt_retained',
                         reason: [`judge_${retryJudge.code || 'rejected'}`],

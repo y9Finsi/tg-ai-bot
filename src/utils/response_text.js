@@ -25,6 +25,12 @@ export function cleanResponseText(rawText) {
     text = text.replace(/\[(?:Пользователь|Собеседник|Лера|ответ для [^\]]+)[^\]]*\]:?/gi, '').trim();
     text = text.replace(/^(?:Пользователь|Собеседник|Лера):\s*/gim, '').trim();
 
+    // Удаляем утечки мета-рассуждений и системных инструкций модели
+    text = text.replace(/(?:^|\n)\s*(?:НЕ|не)\s+(?:используй|упоминай|пиши|повторяй|начинай)\s+(?:инструмент|техническ|ошибк|промпт|систем)[\s\S]*?(?=(?:\r?\n\r?\n)|$)/gi, '\n').trim();
+    text = text.replace(/(?:^|\n)\s*(?:НЕ|не)\s+(?:используй\s+инструмент|упоминай\s+технические)[\s\S]*?(?=(?:\r?\n\r?\n)|$)/gi, '\n').trim();
+    text = text.replace(/(?:^|\n)\s*Обработай это естественно:?[\s\S]*?(?=(?:\r?\n\r?\n)|$)/gi, '\n').trim();
+    text = text.replace(/(?:^|\n)\s*(?:Инструкция|Ответь своими словами|Служебн|System:|System prompt):?[\s\S]*?(?=(?:\r?\n\r?\n)|$)/gi, '\n').trim();
+
     text = text.replace(/\[IMAGE:[\s\S]*?\]/gi, '').trim();
     text = text.replace(/\[IMAGE:[\s\S]*/gi, '').trim();
     text = text.replace(/\[CONTENT:\s*[^\]]+\]/gi, '').trim();

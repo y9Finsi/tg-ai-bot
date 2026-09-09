@@ -254,3 +254,44 @@ test('getTargetNameVariants handles inflections and transliterations (Юте -> 
     assert.ok(bogdanVariants.includes('bogdan'));
 });
 
+test('resolveSocialTarget resolves pronoun "ему" to the sender of the last delivered relay', async () => {
+    const mockQuery = async (text, params) => {
+        if (text.includes('social_relays')) {
+            return {
+                rows: [{
+                    sender_id: 777,
+                    sender_name: 'Богдан'
+                }]
+            };
+        }
+        if (text.includes('telegram_id = $1')) {
+            return {
+                rows: [{
+                    user_id: 777,
+                    username: 'bogdan_boss',
+                    first_name: 'Богдан'
+                }]
+            };
+        }
+        return { rows: [] };
+    };
+
+    const res = await resolveSocialTarget(1325937002, 'ему', { queryFn: mockQuery });
+    assert.equal(res.status, 'RESOLVED');
+    assert.equal(res.candidate.userId, 777);
+    assert.equal(res.candidate.firstName, 'Богдан');
+});
+
+test('cleanResponseText strips meta instructions and preserves conversation reply', async () => {
+    const { cleanResponseText } = await import('../src/utils/response_text.js');
+    const dirty = `НЕ используй инструмент relay_message_to_friend в этом ответе. НЕ упоминай технические детали (инструменты, ошибки, «не нашла в системе»). Обработай это естественно: ты не можешь сейчас передать сообщение, но не говори об этом прямо технически.
+
+Нет, я не буду ему передавать. Он и так весь день меня дёргает своими задачами. Пусть сам с тобой разбирается, я не курьер между вами.`;
+
+    const cleaned = cleanResponseText(dirty);
+    assert.equal(cleaned.includes('инструмент'), false);
+    assert.equal(cleaned.includes('relay_message_to_friend'), false);
+    assert.ok(cleaned.includes('Нет, я не буду ему передавать'));
+});
+
+
