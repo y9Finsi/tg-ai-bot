@@ -125,7 +125,7 @@ function toSettingKey(key) {
             const dbVal = (await getSetting(toSettingKey(key), null)) || (await getSetting(`prompt_${key}`, null));
             if (dbVal !== null && dbVal !== undefined && dbVal.trim() !== '') {
                 promptsCache[key] = dbVal;
-            } else if (!promptsCache[key]) {
+            } else {
                 promptsCache[key] = tpl;
             }
         }
