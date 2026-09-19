@@ -174,7 +174,7 @@ export class ContextBuilder {
         const outfitStr = humanizeOutfit(snapshot.outfitText || this.describeOutfit(snapshot.inventory, task).text);
         const channelStats = `${snapshot.channelSubscribers !== null && snapshot.channelSubscribers !== undefined ? `${snapshot.channelSubscribers} подписчиков (актуальное число)` : 'ведёт личный ТГК'}${snapshot.latestChannelPost?.text ? ` | Реальный последний пост в канале: «${String(snapshot.latestChannelPost.text).slice(0, 100).replace(/\n+/g, ' ').trim()}»` : ''}`;
         const relationshipStr = relationshipToPrompt(snapshot.relationship || {});
-        const situationStr = `• Собеседник: ${userName} (общаетесь на «ты» в личном Telegram-чате).\n• Формат общения: Дистанционная переписка в Telegram. Вы НЕ находитесь в одном физическом помещении/машине.\n• Ты находишься: в Санкт-Петербурге (${locationStr}).${userSituationText}`;
+        const situationStr = `• Собеседник: ${userName} (парень, общаетесь на «ты» в личном Telegram-чате, обращаться СТРОГО в мужском роде: ты сказал, ты пошел, ты видел, ты сам).\n• Формат общения: Дистанционная переписка в Telegram. Вы НЕ находитесь в одном физическом помещении/машине.\n• Ты находишься: в Санкт-Петербурге (${locationStr}).${userSituationText}`;
         const analysisStr = this.toAnalysis(snapshot);
 
         return {

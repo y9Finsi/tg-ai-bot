@@ -901,6 +901,23 @@ async function processLlmOutput(userId, user, rawText, isPhotoRequest, existingR
         }
     }
 
+    // Защита от обращения к пользователю-парню в женском роде («ты сама», «ты сказала», «ты пошла» и т.п.)
+    if (finalAiText && !isPublicContext) {
+        finalAiText = finalAiText
+            .replace(/\bты\s+сама\b/gi, 'ты сам')
+            .replace(/\bты\s+сказала\b/gi, 'ты сказал')
+            .replace(/\bты\s+пошла\b/gi, 'ты пошел')
+            .replace(/\bты\s+видела\b/gi, 'ты видел')
+            .replace(/\bты\s+забыла\b/gi, 'ты забыл')
+            .replace(/\bты\s+устала\b/gi, 'ты устал')
+            .replace(/\bты\s+подумала\b/gi, 'ты подумал')
+            .replace(/\bты\s+решила\b/gi, 'ты решил')
+            .replace(/\bты\s+спросила\b/gi, 'ты спросил')
+            .replace(/\bты\s+написала\b/gi, 'ты написал')
+            .replace(/\bты\s+скинула\b/gi, 'ты скинул')
+            .replace(/\bты\s+красивая\b/gi, 'ты красивый');
+    }
+
     // Защита от утечек системных мета-мыслей модели в пользовательский чат
     if (/^(?:НЕ|не)\s+(?:повторяй|начинай|пиши|используй|упоминай)|^(?:Инструкция|Ответь своими словами|Служебн|System:|System prompt)|(?:Если уместно|добавь одну короткую фразу|Не пиши\s+[«"]?вот фото[»"]?|не отвечай одним тегом|\[IMAGE\]|\[IMAGE)/iu.test(finalAiText)) {
         console.warn('[AI SYSTEM LEAK SANITIZED]:', finalAiText);

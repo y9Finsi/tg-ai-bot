@@ -84,7 +84,10 @@ export async function initDatabaseTables() {
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_recommendation_at TIMESTAMP;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS referrer_id BIGINT;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS diary_model VARCHAR(200);",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS initiative_limit INT;"
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS initiative_limit INT;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(10) DEFAULT 'MALE';",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_stage INT DEFAULT 0;",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS user_bio TEXT;"
         ];
 
         for (const colQuery of userColumns) {
