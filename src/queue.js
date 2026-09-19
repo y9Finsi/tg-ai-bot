@@ -130,7 +130,7 @@ async function deliverContentOrRetry(bot, data) {
 
 export function formatAdminDebugMessage(debugTrace) {
     if (!debugTrace) return null;
-    const { meta = {}, tools = [], relationship = null } = debugTrace;
+    const { meta = {}, jev = null, emotions = null, judge = null, tools = [], relationship = null } = debugTrace;
 
     const lines = ['🛠 <b>[DEBUG LOG]</b>'];
 
@@ -138,6 +138,22 @@ export function formatAdminDebugMessage(debugTrace) {
     const model = meta.model ? meta.model.split('/').pop() : 'default';
     const latency = meta.latencyMs ? `${meta.latencyMs} ms` : '-';
     lines.push(`▫️ <b>Режим:</b> <code>${mode}</code> | <b>Модель:</b> <code>${model}</code> (${latency})`);
+
+    if (jev) {
+        lines.push('▫️ <b>Jev:</b> <code>' + (jev.model || '-') + '</code> (' + (jev.latencyMs || 0) + ' ms) | mode <code>' + (jev.mode || '-') + '</code> | conf <code>' + (jev.confidence ?? '-') + '</code>');
+        if (jev.toolPlan) {
+            const planNames = Array.isArray(jev.toolPlan.tools) && jev.toolPlan.tools.length ? jev.toolPlan.tools.map(tool => tool.name + ':' + (tool.source || 'CURRENT_MESSAGE')).join(', ') : 'NONE';
+            lines.push('  • <b>tool plan:</b> <code>' + planNames + '</code> | needed <code>' + jev.toolPlan.needed + '</code> | clarify <code>' + jev.toolPlan.needsClarification + '</code>');
+        }
+    }
+    if (emotions?.emotions?.length) {
+        lines.push('▫️ <b>Эмоции:</b> ' + emotions.emotions.map(item => item.type + ' ' + item.intensity + '/200').join(' + '));
+        lines.push('  • причина: <i>' + String(emotions.reason || 'не указана').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</i>');
+        lines.push('  • expression: сарказм ' + (emotions.expression?.sarcasm ?? 0) + ', тепло ' + (emotions.expression?.warmth ?? 0) + ', краткость ' + (emotions.expression?.brevity ?? 0) + ', напор ' + (emotions.expression?.assertiveness ?? 0));
+    } else {
+        lines.push('▫️ <b>Эмоции:</b> <i>нет заметной эмоции</i>');
+    }
+    if (judge) lines.push('▫️ <b>Judge:</b> <code>' + (judge.verdict || '-') + '</code> ' + (judge.code ? '(<code>' + judge.code + '</code>)' : '') + ' | <code>' + (judge.model || '-') + '</code> (' + (judge.latencyMs || 0) + ' ms)');
 
     if (Array.isArray(tools) && tools.length > 0) {
         lines.push('▫️ <b>Инструменты:</b>');

@@ -134,11 +134,11 @@ export const sendPhotoAction = {
         properties: {
             prompt: {
                 type: 'string',
-                description: 'Описание сцены, позы или ракурса на фото с учётом твоей текущей обстановки, локации и времени суток (например: "селфи в зеркале в спальне", "лежит в кровати на Петроградке", "пьёт кофе у окна", "гуляет по улице").'
+                description: 'ПОДРОБНЕЙШЕЕ описание фото (от 2 до 5 предложений на английском или русском): где именно находится Лера, обстановка комнаты/улицы, мебель, освещение (теплый свет торшера, дневной из окна, неоновый), ракурс камеры (селфи с руки, в зеркало в полный рост, с грудного плана), поза, положение рук, выражение лица и взгляд (легкая полуулыбка, задумчивый взгляд в сторону), точное действие (держит чашку кофе, поправляет волосы, сидит в кровати). Никаких общих фраз вроде "селфи"!'
             },
             outfit: {
                 type: 'string',
-                description: 'Одежда на фото: укажи свою текущую одежду из контекста [СОСТОЯНИЕ ЛЕРЫ И ОКРУЖЕНИЕ] (например: "oversized футболка", "пижама", "тренч", "полотенце / без одежды") либо вещь, которую прямо попросил собеседник. ВАЖНО: НИКОГДА не переспрашивай пользователя! Если он не уточнил вещь, ВСЕГДА автоматически бери свой текущий лук.'
+                description: 'Детальная одежда на фото с текстурами и деталями (например: "объемная серая меланжевая футболка оверсайз, черные спортивные штаны, тонкая золотая цепочка на шее") либо вещь по прямому запросу собеседника. Если не уточнено, бери текущий лук из контекста.'
             },
             time_of_day: {
                 type: 'string',
@@ -271,8 +271,18 @@ export const sendPhotoAction = {
         if (isSpecificOutfit || (prompt && !allowFallback)) {
             try {
                 const locationText = context.currentContext?.location?.name || context.currentContext?.location || '';
-                const locationPrompt = locationText ? `локация: ${locationText}` : '';
-                const fullGenPrompt = `${prompt} ${outfit ? 'одежда: ' + outfit : ''} ${locationPrompt}`.trim() || 'селфи Леры';
+                const weatherText = context.currentContext?.weather?.text || context.currentContext?.weather || '';
+                const statusText = context.currentContext?.status?.text || context.currentContext?.status || '';
+                
+                const promptParts = [
+                    prompt,
+                    outfit ? `Одежда/аутфит: ${outfit}` : '',
+                    locationText ? `Локация: ${locationText}` : '',
+                    weatherText ? `Погода за окном: ${weatherText}` : '',
+                    statusText ? `Занятие/действие: ${statusText}` : '',
+                    `Детали сцены: аутентичный мобильный кадр, естественная поза девушки, живой взгляд в объектив или зеркало, естественный свет помещения/улицы, мелкие бытовые детали обстановки на фоне, мягкие тени, непринужденный живой момент из жизни без позирования.`
+                ].filter(Boolean);
+                const fullGenPrompt = promptParts.join('. ').trim();
 
                 const generated = await generateLeraPhoto({
                     prompt: fullGenPrompt,
@@ -325,8 +335,18 @@ export const sendPhotoAction = {
         // 5. Если в базе нет подходящего по смыслу фото — пробуем динамическую AI генерацию под текущую ситуацию
         try {
             const locationText = context.currentContext?.location?.name || context.currentContext?.location || '';
-            const locationPrompt = locationText ? `локация: ${locationText}` : '';
-            const fullGenPrompt = `${prompt} ${outfit ? 'одежда: ' + outfit : ''} ${locationPrompt}`.trim() || 'селфи Леры';
+            const weatherText = context.currentContext?.weather?.text || context.currentContext?.weather || '';
+            const statusText = context.currentContext?.status?.text || context.currentContext?.status || '';
+            
+            const promptParts = [
+                prompt,
+                outfit ? `Одежда/аутфит: ${outfit}` : '',
+                locationText ? `Локация: ${locationText}` : '',
+                weatherText ? `Погода за окном: ${weatherText}` : '',
+                statusText ? `Занятие/действие: ${statusText}` : '',
+                `Детали сцены: аутентичный мобильный кадр, естественная поза девушки, живой взгляд в объектив или зеркало, естественный свет помещения/улицы, мелкие бытовые детали обстановки на фоне, мягкие тени, непринужденный живой момент из жизни без позирования.`
+            ].filter(Boolean);
+            const fullGenPrompt = promptParts.join('. ').trim();
 
             const generated = await generateLeraPhoto({
                 prompt: fullGenPrompt,

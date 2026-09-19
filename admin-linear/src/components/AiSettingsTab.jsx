@@ -88,7 +88,7 @@ export function AiSettingsTab({ toast }) {
     const [saving, setSaving] = useState(false);
     const [activeSurface, setActiveSurface] = useState('CHANNEL');
 
-    // Left column mode: 'prompts' | 'providers'
+    // Left column mode: 'prompts' | 'providers' | 'emotions'
     const [leftTab, setLeftTab] = useState('prompts');
     const [leftMenuOpen, setLeftMenuOpen] = useState(false);
 
@@ -97,6 +97,7 @@ export function AiSettingsTab({ toast }) {
     const [sampling, setSampling] = useState({ temperature: 0.7, max_tokens: 250 });
     const [promptsList, setPromptsList] = useState([]);
     const [rulesList, setRulesList] = useState([]);
+    const [emotionSettings, setEmotionSettings] = useState({});
 
     // Providers state
     const [providersList, setProvidersList] = useState([]);
@@ -158,6 +159,7 @@ export function AiSettingsTab({ toast }) {
 
             const llmPrompts = llmSettingsData?.prompts || {};
             const routingModules = llmSettingsData?.routingModules || {};
+            setEmotionSettings(llmSettingsData?.emotionSettings || {});
 
             // Extract prompts from profile and live routing system
             const rawPrompts = [];
@@ -1182,7 +1184,7 @@ export function AiSettingsTab({ toast }) {
                                 onClick={() => setLeftMenuOpen(prev => !prev)}
                                 className="flex items-center gap-1.5 text-[16px] font-medium text-white tracking-normal select-none cursor-pointer hover:text-white/80 transition-colors py-1 px-2 -ml-2 rounded-xl hover:bg-white/5"
                             >
-                                <span>{leftTab === 'prompts' ? 'Промпты' : 'Провайдеры'}</span>
+                                <span>{leftTab === 'prompts' ? 'Промпты' : leftTab === 'emotions' ? 'Эмоции' : 'Провайдеры'}</span>
                                 <ChevronDown className={`w-4 h-4 text-white/60 transition-transform duration-200 ${leftMenuOpen ? 'rotate-180' : ''}`} />
                             </button>
 
@@ -1215,6 +1217,14 @@ export function AiSettingsTab({ toast }) {
                                         <span>Провайдеры</span>
                                         {leftTab === 'providers' && <Check className="w-4 h-4 text-white stroke-[2.5]" />}
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setLeftTab('emotions'); setLeftMenuOpen(false); }}
+                                        className={leftTab === 'emotions' ? 'w-full px-3 py-2 text-left text-[14px] rounded-xl flex items-center justify-between cursor-pointer transition-colors bg-[#292e5e] text-white font-medium' : 'w-full px-3 py-2 text-left text-[14px] rounded-xl flex items-center justify-between cursor-pointer transition-colors text-white/70 hover:bg-white/5 hover:text-white'}
+                                    >
+                                        <span>Эмоции</span>
+                                        {leftTab === 'emotions' && <Check className="w-4 h-4 text-white stroke-[2.5]" />}
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -1232,7 +1242,7 @@ export function AiSettingsTab({ toast }) {
                                 <span>Новый промпт</span>
                                 <Plus className="w-4 h-4 text-white stroke-[1.5]" />
                             </button>
-                        ) : (
+                        ) : leftTab === 'emotions' ? null : (
                             <button
                                 type="button"
                                 onClick={() => {
@@ -1406,6 +1416,21 @@ export function AiSettingsTab({ toast }) {
                                     ))}
                                 </div>
                             )}
+                        </div>
+                    ) : leftTab === 'emotions' ? (
+                        <div className="w-[377px] flex flex-col gap-3">
+                            <div className="text-[13px] text-white/55">Jev выбирает до трёх эмоций. Здесь настраивается, как они проявляются на каждой поверхности.</div>
+                            {['CHAT', 'CHANNEL', 'INITIATIVE', 'GROUP'].map(surface => {
+                                const item = emotionSettings[surface] || {};
+                                const label = { CHAT: 'Личка', CHANNEL: 'Тг-канал', INITIATIVE: 'Инициатива', GROUP: 'Группа' }[surface];
+                                return <div key={surface} className="rounded-[18px] border border-white/10 bg-white/[.03] p-3 flex flex-col gap-2">
+                                    <div className="flex items-center justify-between"><span className="text-[15px] text-white font-medium">{label}</span><span className="text-[11px] text-white/40">{surface}</span></div>
+                                    <textarea value={item.prompt || ''} onChange={e => setEmotionSettings(prev => ({ ...prev, [surface]: { ...prev[surface], prompt: e.target.value } }))} className="min-h-[70px] rounded-xl bg-black/20 border border-white/10 p-2 text-[12px] text-white/80 outline-none" placeholder="Правила проявления эмоций" />
+                                    <label className="text-[12px] text-white/65">Макс. интенсивность <input type="number" min="0" max="200" value={item.maxIntensity ?? 200} onChange={e => setEmotionSettings(prev => ({ ...prev, [surface]: { ...prev[surface], maxIntensity: Number(e.target.value) } }))} className="ml-2 w-16 rounded bg-black/20 border border-white/10 px-2 py-1 text-white" /></label>
+                                    <div className="flex gap-3 text-[12px] text-white/65"><label><input type="checkbox" checked={item.allowCaps !== false} onChange={e => setEmotionSettings(prev => ({ ...prev, [surface]: { ...prev[surface], allowCaps: e.target.checked } }))} /> капс</label><label><input type="checkbox" checked={item.allowSwearing !== false} onChange={e => setEmotionSettings(prev => ({ ...prev, [surface]: { ...prev[surface], allowSwearing: e.target.checked } }))} /> мат</label></div>
+                                </div>;
+                            })}
+                            <button type="button" onClick={async () => { setSaving(true); try { const res = await api('/api/admin/llm-settings', { method: 'POST', body: JSON.stringify({ emotionSettings }) }); setEmotionSettings(res.emotionSettings || emotionSettings); if (toast) toast('Настройки эмоций сохранены', 'success'); } catch (e) { if (toast) toast('Ошибка сохранения: ' + e.message, 'error'); } finally { setSaving(false); } }} className="h-10 rounded-full bg-[#292e5e] hover:bg-[#343b75] text-white text-sm">Сохранить эмоции</button>
                         </div>
                     ) : (
                         /* Providers Stack (Figma 377px width cards) */

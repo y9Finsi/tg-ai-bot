@@ -1884,7 +1884,23 @@ export async function getImageGenerationSettings() {
     ] = await Promise.all([
         getSetting('image_provider_id', ''),
         getSetting('image_model', 'gemini-2.5-flash'),
-        getSetting('image_style_prompt', 'Candid authentic amateur photo of Lera, a 19-year-old Russian student girl from Saint Petersburg. Appearance: fair skin with natural freckles across cheeks and nose bridge, distinct grey-green almond-shaped eyes with subtle thin winged eyeliner, soft natural brows, full natural lips. Shoulder-length messy textured dirty-blonde hair with wispy curtain bangs framing her face. Vibe & Aesthetic: cute, natural, expressive, genuine real-life iPhone camera photo, natural skin texture with subtle pores, warm ambient lighting, filmic grain, no CGI, no 3D render, no plastic AI smoothing.'),
+        getSetting('image_style_prompt', `STYLE: Authentic low-res smartphone photo, TikTok screenshot quality, compressed social media aesthetic, JPEG artifacts, digital noise, soft focus, unedited mobile camera. Natural soft indoor lighting, realistic ambient skin tones, slightly warm white balance. Texture: soft skin, natural pores, organic digital imperfections. Looks like a casual unedited phone video frame., subtle motion blur, motion softness, slight camera shake, realistic movement blur
+MANDATORY POSE (STRICT): Maintain EXACT body position and background from FIRST ref.
+IDENTITY: Transfer face from SECOND ref. Analysis: Based on the image provided:
+
+**Face:**
+*   **Bone Structure:** Heart-shaped face with high, prominent cheekbones, a slim nose, and a soft but defined jawline. 
+*   **Eyes:** Almond-shaped, light blue-grey eyes emphasized with thick, black winged eyeliner. 
+*   **Unique Marks:** A dense, natural spray of freckles across the bridge of the nose and both cheeks. There is also a small mole visible on her right shoulder.
+
+**Clothing Textures:**
+*   **Outer top:** A light, heathered grey jersey knit with a soft, marled (multi-toned) texture and visible fabric folds.
+*   **Inner layers:** A smooth, matte black stretchy tank top layered over dark, ribbed cotton long sleeves.
+*   **Bottoms:** Thick, matte black fleece or heavy jersey sweatpants featuring a small, textured embroidered apple patch.
+*   **Accessories:** A smooth, semi-glossy black cord choker with a metallic pearl-like bead and a fine, reflective gold chain..
+OUTFIT: Transfer textures from SECOND ref. 
+ACTION: Composite SECOND image face onto FIRST image body. Authentic smartphone quality.
+NEGATIVE: professional photography, studio lighting, DSLR, 8k, ultra sharp, cinematic lighting, beauty retouch, airbrushed skin, oversharpened, high micro-contrast, professional color grading.`),
         getSetting('image_master_reference_dataurl', ''),
         getSetting('image_auto_channel', 'true'),
         getSetting('image_auto_save_catalog', 'true'),

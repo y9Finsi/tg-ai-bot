@@ -4,6 +4,7 @@ import { getJudgeProviders } from './intent_router.js';
 import { normalizeRelationshipEvent } from './relationship.js';
 import { normalizeArousalEvent } from './climax_engine.js';
 import { parseLlmJson } from '../utils/robust_json.js';
+import { evaluateTypeSafe, buildTypeSafeJudgeQuestions, isTypeSafeProvider } from '../services/typesafe_client.js';
 
 export const JUDGE_CODES = [
     'REPETITION',
@@ -248,6 +249,8 @@ export async function judgeLeraReply({
     recentPublicPosts = [],
     contentFormat = '',
     editorialMode = 'reference_short',
+    toolTrace = [],
+    emotionProfile = null,
     settings = {}
 } = {}) {
     const surfaceKey = String(surface || 'CHAT').toUpperCase();
@@ -262,6 +265,8 @@ export async function judgeLeraReply({
     }
 
     const providers = await getJudgeProviders(settings);
+    const typeSafeProvider = providers.find(isTypeSafeProvider);
+    const fallbackProviders = providers.filter(provider => !isTypeSafeProvider(provider));
     const judgeMessages = buildJudgeMessages({
         mode,
         surface: surfaceKey,
@@ -280,6 +285,67 @@ export async function judgeLeraReply({
     });
 
     try {
+        if (typeSafeProvider && providers[0] === typeSafeProvider) {
+            const startedAt = Date.now();
+            const result = await evaluateTypeSafe({
+                provider: typeSafeProvider,
+                model: typeSafeProvider.model_name || 'jev-latest',
+                timeoutMs: settings.judgeTimeoutMs,
+                state: {
+                    mode,
+                    surface: surfaceKey,
+                    conversation: compactConversation(messages),
+                    userMessage: String(userText || '').slice(0, 2000),
+                    candidateReply: String(reply || '').slice(0, 3000),
+                    toolTrace: Array.isArray(toolTrace) ? toolTrace.slice(-8) : [],
+                    emotionProfile,
+                    dayContext: compactDayContext(dayContext),
+                    memories: compactMemories(memories),
+                    rules: compactLeraRules(leraRules)
+                },
+                questions: buildTypeSafeJudgeQuestions()
+            });
+            const threshold = 0.65;
+            const codeMap = [
+                ['system_leak', 'SYSTEM_LEAK'],
+                ['invented_fact', 'INVENTED_FACT'],
+                ['broken_logic', 'BROKEN_LOGIC'],
+                ['ignores_user', 'IGNORES_USER'],
+                ['out_of_character', 'OUT_OF_CHARACTER'],
+                ['repetition', 'REPETITION'],
+                ['format', 'FORMAT']
+            ];
+            const failed = codeMap.find(([key]) => Number(result.answers[key]?.noul) >= threshold);
+            const relationshipType = String(result.answers.relationship_event?.choice || 'NEUTRAL').toUpperCase();
+            const relationshipIntensity = {
+                NEUTRAL: 0,
+                SUPPORT: 0.7,
+                COMPLIMENT: 0.6,
+                AFFECTION: 0.8,
+                INSULT: 0.9,
+                DISRESPECT: 0.8,
+                APOLOGY: 0.7
+            }[relationshipType] ?? 0;
+            const relationshipEvent = normalizeRelationshipEvent({ type: relationshipType, intensity: relationshipIntensity });
+            const emotionConsistency = Number(result.answers.emotion_consistency?.noul ?? 1);
+            const parsedVerdict = failed
+                ? { verdict: 'REJECT:' + failed[1], passed: false, code: failed[1], reason: 'TypeSafe Jev flagged ' + failed[1] }
+                : { verdict: 'PASS', passed: true, code: null, reason: null };
+            return {
+                ...parsedVerdict,
+                rawText: JSON.stringify(result.answers),
+                model: result.model,
+                providerName: typeSafeProvider.name,
+                latencyMs: Date.now() - startedAt,
+                usage: result.usage || {},
+                judgeMessages,
+                typesafe: true,
+                confidence: failed ? Number(result.answers[failed[0]]?.noul) : null,
+                relationshipEvent,
+                toolTrace,
+                emotionConsistency
+            };
+        }
         const result = await requestLlmCompletion(
             { roleplay_mode: 'response-judge', max_tokens: settings.judgeMaxTokens },
             judgeMessages,
@@ -330,6 +396,25 @@ export async function judgeLeraReply({
             judgeMessages
         };
     } catch (error) {
+        if (typeSafeProvider && fallbackProviders.length > 0 && providers[0] === typeSafeProvider) {
+            try {
+                const result = await requestLlmCompletion(
+                    { roleplay_mode: 'response-judge', max_tokens: settings.judgeMaxTokens },
+                    judgeMessages,
+                    false,
+                    async () => {
+                        const provider = fallbackProviders[0] || await getActiveAiProvider();
+                        if (!provider) throw new Error('Нет настроенного провайдера судьи');
+                        return { client: getCachedOpenAIClient(provider.base_url, provider.api_key, provider.timeout_ms || settings.judgeTimeoutMs), model: settings.judgeModel || provider.model_name };
+                    },
+                    { userId, providers: fallbackProviders, modelOverride: fallbackProviders[0]?.model_name || null, timeoutMs: settings.judgeTimeoutMs, maxTokens: settings.judgeMaxTokens, temperature: 0, trace: false }
+                );
+                const parsedVerdict = applyJudgeModePolicy(parseJudgeVerdict(result.rawText), { isPublic, configuredMode });
+                return { ...parsedVerdict, rawText: result.rawText || '', model: result.model, providerName: result.providerName, latencyMs: result.latencyMs || 0, usage: result.usage || {}, judgeMessages, fallbackFrom: typeSafeProvider.name, error: error.message };
+            } catch (fallbackError) {
+                error = fallbackError;
+            }
+        }
         if (isPublic) {
             return {
                 verdict: 'REJECT:CHANNEL_JUDGE_ERROR',

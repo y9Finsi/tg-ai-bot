@@ -7,6 +7,9 @@ import {
     getActiveAiProvider
 } from '../database.js';
 import { requestLlmCompletion, getCachedOpenAIClient } from './llm_client.js';
+import { evaluateTypeSafe, buildTypeSafeClassifierQuestions, isTypeSafeProvider } from '../services/typesafe_client.js';
+import { normalizeToolPlan } from '../radiant/actions/tool_plan.js';
+import { getEmotionSettings, normalizeEmotionProfile } from './emotion_planner.js';
 
 export const INTENT_MODES = ['CASUAL', 'EROTIC'];
 export const CLASSIFIER_MODES = [...INTENT_MODES, 'REACTION'];
@@ -455,30 +458,103 @@ export async function classifyInitiativeState({ userId = 0, history = [], trace 
     }
 }
 
-export async function classifyIntent({ userId = 0, userText = '', history = [], activeMode = 'CASUAL', allowReaction = null, trace = true } = {}) {
+export async function classifyIntent({ userId = 0, userText = '', history = [], activeMode = 'CASUAL', allowReaction = null, pendingPromises = [], toolCatalog = [], trace = true } = {}) {
     const settings = await getRoutingSettings();
     if (!settings.enabled) {
         return { mode: 'CASUAL', bypassed: true, reason: 'legacy_disabled', settings };
     }
 
-    // При запросе действий/напоминаний/тулов — сразу CASUAL без риска сбоя классификатора
-    if (isActionOrToolRequest(userText, activeMode)) {
-        return {
-            mode: 'CASUAL',
-            rawText: 'CASUAL_ACTION_BYPASS',
-            reactionRequested: false,
-            reactionEmoji: '',
-            reactionConfidence: 0,
-            settings
-        };
-    }
-
     const priorReaction = hasPriorReactionInHistory(history);
     const canReact = allowReaction === null ? !priorReaction : Boolean(allowReaction);
-
     const messages = buildClassifierMessages(history, userText, settings.classifierPrompt, activeMode, canReact);
     const providers = await getClassifierProviders(settings);
+    const typeSafeProvider = providers.find(isTypeSafeProvider);
+    const fallbackProviders = providers.filter(provider => !isTypeSafeProvider(provider));
     try {
+        if (typeSafeProvider && providers[0] === typeSafeProvider) {
+            const startedAt = Date.now();
+            const result = await evaluateTypeSafe({
+                provider: typeSafeProvider,
+                model: typeSafeProvider.model_name || 'jev-latest',
+                timeoutMs: settings.classifierTimeoutMs,
+                state: {
+                    history: history.slice(-4).map(item => ({
+                        role: item.role === 'assistant' || item.role === 'lera' ? 'assistant' : 'user',
+                        content: String(item.content || '').slice(0, 600),
+                        event_type: item.event_type || undefined
+                    })),
+                    activeMode,
+                    allowReaction: canReact,
+                    userMessage: String(userText || '').slice(0, 2000),
+                    previousLeraMessage: history.filter(item => item.role === 'assistant' || item.role === 'lera').at(-1)?.content || '',
+                    pendingPromises: pendingPromises.slice(0, 3).map(item => ({
+                        tool: item.tool,
+                        source: item.source,
+                        status: item.status,
+                        promiseText: String(item.promiseText || '').slice(0, 300)
+                    })),
+                    toolCatalog: toolCatalog.slice(0, 20).map(item => ({
+                        name: item.name,
+                        kind: item.kind,
+                        route: item.route,
+                        purpose: String(item.purpose || '').slice(0, 180),
+                        triggers: Array.isArray(item.triggers) ? item.triggers.slice(0, 5) : undefined
+                    }))
+                },
+                questions: buildTypeSafeClassifierQuestions({ allowReaction: canReact, includeToolPlan: true })
+            });
+            const emotionSettings = await getEmotionSettings();
+            const emotionRaw = { ...result.answers, emotion_reason: result.answers.emotion_reason?.choice, emotion_triggers: pendingPromises.map(item => item.tool) };
+            const emotionProfile = normalizeEmotionProfile(emotionRaw, { surface: 'CHAT', settings: emotionSettings });
+            const answer = result.answers.mode || {};
+            const toolAnswer = result.answers.primary_tool || {};
+            const secondaryToolAnswer = result.answers.secondary_tool || {};
+            const toolPlan = normalizeToolPlan({
+                toolName: String(toolAnswer.choice || 'NONE'),
+                confidence: toolAnswer.confidence,
+                secondaryToolName: String(secondaryToolAnswer.choice || 'NONE'),
+                secondaryConfidence: secondaryToolAnswer.confidence,
+                multipleActions: Number(result.answers.multiple_actions?.noul || 0) >= 0.75,
+                needsClarification: Number(result.answers.needs_clarification?.noul || 0) >= 0.65,
+                userText,
+                pendingPromise: pendingPromises[0] || null,
+                promiseRecoveryConfidence: result.answers.promise_recovery?.noul
+            });
+            const normalizedMode = normalizeIntent(answer.choice || '');
+            let mode = normalizedMode === 'EROTIC' ? 'EROTIC' : (normalizedMode === 'REACTION' ? 'REACTION' : 'CASUAL');
+            const hasQuestionMark = String(userText || '').includes('?') || String(userText || '').includes('¿');
+            const conflictDetected = Number(result.answers.conflict_detected?.noul || 0) >= 0.65;
+            if (mode === 'REACTION' && (!canReact || hasQuestionMark || conflictDetected)) mode = activeMode === 'EROTIC' ? 'EROTIC' : 'CASUAL';
+            const reactionEmoji = mode === 'REACTION' ? getReactionFallbackEmoji() : '';
+            return {
+                mode,
+                rawText: answer.choice || '',
+                reactionGuarded: normalizedMode === 'REACTION' && mode !== 'REACTION',
+                reactionEmoji,
+                reactionEmojiFallback: mode === 'REACTION',
+                confidence: Number(answer.confidence) || null,
+                probabilities: answer.probabilities || {},
+                usage: result.usage || {},
+                model: result.model,
+                providerName: typeSafeProvider.name,
+                latencyMs: Date.now() - startedAt,
+                toolPlan,
+                toolPlanTrace: {
+                    rawPrimary: toolAnswer.choice || 'NONE',
+                    rawPrimaryConfidence: toolAnswer.confidence ?? null,
+                    rawSecondary: secondaryToolAnswer.choice || 'NONE',
+                    rawSecondaryConfidence: secondaryToolAnswer.confidence ?? null,
+                    rawMultipleActions: result.answers.multiple_actions?.noul ?? null,
+                    rawAnswers: result.answers,
+                    pendingPromises,
+                    promiseRecovery: result.answers.promise_recovery?.noul ?? null,
+                    conflictDetected,
+                    normalized: toolPlan
+                },
+                emotionProfile,
+                settings
+            };
+        }
         const result = await requestLlmCompletion(
             { roleplay_mode: 'intent-classifier', max_tokens: settings.classifierMaxTokens },
             messages,
@@ -530,6 +606,28 @@ export async function classifyIntent({ userId = 0, userText = '', history = [], 
             settings
         };
     } catch (error) {
+        if (typeSafeProvider && fallbackProviders.length > 0 && providers[0] === typeSafeProvider) {
+            try {
+                const result = await requestLlmCompletion(
+                    { roleplay_mode: 'intent-classifier', max_tokens: settings.classifierMaxTokens },
+                    messages,
+                    false,
+                    async () => {
+                        const provider = fallbackProviders[0] || await getActiveAiProvider();
+                        if (!provider) throw new Error('Нет настроенных провайдеров классификатора');
+                        return { client: getCachedOpenAIClient(provider.base_url, provider.api_key, provider.timeout_ms || settings.classifierTimeoutMs), model: settings.classifierModel || provider.model_name };
+                    },
+                    { trace, userId, kind: 'INTENT_CLASSIFIER', mode: 'ROUTER', userText, temperature: 0, maxTokens: settings.classifierMaxTokens, timeoutMs: settings.classifierTimeoutMs, providers: fallbackProviders, modelOverride: fallbackProviders[0]?.model_name || null }
+                );
+                const normalizedMode = normalizeIntent(result.rawText);
+                let mode = normalizedMode === 'EROTIC' ? 'EROTIC' : (normalizedMode === 'REACTION' ? 'REACTION' : 'CASUAL');
+                const hasQuestionMark = String(userText || '').includes('?') || String(userText || '').includes('¿');
+                if (mode === 'REACTION' && (!canReact || hasQuestionMark)) mode = activeMode === 'EROTIC' ? 'EROTIC' : 'CASUAL';
+                return { mode, rawText: result.rawText || '', reactionEmoji: mode === 'REACTION' ? extractReactionEmoji(result.rawText) || getReactionFallbackEmoji() : '', usage: result.usage || {}, model: result.model, providerName: result.providerName, latencyMs: result.latencyMs || 0, fallbackFrom: typeSafeProvider.name, error: error.message, settings };
+            } catch (fallbackError) {
+                error = fallbackError;
+            }
+        }
         return { mode: activeMode === 'EROTIC' ? 'EROTIC' : 'CASUAL', rawText: '', error: error.message, settings };
     }
 }

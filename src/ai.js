@@ -24,6 +24,8 @@ import { cleanResponseText, sanitizeParticipantName } from './utils/response_tex
 import { generateLeraPhoto } from './services/image_generator.js';
 import { generateLeraVoice } from './services/voice_generator.js';
 import { actionRegistry, executeAction } from './radiant/actions/index.js';
+import { READ_ONLY_TOOLS, TOOL_CATALOG, detectPendingPromises, filterToolSchemas } from './radiant/actions/tool_plan.js';
+import { renderEmotionOverlay } from './ai/emotion_planner.js';
 import { createContextRetriever } from './ai/context_retriever.js';
 import { buildMemoryRetrievalQuery } from './ai/memory_query.js';
 import { shouldPersistToolObservation } from './ai/tool_observation_policy.js';
@@ -989,6 +991,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     let resolvedActionRouting = actionRouting;
 
     // 1. Формирование контекста сообщений (с параллельными запросами БД)
+    const emotionOverlay = renderEmotionOverlay(classifierResult?.emotionProfile);
+    const combinedSystemOverlay = [systemOverlay, emotionOverlay].filter(Boolean).join('\n\n');
     const {
         messages, isPhotoRequest, recommendationPost, preselectedPhoto, lastLeraText,
         recentReplyTexts, memories, leraState, systemPrompt, radiantContext, judgeLeraRules,
@@ -998,7 +1002,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         initiativeKind, contentCandidates, batchId, eventIds, preMessageGapSeconds,
         firstMessageAt, actionResult: resolvedActionRouting?.actionResult || null,
         climaxState, isPublicContext, chatId, threadId, senderName, replyingTo,
-        systemOverlay, ruleId
+        systemOverlay: combinedSystemOverlay, ruleId
     });
     const effectivePhotoRequest = isPhotoRequest || Boolean(sendPhoto);
     const surface = isInitiative ? 'INITIATIVE' : (isPublicContext ? (chatId ? 'GROUP' : 'CHANNEL') : 'CHAT');
@@ -1079,11 +1083,63 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         }).catch(() => null);
     };
 
-    // 1.5. Формирование динамических схем инструментов для Native Tool Calling
+    // 1.5. Jev tool-plan: read-only actions are prefetched, side effects stay with Hausmer.
+    const toolPlan = classifierResult?.toolPlan?.needed ? classifierResult.toolPlan : null;
+    const plannedTools = toolPlan?.tools || (toolPlan?.name ? [{ name: toolPlan.name, args: toolPlan.args || {}, kind: toolPlan.kind }] : []);
+    const plannedReadTools = plannedTools.filter(tool => READ_ONLY_TOOLS.has(tool.name));
+    const plannedSideEffectTools = plannedTools.filter(tool => !READ_ONLY_TOOLS.has(tool.name));
+    if (plannedReadTools.length > 0) {
+        const prefetchResults = await Promise.allSettled(plannedReadTools.map(tool => executeAction({
+            name: tool.name,
+            args: tool.args || {},
+            context: {
+                userId,
+                userText,
+                currentContext: leraState,
+                radiantContext,
+                routingMode,
+                surface,
+                mode: 'production',
+                isPublicContext: Boolean(isPublicContext),
+                chatId: chatId || null,
+                threadId: threadId || null,
+                anchorEventId: anchorEventId || null,
+                bot: bot || null
+            }
+        })));
+        prefetchResults.forEach((settled, index) => {
+            const name = plannedReadTools[index].name;
+            const resultText = settled.status === 'fulfilled'
+                ? settled.value?.status === 'success'
+                    ? JSON.stringify(settled.value.data || {})
+                    : 'Ошибка инструмента: ' + (settled.value?.error?.message || 'данные недоступны')
+                : 'Ошибка инструмента: ' + settled.reason?.message;
+            messages.push({
+                role: 'system',
+                content: '[ПРЕДВАРИТЕЛЬНЫЕ ДАННЫЕ ИНСТРУМЕНТА ' + name + ']:\n' + resultText + '\n\nИспользуй только эти реальные данные. Не вызывай этот read-only инструмент повторно и не выдумывай отсутствующие сведения.'
+            });
+        });
+    }
+    if (plannedSideEffectTools.length > 0) {
+        messages.push({
+            role: 'system',
+            content: '[ПЛАН ДЕЙСТВИЯ]: Пользовательский запрос маршрутизирован в инструменты: ' + plannedSideEffectTools.map(tool => tool.name).join(', ') + '. Если действия действительно соответствуют последней реплике, вызови каждый разрешённый инструмент не более одного раза с валидными аргументами. Не вызывай другие tools.'
+        });
+    } else if (classifierResult?.toolPlan && !classifierResult.toolPlan.needed) {
+        messages.push({
+            role: 'system',
+            content: '[ПЛАН ДЕЙСТВИЯ]: Для этой реплики внешний инструмент не нужен. Ответь на основе текущего контекста и истории, не вызывай tools.'
+        });
+    }
+
+    // 1.6. Формирование динамических схем инструментов для Native Tool Calling
     let formattedTools = [];
     try {
         const activeSchemas = actionRegistry.getSchemas({ userId, surface, isInitiative, isPublicContext: Boolean(isPublicContext), chatId, mode: 'production' });
-        formattedTools = activeSchemas
+        const plannedSchemas = classifierResult?.toolPlan
+            ? filterToolSchemas(activeSchemas, classifierResult.toolPlan)
+            : activeSchemas;
+        formattedTools = plannedSchemas
             .map(s => ({
                 type: 'function',
                 function: {
@@ -1363,6 +1419,16 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         latencyMs,
         usage
     }];
+    if (classifierResult?.toolPlan || classifierResult?.toolPlanTrace) {
+        generationTrace.push({
+            step: 'tool_plan',
+            provider: classifierResult.providerName || null,
+            model: classifierResult.model || null,
+            latencyMs: classifierResult.latencyMs || 0,
+            plan: classifierResult.toolPlan || null,
+            raw: classifierResult.toolPlanTrace || null
+        });
+    }
     const judgeConversation = messages.slice();
     const judgeSettings = routingSettings;
     const activeJudgeMode = isInitiative ? judgeSettings.initiativeJudgeMode : judgeSettings.judgeMode;
@@ -1383,6 +1449,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             dayContext: radiantContext,
             leraRules: judgeLeraRules,
             memories,
+            toolTrace: toolsExecuted,
+            emotionProfile: classifierResult?.emotionProfile || null,
             settings: judgeSettings
         })
         : { skipped: true, verdict: 'SKIPPED', passed: true, code: null };
@@ -1527,6 +1595,8 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                 dayContext: radiantContext,
                 leraRules: judgeLeraRules,
                 memories,
+                toolTrace: toolsExecuted,
+                emotionProfile: classifierResult?.emotionProfile || null,
                 settings: judgeSettings
             });
             generationTrace.push({
@@ -1733,6 +1803,19 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             judgeVerdict: generationTrace.filter(item => item.step === 'judge').at(-1)?.verdict || 'PASS',
             judgeCode: generationTrace.filter(item => item.step === 'judge').at(-1)?.code || null
         },
+        jev: {
+            provider: classifierResult?.providerName || null,
+            model: classifierResult?.model || null,
+            latencyMs: classifierResult?.latencyMs || 0,
+            mode: classifierResult?.mode || null,
+            confidence: classifierResult?.confidence ?? null,
+            rawText: classifierResult?.rawText || null,
+            toolPlan: classifierResult?.toolPlan || null,
+            toolPlanTrace: classifierResult?.toolPlanTrace || null,
+            error: classifierResult?.error || null
+        },
+        emotions: classifierResult?.emotionProfile || null,
+        judge: generationTrace.filter(item => item.step === 'judge').at(-1) || null,
         tools: toolsExecuted,
         relationship: relationshipTrace
     };
@@ -1824,8 +1907,12 @@ export async function generateResponse(userId, text, envelope = {}) {
         .map(event => ({
             role: event.role === 'lera' || event.role === 'assistant' ? 'assistant' : 'user',
             content: event.event_type === 'REACTION' ? `[реакция ${event.content}]` : event.content,
-            event_type: event.event_type
+            event_type: event.event_type,
+            occurred_at: event.occurred_at,
+            metadata: event.metadata || {}
         }));
+    const recentToolEvents = events.filter(event => ['PHOTO', 'VOICE', 'CONTENT', 'TOOL', 'REACTION'].includes(String(event.event_type || '').toUpperCase()));
+    const pendingPromises = detectPendingPromises(history, recentToolEvents);
 
     // Определяем активный режим сессии (TTL = 5 минут = 300 секунд)
     const EROTIC_SESSION_TTL_SECONDS = 300;
@@ -1839,7 +1926,15 @@ export async function generateResponse(userId, text, envelope = {}) {
 
     // 1. Классификация намерения и режима диалога (CASUAL, EROTIC, JOKE, REACTION)
     try {
-        classifierResult = await classifyIntent({ userId, userText: text, history, activeMode, allowReaction });
+        classifierResult = await classifyIntent({
+            userId,
+            userText: text,
+            history,
+            activeMode,
+            allowReaction,
+            pendingPromises,
+            toolCatalog: Object.entries(TOOL_CATALOG).map(([name, meta]) => ({ name, ...meta }))
+        });
         routingMode = isPublicContext
             ? 'CASUAL'
             : (['CASUAL', 'EROTIC', 'JOKE'].includes(classifierResult.mode) ? classifierResult.mode : 'CASUAL');

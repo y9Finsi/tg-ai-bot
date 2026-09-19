@@ -117,6 +117,7 @@ import {
     savePromptStudioDraft,
     publishPromptStudioIntent
 } from './ai/intent_router.js';
+import { getEmotionSettings, updateEmotionSettings } from './ai/emotion_planner.js';
 import { SimulationWorker } from './workers/simulation_worker.js';
 import { devtoolEvents, publishDevtoolEvent } from './devtools/event_bus.js';
 import { runTelegramDaySmoke } from './radiant/telegram_day_smoke.js';
@@ -2716,6 +2717,7 @@ export function createAdminApp(bot = null) {
                 memorySettings: await getMemorySettings(),
                 routingModules,
                 promptStudio: await getPromptStudioState(),
+                emotionSettings: await getEmotionSettings(),
                 pipeline: 'Two-Stage Routing'
             });
         } catch (e) {
@@ -2725,7 +2727,7 @@ export function createAdminApp(bot = null) {
 
     app.post('/api/admin/llm-settings', async (req, res) => {
         try {
-            const { temperature, top_p, presence_penalty, frequency_penalty, prompts, routingSettings, memorySettings } = req.body;
+            const { temperature, top_p, presence_penalty, frequency_penalty, prompts, routingSettings, memorySettings, emotionSettings } = req.body;
             let llmParams = null;
             if (temperature !== undefined || top_p !== undefined || presence_penalty !== undefined || frequency_penalty !== undefined) {
                 llmParams = await updateLlmParams({ temperature, top_p, presence_penalty, frequency_penalty });
@@ -2745,6 +2747,9 @@ export function createAdminApp(bot = null) {
             const nextMemorySettings = memorySettings && typeof memorySettings === 'object'
                 ? await setMemorySettings(memorySettings)
                 : await getMemorySettings();
+            const nextEmotionSettings = emotionSettings && typeof emotionSettings === 'object'
+                ? await updateEmotionSettings(emotionSettings)
+                : await getEmotionSettings();
 
             res.json({
                 success: true,
@@ -2757,6 +2762,7 @@ export function createAdminApp(bot = null) {
                     contentPrompt: DEFAULT_ROUTING_SETTINGS.contentPrompt
                 },
                 memorySettings: nextMemorySettings,
+                emotionSettings: nextEmotionSettings,
                 routingModules: await getRoutingPromptModules(),
                 pipeline: 'Two-Stage Routing'
             });

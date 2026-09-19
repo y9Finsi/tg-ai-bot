@@ -27,6 +27,12 @@ import {
     pickVoiceProvider,
     generateLeraVoice
 } from './voice_generator.js';
+import {
+    evaluateTypeSafe,
+    buildTypeSafeClassifierQuestions,
+    buildTypeSafeJudgeQuestions,
+    isTypeSafeProvider
+} from './typesafe_client.js';
 
 export const MATRIX_SLOTS = [
     'core_dialogue',
@@ -626,7 +632,26 @@ async function checkSingleSlot(slot, options, timeoutMs) {
                 };
             }
 
-            const model = options.model || routingSettings.classifierModel || targetProvider.model_name || 'deepseek-chat';
+            const model = isTypeSafeProvider(targetProvider)
+                ? (options.model || targetProvider.model_name || 'jev-latest')
+                : (options.model || routingSettings.classifierModel || targetProvider.model_name || 'deepseek-chat');
+            if (isTypeSafeProvider(targetProvider)) {
+                try {
+                    const result = await evaluateTypeSafe({
+                        provider: targetProvider,
+                        model,
+                        timeoutMs,
+                        state: { history: [], activeMode: 'CASUAL', allowReaction: true, userMessage: 'Привет как дела' },
+                        questions: buildTypeSafeClassifierQuestions({ allowReaction: true })
+                    });
+                    const latency_ms = Date.now() - startTime;
+                    if (!result.answers.mode?.choice) throw new Error('TypeSafe classifier returned no choice');
+                    return { ok: true, success: true, slot, status: 'HEALTHY', latency_ms, provider_id: targetProvider.id, provider_name: targetProvider.name, model: result.model, protocol: '/v1/systemone', message: 'TypeSafe-классификатор ' + targetProvider.name + ' (' + result.model + ') проверен (' + latency_ms + 'ms)' };
+                } catch (err) {
+                    const latency_ms = Date.now() - startTime;
+                    return { ok: false, success: false, slot, status: 'UNHEALTHY', latency_ms, error: err.message, provider_id: targetProvider.id, provider_name: targetProvider.name, model, protocol: '/v1/systemone', message: 'Сбой TypeSafe-классификатора: ' + err.message };
+                }
+            }
             const baseUrl = String(targetProvider.base_url).replace(/\/+$/, '');
 
             try {
@@ -714,7 +739,26 @@ async function checkSingleSlot(slot, options, timeoutMs) {
                 };
             }
 
-            const model = options.model || routingSettings.judgeModel || targetProvider.model_name || 'deepseek-chat';
+            const model = isTypeSafeProvider(targetProvider)
+                ? (options.model || targetProvider.model_name || 'jev-latest')
+                : (options.model || routingSettings.judgeModel || targetProvider.model_name || 'deepseek-chat');
+            if (isTypeSafeProvider(targetProvider)) {
+                try {
+                    const result = await evaluateTypeSafe({
+                        provider: targetProvider,
+                        model,
+                        timeoutMs,
+                        state: { mode: 'CASUAL', surface: 'CHAT', conversation: '', userMessage: 'Привет', candidateReply: 'Привет!' },
+                        questions: buildTypeSafeJudgeQuestions()
+                    });
+                    const latency_ms = Date.now() - startTime;
+                    if (!Object.keys(result.answers).length) throw new Error('TypeSafe judge returned no answers');
+                    return { ok: true, success: true, slot, status: 'HEALTHY', latency_ms, provider_id: targetProvider.id, provider_name: targetProvider.name, model: result.model, protocol: '/v1/systemone', message: 'TypeSafe judge ' + targetProvider.name + ' (' + result.model + ') проверен (' + latency_ms + 'ms)' };
+                } catch (err) {
+                    const latency_ms = Date.now() - startTime;
+                    return { ok: false, success: false, slot, status: 'UNHEALTHY', latency_ms, error: err.message, provider_id: targetProvider.id, provider_name: targetProvider.name, model, protocol: '/v1/systemone', message: 'Сбой TypeSafe judge: ' + err.message };
+                }
+            }
             const baseUrl = String(targetProvider.base_url).replace(/\/+$/, '');
 
             try {

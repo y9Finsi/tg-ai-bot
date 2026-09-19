@@ -9,56 +9,47 @@ import {
  * Строит точный и строгий промпт для генерации с сохранением лица референса
  */
 export function buildImagePrompt({ prompt, baseStyle, hasReference = false, isChatModel = true }) {
-    const defaultBaseStyle = 'Candid authentic amateur photo of Lera, a 19-year-old Russian student girl from Saint Petersburg. Appearance: fair skin with natural freckles across cheeks and nose bridge, distinct grey-green almond-shaped eyes with subtle thin winged eyeliner, soft natural brows, full natural lips. Shoulder-length messy textured dirty-blonde hair with wispy curtain bangs framing her face. Vibe & Aesthetic: cute, natural, expressive, genuine real-life iPhone camera photo, natural skin texture with subtle pores, warm ambient lighting, filmic grain, no CGI, no 3D render, no plastic AI smoothing.';
+    const defaultBaseStyle = `STYLE: Authentic low-res smartphone photo, TikTok screenshot quality, compressed social media aesthetic, JPEG artifacts, digital noise, soft focus, unedited mobile camera. Natural soft indoor lighting, realistic ambient skin tones, slightly warm white balance. Texture: soft skin, natural pores, organic digital imperfections. Looks like a casual unedited phone video frame., subtle motion blur, motion softness, slight camera shake, realistic movement blur
+MANDATORY POSE (STRICT): Maintain EXACT body position and background from FIRST ref.
+IDENTITY: Transfer face from SECOND ref. Analysis: Based on the image provided:
+
+**Face:**
+*   **Bone Structure:** Heart-shaped face with high, prominent cheekbones, a slim nose, and a soft but defined jawline. 
+*   **Eyes:** Almond-shaped, light blue-grey eyes emphasized with thick, black winged eyeliner. 
+*   **Unique Marks:** A dense, natural spray of freckles across the bridge of the nose and both cheeks. There is also a small mole visible on her right shoulder.
+
+**Clothing Textures:**
+*   **Outer top:** A light, heathered grey jersey knit with a soft, marled (multi-toned) texture and visible fabric folds.
+*   **Inner layers:** A smooth, matte black stretchy tank top layered over dark, ribbed cotton long sleeves.
+*   **Bottoms:** Thick, matte black fleece or heavy jersey sweatpants featuring a small, textured embroidered apple patch.
+*   **Accessories:** A smooth, semi-glossy black cord choker with a metallic pearl-like bead and a fine, reflective gold chain..
+OUTFIT: Transfer textures from SECOND ref. 
+ACTION: Composite SECOND image face onto FIRST image body. Authentic smartphone quality.
+NEGATIVE: professional photography, studio lighting, DSLR, 8k, ultra sharp, cinematic lighting, beauty retouch, airbrushed skin, oversharpened, high micro-contrast, professional color grading.`;
+
     let style = String(baseStyle || '').trim() || defaultBaseStyle;
     const cleanPrompt = String(prompt || '').trim();
 
-    if (!hasReference) {
-        // Очищаем инструкции переноса референсов, если референс не передаётся (чтобы не триггерить ошибки proxy провайдеров)
-        style = style
-            .replace(/MANDATORY POSE[\s\S]*?FIRST ref\./gi, '')
-            .replace(/IDENTITY:\s*Transfer face from SECOND ref\./gi, '')
-            .replace(/OUTFIT:\s*Transfer textures from SECOND ref\./gi, '')
-            .replace(/ACTION:\s*Composite SECOND image face onto FIRST image body\./gi, '')
-            .replace(/\b(?:FIRST|SECOND)\s+ref\b/gi, '')
-            .trim();
-        if (!style) style = defaultBaseStyle;
-    }
-
     if (hasReference) {
         return [
-            `[TASK: CHARACTER-CONSISTENT PHOTO GENERATION - EXACT FACE MATCH]`,
-            `The attached image is the EXACT facial reference of the character (Lera).`,
-            `[CHARACTER FACE & IDENTITY SPECIFICATION]:`,
+            `[TASK: CHARACTER PHOTO GENERATION & EXACT FACE MATCH]`,
             style,
-            `[SCENE / CONTEXT / EMOTION / ACTION]:`,
-            cleanPrompt,
-            `[STRICT RULES]:`,
-            `1. FACE & IDENTITY: Strictly preserve the exact face structure, features, freckles, eye color/shape, and hair from the reference and character specification.`,
-            `2. DYNAMIC SCENE: Follow the requested scene, outfit, pose, expression, and environment described above. Do NOT hardcode unrelated poses or rooms.`,
-            `3. REALISM: Photorealistic candid shot, natural lighting, real depth of field, unedited phone camera quality, zero CGI or plastic smoothing.`,
-            `4. NO TEXT / NO WATERMARKS: Strictly photorealistic image without any rendered text, words, letters, captions, titles, speech bubbles, watermarks, or typography.`,
-            `[OUTPUT FORMAT]:`,
-            `Return the generated image as markdown: ![image](data:image/jpeg;base64,...)`
-        ].join('\n\n');
+            cleanPrompt ? `[CURRENT SCENE / POSE / DYNAMIC OVERRIDE]:\n${cleanPrompt}\n(Adapt pose, scene, or action according to this description while strictly preserving character identity, facial marks, freckles, eye makeup, and overall authentic mobile quality).` : '',
+            `[OUTPUT FORMAT]:\nReturn the generated image as markdown: ![image](data:image/jpeg;base64,...)`
+        ].filter(Boolean).join('\n\n');
     }
 
     if (isChatModel) {
         return [
             `[TASK: REALISTIC PHOTO GENERATION]`,
-            `[CHARACTER SPECIFICATION]:`,
             style,
-            `[SCENE / ACTION / CONTEXT]:`,
-            cleanPrompt,
-            `[REQUIREMENTS]:`,
-            `Candid authentic photograph, natural ambient lighting, real skin texture, subtle film grain, real smartphone camera look.`,
-            `STRICTLY NO text, words, letters, captions, signs, watermarks, or typography rendered on the photo.`,
-            `Return the image in markdown format: ![image](data:image/jpeg;base64,...)`
-        ].join('\n\n');
+            cleanPrompt ? `[SCENE / ACTION / CONTEXT]:\n${cleanPrompt}` : '',
+            `[OUTPUT FORMAT]:\nReturn the image in markdown format: ![image](data:image/jpeg;base64,...)`
+        ].filter(Boolean).join('\n\n');
     }
 
     // Для специализированных моделей /images/generations (DALL-E, gpt-image-2, Flux, SD и т.д.)
-    return `${style}. Scene: ${cleanPrompt}. Highly detailed, candid smartphone photograph, natural ambient light, authentic film grain, authentic skin texture, realistic phone photo look. STRICTLY NO text, words, letters, captions, or typography.`.trim();
+    return `${style}. ${cleanPrompt ? 'Scene: ' + cleanPrompt + '.' : ''}`.trim();
 }
 
 /**
