@@ -158,6 +158,27 @@ async function flushUserBuffer(userId) {
         startTyping(bot, ctx.chat.id, buf.batchId || String(userId), chatAction);
         const tempMsgId = null;
 
+        // Если пользователь спрашивает про аватарку / фото профиля, а фото не прикреплено к сообщению — подтягиваем реальную аватарку пользователя через Telegram API
+        let effectivePhotoUrls = buf.photoUrls || [];
+        if (effectivePhotoUrls.length === 0 && /аватарк|аватар|ав[уе]|фото профил|фотк.*профил|че.*на аве|как тебе.*ава|оцени.*ав/i.test(combinedText)) {
+            try {
+                const photos = await ctx.telegram.getUserProfilePhotos(userId, 0, 1);
+                const firstPhoto = photos?.photos?.[0]?.at(-1);
+                if (firstPhoto?.file_id) {
+                    const link = await ctx.telegram.getFileLink(firstPhoto.file_id);
+                    const fileUrl = typeof link === 'string' ? link : link.href;
+                    const imgRes = await fetch(fileUrl, { signal: AbortSignal.timeout(5000) });
+                    if (imgRes.ok) {
+                        const arrayBuf = await imgRes.arrayBuffer();
+                        const base64Data = Buffer.from(arrayBuf).toString('base64');
+                        effectivePhotoUrls.push(`data:image/jpeg;base64,${base64Data}`);
+                    }
+                }
+            } catch (avatarErr) {
+                console.warn(`[AVATAR FETCH ERROR] user ${userId}:`, avatarErr.message);
+            }
+        }
+
         await aiQueue.add('ask-ai', {
             userId,
             text: combinedText,
@@ -165,7 +186,7 @@ async function flushUserBuffer(userId) {
             shouldDecrement: false,
             reservedResource,
             tempMsgId,
-            photoUrls: buf.photoUrls || [],
+            photoUrls: effectivePhotoUrls,
             eventIds: buf.eventIds || [],
             batchId: buf.batchId || null,
             firstMessageAt: buf.firstMessageAt || null,
