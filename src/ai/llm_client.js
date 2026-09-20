@@ -192,10 +192,20 @@ export async function requestLlmCompletion(user, messages, isPhotoRequest, getOp
     } catch (e) {
         console.error("Ошибка загрузки списка ИИ провайдеров:", e);
     }
-
     if (!providers || providers.length === 0) {
         const { client, model } = await getOpenAIClientAndModelFn();
         providers = [{ name: 'Default Fallback', base_url: client.baseURL, api_key: client.apiKey, model_name: model, timeout_ms: 7000 }];
+    }
+    const isMultimodal = hasMultimodalMessages(messages);
+    if (isMultimodal) {
+        // Если в запросе есть фото/изображения, ставим модели с поддержкой Vision в приоритет
+        const isVisionProv = p => {
+            const m = String(p.model_name || '').toLowerCase();
+            return m.includes('gemini') || m.includes('vision') || m.includes('vl') || m.includes('claude') || m.includes('gpt-4');
+        };
+        const visionProvs = providers.filter(isVisionProv);
+        const nonVisionProvs = providers.filter(p => !isVisionProv(p));
+        providers = [...visionProvs, ...nonVisionProvs];
     }
 
     const llmParams = await getLlmParams();
@@ -243,8 +253,16 @@ export async function requestLlmCompletion(user, messages, isPhotoRequest, getOp
             try {
                 completion = await tempClient.chat.completions.create(requestParams);
             } catch (createErr) {
-                if (hasMultimodalMessages(requestParams.messages)) {
-                    console.warn(`⚠️ [VISION FALLBACK] Модель "${prov.model_name}" не поддерживает Vision (${createErr.message}). Повторяем запрос в текстовом режиме...`);
+                const hasImages = hasMultimodalMessages(requestParams.messages);
+                const hasNextVisionProv = hasImages && providers.slice(i + 1).some(p => {
+                    const m = String(p.model_name || '').toLowerCase();
+                    return m.includes('gemini') || m.includes('vision') || m.includes('vl') || m.includes('claude') || m.includes('gpt-4');
+                });
+                if (hasImages && hasNextVisionProv) {
+                    console.warn(`⚠️ [VISION RETRY] Модель "${prov.model_name}" не смогла обработать фото (${createErr.message}). Переходим к следующей Vision-модели...`);
+                    throw createErr;
+                } else if (hasImages) {
+                    console.warn(`⚠️ [VISION FALLBACK] Все доступные Vision-модели не ответили. Повторяем запрос в текстовом режиме без фото (${createErr.message})...`);
                     const fallbackParams = {
                         ...requestParams,
                         messages: stripImageUrlsFromMessages(requestParams.messages)

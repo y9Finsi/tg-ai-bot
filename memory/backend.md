@@ -58,6 +58,7 @@ src/
     - `011_migrate_legacy_memories.sql` — миграция оставшихся записей из `user_memories` в `memory_fact`.
     - `20260908_content_life.sql` — таблицы Content Life (`content_sources`, `content_discoveries`, `content_browse_sessions`, `content_browse_decisions`, `content_usage`, `content_scrape_runs`).
     - `20260909_social_graph.sql` — социальный граф (`group_participants`, `user_social_edges`, `social_relays`).
+    - `20260921_content_topics_and_pending_stories.sql` — банк тем (`content_topics`) и двухэтапный пендинг историй (`pending_stories`).
 - **Схема v3:** `src/db/schema_v3.sql` содержит полную картину схемы базы данных.
 
 ---
@@ -92,6 +93,12 @@ src/
      - Entity Resolution: защита от коллизий при совпадении имен (`AMBIGUOUS`), поиск по юзернеймам, запрет отправки незнакомцам без `/start` (`BOT_NEVER_STARTED`).
      - Отложенная передача сообщений друзьям через BullMQ (`social-relay-deliver`) с имитацией задержки и генерацией текста в характере Леры.
      - Подмес недавних сплетен/переданных фактов в контекст при вопросе о друзьях.
+   - **Инструмент-режиссер и живые истории (`direct_moment.js`, `jev_story_engine.js`):**
+     - Позволяет Лере режиссировать свои истории, мемы и события дня через эмоциональные шкалы Jev (эмоция, интенсивность 50–200, сарказм 0–200, напор, капс).
+     - Драматургия: вход (`entry_message`) -> разгон (`buildup`) -> кульминация/панч (`climax`) -> финал (`resolution`, `abrupt` обрыв на полуслове или `summary` рефлексия).
+     - 85% по умолчанию в ЛС — естественный прямой шеринг (`DIRECT_SHARE`) без выпрашивания разрешения. 15% — двухэтапный пендинг (`HOOK_THEN_STORY`) с TTL 45 мин.
+     - Воркер очередей `queue.js` обрабатывает ответ юзера через `SELECT FOR UPDATE` после дебаунс-буфера: при согласии выкатывает заготовленную лесенку, при отказе дает легкий подкол, при смене темы отвечает на вопрос юзера и делает органичный мостик.
+     - Связность контекста: последние публикации канала автоматически подмешиваются в системный промпт ЛС (`[ТВОИ ПОСЛЕДНИЕ ПОСТЫ В ТЕЛЕГРАМ-КАНАЛЕ]`).
 
 2. **Pre-flight Response Judge (`src/ai/response_judge.js`):**
    - JSON-валидация ответа: `{ passed, verdict, code, reason, relationshipEvent, arousalEvent }`.

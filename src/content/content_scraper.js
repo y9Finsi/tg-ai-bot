@@ -189,6 +189,7 @@ async function parseYandexMusic(target) {
 
 export async function scrapeSource(source) {
     const url = String(source.url_or_handle || '').trim();
+    let target = url;
     if (source.source_type === 'telegram') {
         const cleanHandle = url.replace(/^(?:https?:\/\/)?(?:www\.)?t\.me\/(?:s\/)?/, '').replace(/^@/, '').replace(/\/$/, '');
         target = 'https://t.me/s/' + cleanHandle;

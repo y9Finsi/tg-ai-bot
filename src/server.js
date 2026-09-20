@@ -23,6 +23,8 @@ import { compileLeraSystemPrompt } from './ai/profile/prompt_compiler.js';
 import { buildLeraSystemPrompt } from './ai/profile/system_prompt_builder.js';
 import { normalizeSurface, SURFACES, getSurfacePolicy } from './ai/profile/surface_policy.js';
 import { buildChannelSystemPrompt } from './channel_prompt.js';
+import { harvestDailyTopics, getActiveTopics, markTopicUsed } from './services/topic_harvester.js';
+import { createPendingStory, publishStoryToChannel } from './services/jev_story_engine.js';
 import {
     getAdminStats,
     getAiProviders,
@@ -2268,6 +2270,112 @@ export function createAdminApp(bot = null) {
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
+    });
+
+    // === ТЕМЫ И ИНФОПОВОДЫ (TOPICS & PENDING STORIES) ===
+    app.get('/api/admin/content/topics', async (req, res) => {
+        try {
+            const status = req.query.status || 'ALL';
+            const category = req.query.category || 'ALL';
+            let sql = `
+                SELECT ct.*, lc.telegram_type, lc.url as media_content_url, lc.description as media_description
+                FROM content_topics ct
+                LEFT JOIN lera_content lc ON lc.id = ct.media_id
+                WHERE 1=1
+            `;
+            const params = [];
+            if (status !== 'ALL') {
+                params.push(status);
+                sql += ` AND ct.status = $${params.length}`;
+            }
+            if (category !== 'ALL') {
+                params.push(category);
+                sql += ` AND ct.category = $${params.length}`;
+            }
+            sql += ` ORDER BY ct.id DESC LIMIT 100`;
+            const result = await query(sql, params);
+            res.json({ success: true, topics: result.rows });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+
+    app.post('/api/admin/content/topics', async (req, res) => {
+        try {
+            const { title, situation, category = 'spb_life', media_id = null, media_url = null, source_url = null } = req.body;
+            if (!title || !situation) {
+                return res.status(400).json({ error: 'Заголовок и ситуация обязательны' });
+            }
+            const result = await query(`
+                INSERT INTO content_topics (
+                    title, situation, category, media_id, media_url, source_url,
+                    source_type, status, expires_at, created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, 'manual', 'NEW', NOW() + INTERVAL '3 days', NOW())
+                RETURNING *
+            `, [title, situation, category, media_id, media_url, source_url]);
+            res.json({ success: true, topic: result.rows[0] });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+
+    app.delete('/api/admin/content/topics/:id', async (req, res) => {
+        try {
+            await query('DELETE FROM content_topics WHERE id = $1', [req.params.id]);
+            res.json({ success: true });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+
+    app.post('/api/admin/content/topics/harvest', async (req, res) => {
+        try {
+            const newTopics = await harvestDailyTopics({ force: true });
+            res.json({ success: true, count: newTopics.length, topics: newTopics });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+
+    app.post('/api/admin/content/topics/publish-channel', async (req, res) => {
+        try {
+            if (!botInstance) return res.status(503).json({ error: 'Бот не инициализирован' });
+            const { topic_id } = req.body;
+            if (!topic_id) return res.status(400).json({ error: 'Не передан topic_id' });
+            const story = await createPendingStory({ topicId: topic_id, surface: 'CHANNEL' });
+            const channelId = req.body.channel_id || process.env.PHOTO_CHANNEL_ID || '-1004408362405';
+            await publishStoryToChannel(botInstance, channelId, story.id);
+            res.json({ success: true, story_id: story.id });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+
+    app.get('/api/admin/content/pending-stories', async (req, res) => {
+        try {
+            const result = await query(`
+                SELECT ps.*, ct.title as topic_title, ct.situation as topic_situation, ct.category as topic_category
+                FROM pending_stories ps
+                LEFT JOIN content_topics ct ON ct.id = ps.topic_id
+                WHERE ps.status NOT IN ('COMPLETED', 'EXPIRED', 'REJECTED')
+                ORDER BY ps.id DESC
+            `);
+            res.json({ success: true, stories: result.rows });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+
+    app.post('/api/admin/content/pending-stories/create', async (req, res) => {
+        try {
+            const { topic_id, surface = 'CHANNEL', user_id = null } = req.body;
+            const story = await createPendingStory({ topicId: topic_id, surface, userId: user_id });
+            res.json({ success: true, story });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+
+    app.post('/api/admin/content/pending-stories/:id/publish', async (req, res) => {
+        try {
+            if (!botInstance) return res.status(503).json({ error: 'Бот не инициализирован' });
+            const channelId = req.body.channel_id || process.env.PHOTO_CHANNEL_ID || '-1004408362405';
+            await publishStoryToChannel(botInstance, channelId, req.params.id);
+            res.json({ success: true });
+        } catch (e) { res.status(500).json({ error: e.message }); }
+    });
+
+    app.delete('/api/admin/content/pending-stories/:id', async (req, res) => {
+        try {
+            await query("UPDATE pending_stories SET status = 'REJECTED' WHERE id = $1", [req.params.id]);
+            res.json({ success: true });
+        } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
     app.post('/api/admin/initiatives/test', async (req, res) => {
@@ -4669,6 +4777,30 @@ export function startContentBackgroundTasks() {
     };
     const timer = setInterval(runScrapeAndExpire, INTERVAL_MS);
     if (timer.unref) timer.unref();
+
+    // Cron планировщик сбора фактов дня: 09:00 и 18:30 по Москве
+    let lastHarvestHourMsk = -1;
+    setInterval(async () => {
+        try {
+            const mskDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+            const hour = mskDate.getHours();
+            const minute = mskDate.getMinutes();
+
+            // 09:00 или 18:30
+            if ((hour === 9 && minute === 0) || (hour === 18 && minute === 30)) {
+                if (lastHarvestHourMsk !== hour) {
+                    lastHarvestHourMsk = hour;
+                    console.log(`⏰ [CRON TOPICS HARVEST] Запуск сбора тем дня СПб (${hour}:${minute} МСК)...`);
+                    await harvestDailyTopics();
+                }
+            } else if (minute !== 0 && minute !== 30) {
+                lastHarvestHourMsk = -1; // сброс флага
+            }
+        } catch (hErr) {
+            console.warn('[CRON TOPICS HARVEST ERROR]:', hErr.message);
+        }
+    }, 60 * 1000).unref?.();
+
     return timer;
 }
 

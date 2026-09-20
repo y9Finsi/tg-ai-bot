@@ -9,9 +9,11 @@ import { ContentModal } from './ContentModal.jsx';
 import { FigmaListItemRow } from './FigmaListItemRow.jsx';
 import { ContentSourcesView } from './ContentSourcesView.jsx';
 import { ContentDiscoveriesView } from './ContentDiscoveriesView.jsx';
+import { ContentTopicsView } from './ContentTopicsView.jsx';
 
 const TOP_TABS = [
     { id: 'bank', label: 'Банк материалов' },
+    { id: 'topics', label: '📰 Темы дня (СПб & Jev)' },
     { id: 'discoveries', label: 'Находки скрапера' },
     { id: 'sources', label: 'Источники' }
 ];
@@ -223,6 +225,10 @@ export function ContentBankTab({ toast }) {
                         );
                     })}
                 </div>
+
+                {topTab === 'topics' && (
+                    <ContentTopicsView toast={toast} />
+                )}
 
                 {topTab === 'discoveries' && (
                     <ContentDiscoveriesView toast={toast} />

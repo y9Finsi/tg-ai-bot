@@ -19,6 +19,7 @@ import { scheduleReminderAction } from './plugins/schedule_reminder.js';
 import { recordOpenThreadAction } from './plugins/record_open_thread.js';
 import { relayMessageToFriendAction } from './plugins/relay_message_to_friend.js';
 import { recordFriendAction } from './plugins/record_friend.js';
+import { directMomentAction } from './plugins/direct_moment.js';
 
 // Авторегистрация системных действий ядра
 actionRegistry.register(webSearchAction);
@@ -35,6 +36,7 @@ actionRegistry.register(scheduleReminderAction);
 actionRegistry.register(recordOpenThreadAction);
 actionRegistry.register(relayMessageToFriendAction);
 actionRegistry.register(recordFriendAction);
+actionRegistry.register(directMomentAction);
 
 export {
     actionRegistry,
@@ -53,6 +55,7 @@ export {
     scheduleReminderAction,
     recordOpenThreadAction,
     relayMessageToFriendAction,
-    recordFriendAction
+    recordFriendAction,
+    directMomentAction
 };
 

@@ -1028,9 +1028,14 @@ export function formatConversationEvent(event) {
         return `[${gap}][M:${role}][${occurred}]: ${event.content || ''}`;
     }
     if (type === 'INITIATIVE') {
-        return `[${gap}][M:${role}][INITIATIVE][${occurred}]: ${event.content || ''}`;
+        const relayTag = metadata.kind === 'social_relay' ? `[ПЕРЕДАЧА ОТ ЗНАКОМОГО: ${metadata.sender_name || 'знакомый'}]` : '[INITIATIVE]';
+        return `[${gap}][M:${role}]${relayTag}[${occurred}]: ${event.content || ''}`;
     }
-    if (type === 'REACTION') return `[${gap}][R:${metadata.emoji || event.content || ''}][actor:${role}]: ${event.content || ''}`;
+    if (type === 'REACTION') {
+        const emoji = metadata.emoji || event.content || '👍';
+        const who = role === 'lera' || role === 'assistant' ? 'Лера' : 'Пользователь';
+        return `[${gap}][${occurred}][${who} поставил(а) реакцию ${emoji} на сообщение]`;
+    }
     if (type === 'PHOTO' || type === 'VOICE' || type === 'STICKER') {
         return `[${gap}][${type}:${role}]${metadata.caption ? `[caption: ${metadata.caption}]` : ''}: ${event.content || ''}`;
     }

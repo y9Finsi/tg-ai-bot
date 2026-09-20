@@ -19,6 +19,7 @@ import { sendTypingAction, stopTyping } from './typing_manager.js';
 import { getRoutingSettings } from './ai/intent_router.js';
 import { getEffectiveInitiativeLimit } from './initiative_service.js';
 import { markRelayDelivered, markRelayFailed, setSocialQueue } from './services/social_resolver.js';
+import { handleUserPendingStory } from './services/jev_story_engine.js';
 
 // Парсим URL из .env и жестко задаем IPv4 (family: 4)
 const redisUrl = new URL(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
@@ -448,6 +449,15 @@ async function processReminderJob(bot, job) {
 
     try {
         await sendTextLadder(bot, chatId, response.text);
+        await appendConversationEvent({
+            userId,
+            eventType: 'INITIATIVE',
+            role: 'lera',
+            content: response.text,
+            occurredAt: new Date(),
+            metadata: { kind: 'reminder', reminder_text: reminderText },
+            status: 'COMPLETED'
+        }).catch(err => console.warn('[REMINDER LOG ERROR]:', err.message));
     } catch (sendErr) {
         console.error(`[USER REMINDER SEND ERROR] user ${userId}:`, sendErr.message);
         if (sendErr.response?.error_code === 403 && sendErr.message?.includes('bot was blocked by the user')) {
@@ -486,6 +496,24 @@ ${senderName} просил(а) тебя передать ${targetName}: «${mess
 
     try {
         await sendTextLadder(bot, targetId, response.text);
+        await appendConversationEvent({
+            userId: targetId,
+            eventType: 'INITIATIVE',
+            role: 'lera',
+            content: response.text,
+            occurredAt: new Date(),
+            metadata: {
+                kind: 'social_relay',
+                relay_id: relayId,
+                sender_name: senderName,
+                sender_id: job.data.senderId || null,
+                target_name: targetName,
+                original_message: message,
+                vibe_tag: vibeTag || null
+            },
+            status: 'COMPLETED'
+        }).catch(err => console.warn('[SOCIAL RELAY LOG ERROR]:', err.message));
+
         if (relayId) {
             await markRelayDelivered(relayId);
         }
@@ -741,6 +769,17 @@ async function processAiJob(bot, job) {
             }).catch(error => console.error(`[CONVERSATION OUT EVENT ERROR] user ${userId}:`, error.message));
         };
         try {
+            // Проверка и обработка двухэтапного пендинга истории (SELECT FOR UPDATE)
+            const pendingResult = await handleUserPendingStory(bot, userId, chatId, text);
+            if (pendingResult?.handled) {
+                // История или отказ уже отправлены пользователю лесенкой
+                await refundReservation();
+                await markInputEvents('COMPLETED');
+                return;
+            }
+
+            let extraSystemContext = pendingResult?.bridge_context || null;
+
             response = await generateResponse(userId, text, {
                 batchId,
                 eventIds,
@@ -748,7 +787,8 @@ async function processAiJob(bot, job) {
                 preMessageGapSeconds,
                 photoUrls: job.data.photoUrls || [],
                 chatId: job.data.chatId,
-                replyingTo: job.data.replyingTo || null
+                replyingTo: job.data.replyingTo || null,
+                systemOverlay: extraSystemContext
             });
             const historyClearedAtAfterGeneration = await getChatHistoryClearedAt(userId);
             if (String(historyClearedAtBeforeGeneration || '') !== String(historyClearedAtAfterGeneration || '')) {

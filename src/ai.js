@@ -598,6 +598,27 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     }
     const messages = systemPrompt ? [{ role: 'system', content: systemPrompt }] : [];
 
+    // Связность контекста: если есть свежие посты в канале Леры — подмешиваем их для ЛС
+    if (!isPublic) {
+        try {
+            const channelMemoryRes = await query(`
+                SELECT content, occurred_at FROM conversation_events
+                WHERE role = 'lera' AND event_type IN ('MESSAGE', 'CONTENT')
+                  AND (metadata->>'is_channel' = 'true' OR metadata->>'surface' = 'CHANNEL' OR metadata->>'source' = 'channel')
+                ORDER BY occurred_at DESC LIMIT 3
+            `);
+            if (channelMemoryRes.rows?.length > 0) {
+                const postsSummary = channelMemoryRes.rows.map(r => `- «${String(r.content).slice(0, 100)}...»`).join('\n');
+                messages.push({
+                    role: 'system',
+                    content: `[ТВОИ ПОСЛЕДНИЕ ПОСТЫ В ТЕЛЕГРАМ-КАНАЛЕ]:\n${postsSummary}\nТы отлично помнишь свои посты в канале. Если собеседник спросит про пост или упомянет его — ты сразу понимаешь о чем речь и свободно развиваешь тему.`
+                });
+            }
+        } catch (memErr) {
+            // silent catch
+        }
+    }
+
     function sanitizeHistoryContent(raw) {
         let text = String(raw || '').trim();
         text = text.replace(/^\[\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\]\s*[^:]+:\s*/, '');
@@ -1056,7 +1077,18 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                 if (primaryProv) {
                     const fallbackIds = Array.isArray(matchedRule.fallback_provider_ids) ? matchedRule.fallback_provider_ids.map(Number) : [];
                     const fallbackProvs = fallbackIds.map(fId => allProviders.find(p => Number(p.id) === fId)).filter(Boolean);
-                    generationParams.providers = [primaryProv, ...fallbackProvs];
+                    let resolvedProviders = [primaryProv, ...fallbackProvs];
+                    const hasImages = Array.isArray(messages) && messages.some(msg => Array.isArray(msg?.content) && msg.content.some(part => part?.type === 'image_url'));
+                    if (hasImages) {
+                        const isVisionProv = p => {
+                            const m = String(p?.model_name || '').toLowerCase();
+                            return m.includes('gemini') || m.includes('vision') || m.includes('vl') || m.includes('claude') || m.includes('gpt-4');
+                        };
+                        const visionP = resolvedProviders.filter(isVisionProv);
+                        const nonVisionP = resolvedProviders.filter(p => !isVisionProv(p));
+                        resolvedProviders = [...visionP, ...nonVisionP];
+                    }
+                    generationParams.providers = resolvedProviders;
                 }
             }
         }
