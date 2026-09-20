@@ -1,5 +1,5 @@
 import { query, getActiveAiProvider } from '../db/database.js';
-import { getCachedOpenAIClient } from '../ai/llm_client.js';
+import { getCachedOpenAIClient, generateCompletion } from '../ai/llm_client.js';
 import { evaluateTypeSafe, buildTypeSafeClassifierQuestions } from './typesafe_client.js';
 import { markTopicUsed } from './topic_harvester.js';
 import fs from 'fs';
@@ -71,12 +71,12 @@ export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL'
 
     let evaluation = null;
     try {
-        const typesafeRes = await query('SELECT * FROM ai_providers WHERE name ILIKE $1 OR name ILIKE $2 LIMIT 1', ['%typesafe%', '%jev%']);
+        const typesafeRes = await query('SELECT * FROM ai_providers WHERE (name ILIKE $1 OR name ILIKE $2) AND is_enabled = true LIMIT 1', ['%typesafe%', '%jev%']);
         const provider = typesafeRes.rows[0];
         if (provider) {
             evaluation = await evaluateTypeSafe({
                 provider,
-                messages: [{ role: 'user', content: `Тема: ${topic}. Ситуация: ${situation}. Среда: ${surface}` }],
+                state: `Тема: ${topic}. Ситуация: ${situation}. Среда публикации: ${surface}. Персонаж: Лера, 19 лет, студентка СПбГИК, СММ-щица в Питере.`,
                 questions
             });
         }
@@ -140,19 +140,13 @@ ${isChannel ? `{
   "photo_prompt": "Промпт для фото если уместно"
 }`}`;
 
-    const prov = await getActiveAiProvider();
-    const client = getCachedOpenAIClient(prov.base_url, prov.api_key, 20000);
-    const model = prov.model_name;
-    const response = await client.chat.completions.create({
-        model,
-        messages: [{ role: 'user', content: systemPrompt }],
-        temperature: 0.75,
-        max_tokens: 1500
-    });
-
-    const raw = response.choices?.[0]?.message?.content || '{}';
-    const cleanJson = raw.replace(/^```json/i, '').replace(/```$/i, '').trim();
-    return JSON.parse(cleanJson);
+    const raw = await generateCompletion(systemPrompt, { temperature: 0.75 });
+    const cleanJson = String(raw || '{}').replace(/^```json/i, '').replace(/```$/i, '').trim();
+    try {
+        return JSON.parse(cleanJson);
+    } catch {
+        return { steps: [topic, situation], hook: topic, follow_up_steps: [situation] };
+    }
 }
 
 /**

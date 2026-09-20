@@ -21,6 +21,9 @@ fi
 echo "☁️  Pushing current branch to GitHub..."
 git push
 
+echo "🛠️  Building admin frontend..."
+npm run admin:build
+
 echo "🚀 Syncing files to server ($SERVER)..."
 rsync -avz --delete \
   --exclude='.git' \
@@ -29,8 +32,8 @@ rsync -avz --delete \
   --exclude='.env' \
   ./ "$SERVER:$REMOTE_DIR/"
 
-echo "📦 Rebuilding & restarting Docker containers on server..."
-ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build"
+echo "📦 Rebuilding & restarting bot container on server..."
+ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build bot"
 
 echo "✅ Deploy complete! Checking Docker container logs:"
 ssh "$SERVER" "cd $REMOTE_DIR && docker compose logs --tail=30 bot"

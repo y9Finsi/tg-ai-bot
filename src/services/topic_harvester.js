@@ -1,5 +1,5 @@
 import { query, getActiveAiProvider } from '../db/database.js';
-import { getCachedOpenAIClient } from '../ai/llm_client.js';
+import { getCachedOpenAIClient, generateCompletion } from '../ai/llm_client.js';
 import { webSearchAction } from '../radiant/actions/plugins/web_search.js';
 import { scrapeAllActiveSources } from '../content/content_scraper.js';
 
@@ -80,18 +80,8 @@ ${discoveriesSnippet || 'Нет свежих постов.'}
 ]`;
 
     try {
-        const prov = await getActiveAiProvider();
-        const client = getCachedOpenAIClient(prov.base_url, prov.api_key, 20000);
-        const model = prov.model_name;
-        const response = await client.chat.completions.create({
-            model,
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.7,
-            max_tokens: 1500
-        });
-
-        const raw = response.choices?.[0]?.message?.content || '[]';
-        const cleanJson = raw.replace(/^```json/i, '').replace(/```$/i, '').trim();
+        const raw = await generateCompletion(prompt, { temperature: 0.7 });
+        const cleanJson = String(raw || '[]').replace(/^```json/i, '').replace(/```$/i, '').trim();
         const parsed = JSON.parse(cleanJson);
 
         if (Array.isArray(parsed)) {
