@@ -17,7 +17,10 @@ import {
     Zap,
     Eye,
     Copy,
-    ArrowRightLeft
+    ArrowRightLeft,
+    Image,
+    Sparkles,
+    Upload
 } from 'lucide-react';
 import { api } from '@/lib/api.js';
 
@@ -26,7 +29,8 @@ const SURFACES = [
     { id: 'CHAT', label: 'Личка' },
     { id: 'CHANNEL', label: 'Тг-канал' },
     { id: 'INITIATIVE', label: 'Инициатива' },
-    { id: 'GROUP', label: 'Группа / Гость' }
+    { id: 'GROUP', label: 'Группа / Гость' },
+    { id: 'DIRECTOR', label: 'Режиссёр' }
 ];
 
 // Helper: Гарантирует, что канон и системные промпты всегда идут первыми в списке
@@ -100,6 +104,20 @@ export function AiSettingsTab({ toast }) {
     const [rulesList, setRulesList] = useState([]);
     const [emotionSettings, setEmotionSettings] = useState({});
 
+    // Image Generation Settings state
+    const [imageSettings, setImageSettings] = useState({
+        provider_id: null,
+        model: 'gemini-2.5-flash',
+        protocol: '',
+        style_prompt: '',
+        negative_prompt: '',
+        master_reference_dataurl: null,
+        master_reference_photo: null,
+        auto_generate_channel: true,
+        auto_save_catalog: true
+    });
+    const [savingImageSettings, setSavingImageSettings] = useState(false);
+
     // Providers state
     const [providersList, setProvidersList] = useState([]);
     const [editingProvider, setEditingProvider] = useState(null);
@@ -142,10 +160,14 @@ export function AiSettingsTab({ toast }) {
     const loadProfile = useCallback(async () => {
         try {
             setLoading(true);
-            const [profileData, llmSettingsData] = await Promise.all([
+            const [profileData, llmSettingsData, imageSettingsData] = await Promise.all([
                 api('/api/admin/lera-profile'),
                 api('/api/admin/llm-settings').catch((e) => {
                     console.warn('[LLM SETTINGS FETCH WARN]', e);
+                    return null;
+                }),
+                api('/api/admin/image-settings').catch((e) => {
+                    console.warn('[IMAGE SETTINGS FETCH WARN]', e);
                     return null;
                 }),
                 loadProviders()
@@ -156,6 +178,10 @@ export function AiSettingsTab({ toast }) {
 
             if (profileData?.sampling) {
                 setSampling(profileData.sampling);
+            }
+
+            if (imageSettingsData?.settings) {
+                setImageSettings(imageSettingsData.settings);
             }
 
             const llmPrompts = llmSettingsData?.prompts || {};
@@ -547,6 +573,20 @@ export function AiSettingsTab({ toast }) {
                         temperature: 0.72,
                         provider_id: null,
                         fallback_provider_ids: []
+                    },
+                    {
+                        id: 'rule_story_director',
+                        title: 'Режиссура историй (Story Director)',
+                        surface: 'DIRECTOR',
+                        surfaces: ['DIRECTOR'],
+                        mode: 'ALL',
+                        enabled: true,
+                        content: 'Генерация сценариев и лесенок сообщений для Telegram-канала и ЛС. Анти-ИИ вайб, бытовой угол зрения, драматургия (хук/entry -> контекст/buildup -> кульминация/панч -> вывод/resolution или естественный обрыв без морализаторства).',
+                        attachedPromptIds: ['prompt_bio', 'prompt_speech', 'prompt_story_director'],
+                        max_tokens: 1200,
+                        temperature: 0.75,
+                        provider_id: null,
+                        fallback_provider_ids: []
                     }
                 ];
                 setRulesList(initialRules);
@@ -599,6 +639,24 @@ export function AiSettingsTab({ toast }) {
                             fallback_provider_ids: []
                         }
                     );
+                }
+
+                const hasDirectorRule = mappedRules.some(r => (r.surfaces || [r.surface]).includes('DIRECTOR'));
+                if (!hasDirectorRule) {
+                    mappedRules.push({
+                        id: 'rule_story_director',
+                        title: 'Режиссура историй (Story Director)',
+                        surface: 'DIRECTOR',
+                        surfaces: ['DIRECTOR'],
+                        mode: 'ALL',
+                        enabled: true,
+                        content: 'Генерация сценариев и лесенок сообщений для Telegram-канала и ЛС. Анти-ИИ вайб, бытовой угол зрения, драматургия (хук/entry -> контекст/buildup -> кульминация/панч -> вывод/resolution или естественный обрыв без морализаторства).',
+                        attachedPromptIds: ['prompt_bio', 'prompt_speech', 'prompt_story_director'],
+                        max_tokens: 1200,
+                        temperature: 0.75,
+                        provider_id: null,
+                        fallback_provider_ids: []
+                    });
                 }
                 setRulesList(mappedRules);
             }
@@ -782,6 +840,45 @@ export function AiSettingsTab({ toast }) {
         });
         setRulesList(nextRules);
         saveProfileChanges(promptsList, nextRules);
+    };
+
+    // Image Settings handlers
+    const handleSaveImageSettings = async () => {
+        try {
+            setSavingImageSettings(true);
+            const res = await api('/api/admin/image-settings', {
+                method: 'POST',
+                body: JSON.stringify(imageSettings)
+            });
+            if (res?.settings) {
+                setImageSettings(res.settings);
+            }
+            if (toast) toast('Настройки генерации фото сохранены', 'success');
+        } catch (err) {
+            console.error('[IMAGE SETTINGS SAVE ERROR]', err);
+            if (toast) toast('Ошибка сохранения фото: ' + err.message, 'error');
+        } finally {
+            setSavingImageSettings(false);
+        }
+    };
+
+    const handleMasterPhotoUpload = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (file.size > 10 * 1024 * 1024) {
+            if (toast) toast('Файл слишком большой (макс 10 МБ)', 'error');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = (uploadEvent) => {
+            const dataUrl = uploadEvent.target.result;
+            setImageSettings(prev => ({
+                ...prev,
+                master_reference_dataurl: dataUrl
+            }));
+            if (toast) toast('Фото лица загружено в превью. Нажмите «Сохранить фото»', 'info');
+        };
+        reader.readAsDataURL(file);
     };
 
     // Drag-and-drop state
@@ -1197,13 +1294,13 @@ export function AiSettingsTab({ toast }) {
                                 onClick={() => setLeftMenuOpen(prev => !prev)}
                                 className="flex items-center gap-1.5 text-[16px] font-medium text-white tracking-normal select-none cursor-pointer hover:text-white/80 transition-colors py-1 px-2 -ml-2 rounded-xl hover:bg-white/5"
                             >
-                                <span>{leftTab === 'prompts' ? 'Промпты' : leftTab === 'emotions' ? 'Эмоции' : 'Провайдеры'}</span>
+                                <span>{leftTab === 'prompts' ? 'Промпты' : leftTab === 'emotions' ? 'Эмоции' : leftTab === 'images' ? 'Картинки / Фото' : 'Провайдеры'}</span>
                                 <ChevronDown className={`w-4 h-4 text-white/60 transition-transform duration-200 ${leftMenuOpen ? 'rotate-180' : ''}`} />
                             </button>
 
                             {/* Dropdown Menu */}
                             {leftMenuOpen && (
-                                <div className="absolute top-[42px] left-0 z-50 w-44 bg-[#1b1b1b] border border-white/10 rounded-[18px] p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-100 backdrop-blur-md">
+                                <div className="absolute top-[42px] left-0 z-50 w-48 bg-[#1b1b1b] border border-white/10 rounded-[18px] p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-100 backdrop-blur-md">
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -1238,6 +1335,14 @@ export function AiSettingsTab({ toast }) {
                                         <span>Эмоции</span>
                                         {leftTab === 'emotions' && <Check className="w-4 h-4 text-white stroke-[2.5]" />}
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setLeftTab('images'); setLeftMenuOpen(false); }}
+                                        className={leftTab === 'images' ? 'w-full px-3 py-2 text-left text-[14px] rounded-xl flex items-center justify-between cursor-pointer transition-colors bg-[#292e5e] text-white font-medium' : 'w-full px-3 py-2 text-left text-[14px] rounded-xl flex items-center justify-between cursor-pointer transition-colors text-white/70 hover:bg-white/5 hover:text-white'}
+                                    >
+                                        <span>Картинки / Фото</span>
+                                        {leftTab === 'images' && <Check className="w-4 h-4 text-white stroke-[2.5]" />}
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -1254,6 +1359,16 @@ export function AiSettingsTab({ toast }) {
                             >
                                 <span>Новый промпт</span>
                                 <Plus className="w-4 h-4 text-white stroke-[1.5]" />
+                            </button>
+                        ) : leftTab === 'images' ? (
+                            <button
+                                type="button"
+                                onClick={handleSaveImageSettings}
+                                disabled={savingImageSettings}
+                                className="h-[38px] px-4 rounded-full bg-[#292e5e] hover:bg-[#343b75] text-white text-[14px] font-medium flex items-center gap-1.5 cursor-pointer transition-all active:scale-98 shadow-sm disabled:opacity-50"
+                            >
+                                {savingImageSettings ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <Check className="w-4 h-4 text-white stroke-[2.5]" />}
+                                <span>Сохранить фото</span>
                             </button>
                         ) : leftTab === 'emotions' ? null : (
                             <button
@@ -1444,6 +1559,218 @@ export function AiSettingsTab({ toast }) {
                                 </div>;
                             })}
                             <button type="button" onClick={async () => { setSaving(true); try { const res = await api('/api/admin/llm-settings', { method: 'POST', body: JSON.stringify({ emotionSettings }) }); setEmotionSettings(res.emotionSettings || emotionSettings); if (toast) toast('Настройки эмоций сохранены', 'success'); } catch (e) { if (toast) toast('Ошибка сохранения: ' + e.message, 'error'); } finally { setSaving(false); } }} className="h-10 rounded-full bg-[#292e5e] hover:bg-[#343b75] text-white text-sm">Сохранить эмоции</button>
+                        </div>
+                    ) : leftTab === 'images' ? (
+                        /* Image Generation Settings (Linear UI / 377px width cards) */
+                        <div className="w-[377px] flex flex-col gap-4">
+                            {/* Card 1: Provider & Model */}
+                            <div className="rounded-[23px] p-3.5 flex flex-col gap-3 bg-[#000212]/37 border border-[#8693ff]/25 shadow-lg">
+                                <div className="flex items-center justify-between pb-1 border-b border-white/10">
+                                    <div className="flex items-center gap-2">
+                                        <Sparkles className="w-4 h-4 text-[#8693ff]" />
+                                        <span className="text-[15px] font-medium text-white">Провайдер и модель фото</span>
+                                    </div>
+                                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-[#8693ff]/20 text-[#8693ff] border border-[#8693ff]/40">
+                                        AI Image
+                                    </span>
+                                </div>
+
+                                {/* Provider select */}
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-[11px] text-white/50 font-medium">AI-провайдер генерации</label>
+                                    <select
+                                        value={imageSettings.provider_id || ''}
+                                        onChange={(e) => setImageSettings(prev => ({ ...prev, provider_id: e.target.value ? Number(e.target.value) : null }))}
+                                        className="bg-[#1b1c28] border border-white/10 rounded-xl px-3 py-2 text-[13px] text-white focus:outline-none focus:border-[#8693ff]/50 cursor-pointer"
+                                    >
+                                        <option value="">Автовыбор (по модели или активный)</option>
+                                        {providersList.map(p => (
+                                            <option key={p.id} value={p.id}>
+                                                {p.name} ({p.model_name}) {p.is_active ? '★' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Model input with quick presets */}
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[11px] text-white/50 font-medium">Модель генерации</label>
+                                    <input
+                                        type="text"
+                                        value={imageSettings.model || ''}
+                                        onChange={(e) => setImageSettings(prev => ({ ...prev, model: e.target.value }))}
+                                        placeholder="gemini-2.5-flash / gpt-image-2 / flux"
+                                        className="w-full bg-[#1b1c28] border border-white/10 rounded-xl px-3 py-2 text-[13px] font-mono text-white placeholder:text-white/30 focus:outline-none focus:border-[#8693ff]/50"
+                                    />
+                                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                        {['gemini-2.5-flash', 'gpt-image-2', 'flux-1-schnell', 'dall-e-3'].map(preset => (
+                                            <button
+                                                key={preset}
+                                                type="button"
+                                                onClick={() => setImageSettings(prev => ({ ...prev, model: preset }))}
+                                                className={`text-[10px] px-2 py-0.5 rounded-lg border transition-colors cursor-pointer ${
+                                                    imageSettings.model === preset
+                                                        ? 'bg-[#8693ff]/25 border-[#8693ff] text-white font-medium'
+                                                        : 'bg-white/[0.04] border-white/10 text-white/60 hover:text-white hover:bg-white/10'
+                                                }`}
+                                            >
+                                                {preset}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Protocol Selector */}
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-[11px] text-white/50 font-medium">Протокол API</label>
+                                    <div className="grid grid-cols-3 gap-1.5 bg-[#14151f] p-1 rounded-xl border border-white/5">
+                                        {[
+                                            { id: '', label: 'Авто' },
+                                            { id: '/chat/completions', label: 'Chat (Gemini)' },
+                                            { id: '/images/generations', label: 'Images (Flux)' }
+                                        ].map(item => (
+                                            <button
+                                                key={item.id}
+                                                type="button"
+                                                onClick={() => setImageSettings(prev => ({ ...prev, protocol: item.id }))}
+                                                className={`py-1 text-[11px] font-medium rounded-lg transition-all cursor-pointer ${
+                                                    (imageSettings.protocol || '') === item.id
+                                                        ? 'bg-[#292e5e] text-white shadow-sm'
+                                                        : 'text-white/50 hover:text-white'
+                                                }`}
+                                            >
+                                                {item.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card 2: Master Face Reference */}
+                            <div className="rounded-[23px] p-3.5 flex flex-col gap-2.5 bg-[#000212]/37 border border-[#8693ff]/25 shadow-lg">
+                                <div className="flex items-center justify-between pb-1 border-b border-white/10">
+                                    <div className="flex items-center gap-2">
+                                        <Image className="w-4 h-4 text-[#8693ff]" />
+                                        <span className="text-[15px] font-medium text-white">Мастер-референс лица</span>
+                                    </div>
+                                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white/10 text-white/70">
+                                        Identity Lock
+                                    </span>
+                                </div>
+
+                                {/* Reference Preview or Placeholder */}
+                                <div className="flex items-center gap-3">
+                                    <div className="w-20 h-20 rounded-2xl border border-white/15 bg-black/40 overflow-hidden flex items-center justify-center shrink-0 relative group">
+                                        {imageSettings.master_reference_dataurl || imageSettings.master_reference_photo?.file_path || imageSettings.master_reference_photo?.url ? (
+                                            <img
+                                                src={imageSettings.master_reference_dataurl || imageSettings.master_reference_photo?.url || `/api/admin/photo-file?path=${encodeURIComponent(imageSettings.master_reference_photo?.file_path || '')}`}
+                                                alt="Мастер-лицо Леры"
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="text-center p-1">
+                                                <Image className="w-6 h-6 text-white/30 mx-auto" />
+                                                <span className="text-[9px] text-white/40 block mt-1">Нет фото</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex flex-col gap-1.5 flex-1">
+                                        <label className="h-8 px-3 rounded-xl bg-[#292e5e] hover:bg-[#343b75] text-white text-[12px] font-medium flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-98">
+                                            <Upload className="w-3.5 h-3.5" />
+                                            <span>Загрузить фото лица</span>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={handleMasterPhotoUpload}
+                                                className="hidden"
+                                            />
+                                        </label>
+                                        {(imageSettings.master_reference_dataurl || imageSettings.master_reference_photo) && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setImageSettings(prev => ({ ...prev, master_reference_dataurl: '', master_reference_photo: null }))}
+                                                className="h-7 px-2.5 rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-300 text-[11px] font-medium transition-colors cursor-pointer text-center"
+                                            >
+                                                Удалить референс
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <p className="text-[11px] text-white/40 leading-snug">
+                                    Используется для переноса черт лица (сердечко, стрелки, родинка на правом плече, веснушки) во все сцены.
+                                </p>
+                            </div>
+
+                            {/* Card 3: Base Style & Identity Prompt */}
+                            <div className="rounded-[23px] p-3.5 flex flex-col gap-2 bg-gradient-to-b from-[#171717] to-[#232425]/0 border border-white/10">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[14px] font-medium text-white">Канонический стиль фото</span>
+                                    <span className="text-[10px] text-white/40">Стиль и лицо</span>
+                                </div>
+                                <textarea
+                                    value={imageSettings.style_prompt || ''}
+                                    onChange={(e) => setImageSettings(prev => ({ ...prev, style_prompt: e.target.value }))}
+                                    placeholder="STYLE: Authentic low-res smartphone photo... IDENTITY: Transfer face..."
+                                    rows={8}
+                                    className="w-full rounded-xl bg-black/30 border border-white/10 p-2.5 text-[11px] font-mono leading-relaxed text-white/80 placeholder:text-white/30 focus:outline-none focus:border-[#8693ff]/40 resize-y"
+                                />
+                                <span className="text-[10px] text-white/40">
+                                    Подставляется как базовый шаблон стиля для всех генераций фото Леры.
+                                </span>
+                            </div>
+
+                            {/* Card 4: Negative Prompt */}
+                            <div className="rounded-[23px] p-3.5 flex flex-col gap-2 bg-gradient-to-b from-[#171717] to-[#232425]/0 border border-white/10">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[14px] font-medium text-white">Негативный промпт (Negative)</span>
+                                    <span className="text-[10px] text-white/40">Исключения</span>
+                                </div>
+                                <textarea
+                                    value={imageSettings.negative_prompt || ''}
+                                    onChange={(e) => setImageSettings(prev => ({ ...prev, negative_prompt: e.target.value }))}
+                                    placeholder="professional photography, studio lighting, DSLR, 8k, ultra sharp..."
+                                    rows={3}
+                                    className="w-full rounded-xl bg-black/30 border border-white/10 p-2.5 text-[11px] font-mono leading-relaxed text-white/80 placeholder:text-white/30 focus:outline-none focus:border-[#8693ff]/40 resize-y"
+                                />
+                                <span className="text-[10px] text-white/40">
+                                    Исключает пластиковую кожу, студийный блеск и эффект нейросетевого манекена.
+                                </span>
+                            </div>
+
+                            {/* Card 5: Automation Toggles */}
+                            <div className="rounded-[20px] p-3 bg-white/[0.03] border border-white/10 flex flex-col gap-2">
+                                <label className="flex items-center justify-between cursor-pointer py-1">
+                                    <span className="text-[12px] text-white/80 font-medium">Автогенерация фото при посте в канал</span>
+                                    <input
+                                        type="checkbox"
+                                        checked={imageSettings.auto_generate_channel !== false}
+                                        onChange={(e) => setImageSettings(prev => ({ ...prev, auto_generate_channel: e.target.checked }))}
+                                        className="w-4 h-4 rounded accent-[#8693ff] cursor-pointer"
+                                    />
+                                </label>
+                                <div className="h-[1px] bg-white/5" />
+                                <label className="flex items-center justify-between cursor-pointer py-1">
+                                    <span className="text-[12px] text-white/80 font-medium">Автосохранение сгенерированных фото в каталог</span>
+                                    <input
+                                        type="checkbox"
+                                        checked={imageSettings.auto_save_catalog !== false}
+                                        onChange={(e) => setImageSettings(prev => ({ ...prev, auto_save_catalog: e.target.checked }))}
+                                        className="w-4 h-4 rounded accent-[#8693ff] cursor-pointer"
+                                    />
+                                </label>
+                            </div>
+
+                            {/* Save Button */}
+                            <button
+                                type="button"
+                                onClick={handleSaveImageSettings}
+                                disabled={savingImageSettings}
+                                className="h-11 rounded-full bg-[#292e5e] hover:bg-[#343b75] text-white text-[14px] font-medium flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98 shadow-md disabled:opacity-50"
+                            >
+                                {savingImageSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 stroke-[2.5]" />}
+                                <span>Сохранить настройки фото</span>
+                            </button>
                         </div>
                     ) : (
                         /* Providers Stack (Figma 377px width cards) */

@@ -164,7 +164,29 @@ ${isChannel ? `{
   "photo_prompt": "candid shot sitting at desk, emotional reaction"
 }`)}`;
 
-    const raw = await generateCompletion(systemPrompt, { temperature: 0.75 });
+    let ruleTemp = 0.75;
+    let ruleTokens = 1200;
+    let ruleProviderId = null;
+    try {
+        const { getLeraProfile } = await import('../db/database.js');
+        const prof = await getLeraProfile();
+        const directorRule = (prof?.profile?.blocks || []).find(b =>
+            b.category === 'rule' && (b.surfaces || [b.surface] || []).includes('DIRECTOR')
+        );
+        if (directorRule) {
+            if (directorRule.temperature !== undefined) ruleTemp = Number(directorRule.temperature);
+            if (directorRule.max_tokens !== undefined) ruleTokens = Number(directorRule.max_tokens);
+            if (directorRule.provider_id) ruleProviderId = Number(directorRule.provider_id);
+        }
+    } catch (ruleErr) {
+        console.warn('[JEV STORY ENGINE] Warning reading DIRECTOR rule:', ruleErr.message);
+    }
+
+    const raw = await generateCompletion(systemPrompt, {
+        temperature: ruleTemp,
+        max_tokens: ruleTokens,
+        providerId: ruleProviderId
+    });
     const cleanJson = String(raw || '{}').replace(/^```json/i, '').replace(/```$/i, '').trim();
     try {
         return JSON.parse(cleanJson);

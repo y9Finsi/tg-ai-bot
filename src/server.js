@@ -3294,6 +3294,11 @@ export function createAdminApp(bot = null) {
                     { role: 'user', content: userText || '[СИСТЕМНЫЙ ТРИГГЕР: Пауза в диалоге более 4 часов. Напиши пользователю первой.]' }
                 );
 
+            } else if (normSurface === 'DIRECTOR') {
+                messages.push(
+                    { role: 'user', content: userText || 'Сгенерируй живой сценарий и лесенку сообщений для Telegram на тему: утренний кофе на Петроградке' }
+                );
+
             } else {
                 const defaultChatPrompt = normMode === 'EROTIC'
                     ? 'ты такая красивая, поцелуй меня...'
@@ -3315,8 +3320,8 @@ export function createAdminApp(bot = null) {
                 selectedProvider = providers.find(p => p.is_active) || providers[0] || null;
             }
 
-            const defaultTemp = normSurface === 'CHANNEL' ? 0.70 : (normSurface === 'INITIATIVE' ? 0.72 : (normMode === 'EROTIC' ? 0.75 : 0.68));
-            const defaultTokens = normSurface === 'CHANNEL' ? 230 : (normSurface === 'INITIATIVE' ? 200 : (normMode === 'EROTIC' ? 240 : 200));
+            const defaultTemp = normSurface === 'DIRECTOR' ? 0.75 : (normSurface === 'CHANNEL' ? 0.70 : (normSurface === 'INITIATIVE' ? 0.72 : (normMode === 'EROTIC' ? 0.75 : 0.68)));
+            const defaultTokens = normSurface === 'DIRECTOR' ? 1200 : (normSurface === 'CHANNEL' ? 230 : (normSurface === 'INITIATIVE' ? 200 : (normMode === 'EROTIC' ? 240 : 200)));
 
             const generationParams = {
                 temperature: targetRule?.temperature !== undefined ? targetRule.temperature : defaultTemp,

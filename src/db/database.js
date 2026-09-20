@@ -1888,7 +1888,8 @@ export async function getImageGenerationSettings() {
         masterRefDataUrl,
         autoGenerateChannel,
         autoSaveCatalog,
-        protocol
+        protocol,
+        negativePrompt
     ] = await Promise.all([
         getSetting('image_provider_id', ''),
         getSetting('image_model', 'gemini-2.5-flash'),
@@ -1912,7 +1913,8 @@ NEGATIVE: professional photography, studio lighting, DSLR, 8k, ultra sharp, cine
         getSetting('image_master_reference_dataurl', ''),
         getSetting('image_auto_channel', 'true'),
         getSetting('image_auto_save_catalog', 'true'),
-        getSetting('image_protocol', '')
+        getSetting('image_protocol', ''),
+        getSetting('image_negative_prompt', 'professional photography, studio lighting, DSLR, 8k, ultra sharp, cinematic lighting, beauty retouch, airbrushed skin, oversharpened, high micro-contrast, professional color grading.')
     ]);
 
     const masterPhoto = await getMasterReferencePhoto();
@@ -1922,6 +1924,7 @@ NEGATIVE: professional photography, studio lighting, DSLR, 8k, ultra sharp, cine
         model: model || 'gemini-2.5-flash',
         protocol: protocol || null,
         style_prompt: stylePrompt,
+        negative_prompt: negativePrompt,
         master_reference_dataurl: masterRefDataUrl || null,
         master_reference_photo: masterPhoto || null,
         auto_generate_channel: autoGenerateChannel === 'true',
@@ -1934,6 +1937,7 @@ export async function saveImageGenerationSettings(settings = {}) {
     if (settings.model !== undefined) await setSetting('image_model', String(settings.model || ''));
     if (settings.protocol !== undefined) await setSetting('image_protocol', String(settings.protocol || ''));
     if (settings.style_prompt !== undefined) await setSetting('image_style_prompt', String(settings.style_prompt || ''));
+    if (settings.negative_prompt !== undefined) await setSetting('image_negative_prompt', String(settings.negative_prompt || ''));
     if (settings.master_reference_dataurl !== undefined) {
         await setSetting('image_master_reference_dataurl', String(settings.master_reference_dataurl || ''));
         if (settings.master_reference_dataurl) {

@@ -8,7 +8,7 @@ import {
 /**
  * Строит точный и строгий промпт для генерации с сохранением лица референса
  */
-export function buildImagePrompt({ prompt, baseStyle, hasReference = false, isChatModel = true }) {
+export function buildImagePrompt({ prompt, baseStyle, negativePrompt, hasReference = false, isChatModel = true }) {
     const defaultBaseStyle = `STYLE: Authentic low-res smartphone photo, TikTok screenshot quality, compressed social media aesthetic, JPEG artifacts, digital noise, soft focus, unedited mobile camera. Natural soft indoor lighting, realistic ambient skin tones, slightly warm white balance. Texture: soft skin, natural pores, organic digital imperfections. Looks like a casual unedited phone video frame., subtle motion blur, motion softness, slight camera shake, realistic movement blur
 MANDATORY POSE (STRICT): Maintain EXACT body position and background from FIRST ref.
 IDENTITY: Transfer face from SECOND ref. Analysis: Based on the image provided:
@@ -28,6 +28,14 @@ ACTION: Composite SECOND image face onto FIRST image body. Authentic smartphone 
 NEGATIVE: professional photography, studio lighting, DSLR, 8k, ultra sharp, cinematic lighting, beauty retouch, airbrushed skin, oversharpened, high micro-contrast, professional color grading.`;
 
     let style = String(baseStyle || '').trim() || defaultBaseStyle;
+    const cleanNegative = String(negativePrompt || '').trim();
+    if (cleanNegative) {
+        if (style.includes('NEGATIVE:')) {
+            style = style.replace(/NEGATIVE:.*$/s, `NEGATIVE: ${cleanNegative}`);
+        } else {
+            style = `${style}\nNEGATIVE: ${cleanNegative}`;
+        }
+    }
     const cleanPrompt = String(prompt || '').trim();
 
     if (hasReference) {
@@ -289,6 +297,7 @@ export async function executeImageGenerationRequest({
     referenceDataUrl = null,
     size = '1024x1024',
     stylePrompt = '',
+    negativePrompt = '',
     protocol = null,
     requireReference = false,
     signal = null
@@ -330,6 +339,7 @@ export async function executeImageGenerationRequest({
             const chatPrompt = buildImagePrompt({
                 prompt,
                 baseStyle: stylePrompt,
+                negativePrompt,
                 hasReference: Boolean(referenceDataUrl),
                 isChatModel: true
             });
@@ -408,6 +418,7 @@ export async function executeImageGenerationRequest({
     const genPrompt = buildImagePrompt({
         prompt,
         baseStyle: stylePrompt,
+        negativePrompt,
         hasReference: false,
         isChatModel: false
     });
@@ -541,6 +552,7 @@ export async function generateLeraPhoto({
                     referenceDataUrl: effectiveReferenceUrl,
                     size,
                     stylePrompt: settings.style_prompt,
+                    negativePrompt: settings.negative_prompt,
                     protocol: (i === 0 ? effectiveProtocol : null),
                     requireReference,
                     signal: controller.signal

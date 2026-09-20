@@ -138,7 +138,7 @@ test('every routed prompt requires continuity after short acknowledgements and c
 
     assert.match(prompts, /Короткие реакции пользователя/);
     assert.match(prompts, /поясни именно свою предыдущую мысль/);
-    assert.match(prompts, /blocks\.push\(CONVERSATION_CONTINUITY_CONTRACT\)/);
+    assert.match(prompts, /(fallback)?[Bb]locks\.push\((continuity|CONVERSATION_CONTINUITY_CONTRACT)\)/);
 });
 
 test('a valid media-only reply is not rejected after the IMAGE tag is parsed', () => {

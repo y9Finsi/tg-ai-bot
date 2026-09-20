@@ -1,4 +1,4 @@
-export const SURFACES = Object.freeze(['CHAT', 'GROUP', 'CHANNEL', 'COMMENTS', 'INITIATIVE']);
+export const SURFACES = Object.freeze(['CHAT', 'GROUP', 'CHANNEL', 'COMMENTS', 'INITIATIVE', 'DIRECTOR']);
 
 const SAFE_READ = Object.freeze(['web_search', 'weather', 'spb_places', 'get_channel_posts']);
 const PRIVATE_READ = Object.freeze([...SAFE_READ, 'search_archive_memory']);
@@ -13,7 +13,8 @@ export const SURFACE_POLICY = Object.freeze({
     GROUP: { memory: 'none', allowedTools: SAFE_READ.concat(['send_photo', 'relay_message_to_friend', 'record_friend']), forbiddenTools: ['search_archive_memory', 'set_reaction', 'schedule_followup', 'schedule_reminder'], output: 'telegram_bubbles' },
     CHANNEL: { memory: 'public_only', allowedTools: ['web_search', 'weather', 'spb_places', 'get_channel_posts', 'send_content'], forbiddenTools: ['search_archive_memory', 'send_voice', 'schedule_followup', 'schedule_reminder'], output: 'channel_post' },
     COMMENTS: { memory: 'public_only', allowedTools: SAFE_READ, forbiddenTools: ['search_archive_memory', 'set_reaction', 'send_voice', 'schedule_followup', 'schedule_reminder'], output: 'comment_json' },
-    INITIATIVE: { memory: 'private_limited', allowedTools: PRIVATE_READ.concat(['send_photo', 'send_voice', 'send_content', 'set_reaction', 'record_open_thread']), forbiddenTools: ['schedule_followup', 'schedule_reminder'], output: 'telegram_bubbles' }
+    INITIATIVE: { memory: 'private_limited', allowedTools: PRIVATE_READ.concat(['send_photo', 'send_voice', 'send_content', 'set_reaction', 'record_open_thread']), forbiddenTools: ['schedule_followup', 'schedule_reminder'], output: 'telegram_bubbles' },
+    DIRECTOR: { memory: 'public_only', allowedTools: SAFE_READ, forbiddenTools: ['send_voice', 'schedule_followup', 'schedule_reminder'], output: 'story_script_json' }
 });
 
 export function normalizeSurface(surface = 'CHAT') {
