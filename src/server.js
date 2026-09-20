@@ -2335,9 +2335,13 @@ export function createAdminApp(bot = null) {
             const { topic_id } = req.body;
             if (!topic_id) return res.status(400).json({ error: 'Не передан topic_id' });
             const story = await createPendingStory({ topicId: topic_id, surface: 'CHANNEL' });
-            const channelId = req.body.channel_id || process.env.PHOTO_CHANNEL_ID || '-1004408362405';
-            await publishStoryToChannel(botInstance, channelId, story.id);
-            res.json({ success: true, story_id: story.id });
+            let targetChannelId = req.body.channel_id;
+            if (!targetChannelId) {
+                const settingRes = await query("SELECT value FROM settings WHERE key = 'channel_id' LIMIT 1");
+                targetChannelId = settingRes.rows[0]?.value || process.env.CHANNEL_ID || '-1004408362405';
+            }
+            await publishStoryToChannel(botInstance, targetChannelId, story.id);
+            res.json({ success: true, story_id: story.id, channel_id: targetChannelId });
         } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
