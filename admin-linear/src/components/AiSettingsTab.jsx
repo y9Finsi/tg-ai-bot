@@ -65,10 +65,11 @@ export const sortPrompts = (prompts, customOrder = null) => {
         if (pr.id === 'prompt_initiative') return 14;
         if (pr.id === 'prompt_group_chat') return 15;
         if (pr.id === 'prompt_group_welcome') return 16;
+        if (pr.id === 'prompt_story_director') return 17;
         // 8. Вторичные модули
-        if (pr.id === 'prompt_forbidden') return 17;
-        if (pr.id === 'prompt_facts') return 18;
-        if (pr.id === 'prompt_flirt') return 19;
+        if (pr.id === 'prompt_forbidden') return 18;
+        if (pr.id === 'prompt_facts') return 19;
+        if (pr.id === 'prompt_flirt') return 20;
         if (pr.is_routing_module) return 20;
         if (pr.is_system) return 21;
         // 9. Пользовательские модульные промпты
@@ -349,6 +350,18 @@ export function AiSettingsTab({ toast }) {
                 style: 'style-b',
                 is_system: true,
                 content: llmPrompts.group_welcome || `[РЕЖИМ: ПРИВЕТСТВИЕ ПРИ ДОБАВЛЕНИИ В ГРУППУ]\n- Тебя (Леру) только что добавили в новую Telegram-группу / чат.\n- Поздоровайся с участниками в своём фирменном стиле (19 лет, студентка из СПб, живая, немного дерзкая, без официоза).\n- Напиши 1-2 короткие фразы без эмодзи и без канцелярита (например: «всем привет, че тут за движ? я лера если че» или «ку всем, кто добавил меня сюда? короче я лера, будем знакомы»).\n- Не начинай с тире, не строй из себя робота-ассистента («я искусственный интеллект, готова помочь»). Ты обычная девчонка.`
+            });
+
+            // 4.2. Story Director (Контент и режиссура историй)
+            rawPrompts.push({
+                id: 'prompt_story_director',
+                section_key: 'story_director',
+                is_system_section: true,
+                title: 'Режиссёр историй и ситуаций (Story Director)',
+                category_label: 'Режиссёр',
+                style: 'style-b',
+                is_system: true,
+                content: llmPrompts.story_director || ''
             });
 
             // 5. Dynamic Context & Modular Templates (Style B)

@@ -212,6 +212,13 @@ export async function updateLeraPrompts(promptsObj) {
     };
 }
 
+export async function getStoryDirectorPrompt() {
+    if (!isDbInitialized) {
+        await initPromptsFromDb().catch(() => { });
+    }
+    return promptsCache.story_director || promptsCache.prompt_story_director || '';
+}
+
 export async function getRoutingPromptModules() {
     if (!isDbInitialized) {
         await initPromptsFromDb().catch(() => { });
@@ -297,6 +304,8 @@ export async function resolveModularRulePrompt(rule, profile, context = {}) {
             content = promptsCache.group_chat || promptsCache.prompt_group_chat || '';
         } else if (pId === 'prompt_group_welcome') {
             content = promptsCache.group_welcome || promptsCache.prompt_group_welcome || '';
+        } else if (pId === 'prompt_story_director' || pId === 'story_director') {
+            content = promptsCache.story_director || promptsCache.prompt_story_director || '';
         } else if (pId === 'prompt_context_rules') {
             content = promptsCache.context_template || promptsCache.prompt_context_rules || '';
         } else if (pId === 'routing_core') {

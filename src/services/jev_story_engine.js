@@ -65,8 +65,16 @@ export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL'
             type: 'choice',
             instructions: 'Нужна ли контекстная реалистичная фотография Леры к этой ситуации?',
             criteria: {
-                'true': 'Фотография усилит сцену (домашняя, злая, кофе, улица).',
+                'true': 'Фотография усилит сцену (домашняя, эмоция, улица, кофе, учеба).',
                 'false': 'Текста достаточно, фото не нужно.'
+            }
+        },
+        delivery_format: {
+            type: 'choice',
+            instructions: 'В каком формате подать историю в личном сообщении?',
+            criteria: {
+                DIRECT_SHARE: 'Сразу отправить мысль/новость лесенкой из 2-3 сообщений без выпрашивания (живой шеринг с другом, 75% случаев).',
+                INTRIGUE_HOOK: 'Короткий интригующий вброс с вопросом («смотри че нашла», «прикинь че было», 25% случаев).'
             }
         }
     };
@@ -94,7 +102,8 @@ export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL'
         assertiveness: Number(evaluation?.answers?.assertiveness) || 100,
         caps_count: parseInt(evaluation?.answers?.caps_count, 10) || (surface === 'CHANNEL' ? 1 : 0),
         messages_count: parseInt(evaluation?.answers?.messages_count, 10) || 3,
-        needs_photo: evaluation?.answers?.needs_photo === 'true' || surface === 'CHANNEL'
+        needs_photo: evaluation?.answers?.needs_photo === 'true' || surface === 'CHANNEL',
+        delivery_format: evaluation?.answers?.delivery_format || (Math.random() < 0.25 ? 'INTRIGUE_HOOK' : 'DIRECT_SHARE')
     };
 
     return mood;
@@ -106,53 +115,54 @@ export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL'
 export async function generateStoryScript({ topic, situation, mood, surface = 'CHANNEL', mediaUrl = null }) {
     const isChannel = surface === 'CHANNEL';
 
-    // Получаем реальный системный промпт для CASUAL (из админки / профиля Леры)
-    let basePrompt = '';
+    // Получаем реальный системный промпт режиссёра из админки (Story Director)
+    let directorPrompt = '';
     try {
-        const routed = await getRoutedSystemPrompt('CASUAL', { surface: isChannel ? 'CHANNEL' : 'CHAT' });
-        basePrompt = String(routed?.prompt || routed || '').trim();
+        const { getStoryDirectorPrompt } = await import('../prompts.js');
+        directorPrompt = await getStoryDirectorPrompt();
     } catch (err) {
-        console.warn('[JEV STORY ENGINE] Failed to load routed prompt:', err.message);
+        console.warn('[JEV STORY ENGINE] Failed to load story director prompt:', err.message);
     }
 
-    const systemPrompt = `${basePrompt || `Ты — Лера, 19 лет, учишься на 2 курсе СПбГИК, подрабатываешь в СММ, живёшь в Санкт-Петербурге. Твоя речь естественная, разговорная («ну», «блин», «короче», «типа», «хз», «ща», «кароч», «жиза», «рил»).`}
+    const isDirectShare = surface === 'DM' && mood.delivery_format === 'DIRECT_SHARE';
+
+    const systemPrompt = `${directorPrompt || `Ты — режиссёр сценариев для Леры (19 лет, студентка СПбГИК в Питере).`}
 
 [РЕЖИССУРА JEV ДЛЯ ТЕКУЩЕЙ СЦЕНЫ]:
 - Эмоция: ${mood.emotion} (сила ${mood.intensity}/200)
 - Сарказм: ${mood.sarcasm}/200
 - Напор: ${mood.assertiveness}/200
-- Сообщений капсом: ${mood.caps_count} (только короткое эмоциональное восклицание/реплика, не весь текст!)
+- Сообщений капсом: ${mood.caps_count} (только короткое эмоциональное восклицание/акцент, не весь текст!)
 - Сообщений в лесенке: ${mood.messages_count}
-
-ЖЕСТКИЕ ПРАВИЛА (АНТИ-ИИ ВАЙБ):
-- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ искусственные шутки, шаблонные метафоры («моему утреннему кофе светит пожизненное», «вызов системе», «терроризм в сторис»).
-- Никаких морализаторских выводов в конце.
-- Если тема про город или новость — подавай через бытовой взгляд студентки из Питера за кофе или в метро.
-
-${isChannel ? `
-ФОРМАТ ДЛЯ КАНАЛА ЛЕРЫ (ЩИТПОСТ СТУДЕНТКИ):
-- Первые сообщения — живая лесенка (1-2 предложения на сообщение). Вброс + конкретная деталь ситуации.
-- Финальное сообщение — простая жизненная реплика или обрыв на эмоции («я просто выпала», «все, я больше не могу в этот город», «ну нафиг кароч»).
-` : `
-ФОРМАТ ДЛЯ ЛС (ЖИВОЕ ОБЩЕНИЕ):
-- hook: ОДНО короткое спонтанное сообщение (например: «смотри че нашла ахаха», «прикинь что щас вычитала»).
-- follow_up_steps: 2-3 коротких реплики лесенкой с сутью без воды.
-- reject_reply: «ой всё, сиди без приколов тогда)»
-`}
+- Формат подачи: ${isChannel ? 'CHANNEL_LADDER' : mood.delivery_format}
 
 ТЕМА: ${topic}
 СИТУАЦИЯ: ${situation}
 
-Верни СТРОГО один валидный JSON-объект (только описание ситуации/действия для фото без описания внешности Леры, так как лицо и стиль подставляются автоматически):
+Верни СТРОГО один валидный JSON-объект.
+Внимание к photo_prompt: напиши ТОЛЬКО краткое описание позы/действия и окружения под тему (на английском), БЕЗ описания внешности, лица или имени Леры (они подставляются автоматически):
 ${isChannel ? `{
-  "steps": ["строка 1 (лесенка)", "строка 2 (лесенка)", "строка 3 (финал)"],
-  "photo_prompt": "sitting in coffee shop with funny expression, holding cup, natural daylight"
+  "steps": [
+    "строка 1 (вброс/реакция: я щас просто выпала с новости)",
+    "строка 2 (конкретная деталь ситуации)",
+    "строка 3 (финал/приземление)"
+  ],
+  "photo_prompt": "candid shot holding phone, emotional reaction, urban background"
+}` : (isDirectShare ? `{
+  "format": "DIRECT_SHARE",
+  "steps": [
+    "строка 1 (смотри че щас вычитала)",
+    "строка 2 (само мясо новости или ситуации)",
+    "строка 3 (реакция или финал)"
+  ],
+  "photo_prompt": "candid shot sitting at desk, emotional reaction"
 }` : `{
-  "hook": "Короткий вброс",
-  "follow_up_steps": ["строка 1", "строка 2", "строка 3"],
+  "format": "INTRIGUE_HOOK",
+  "hook": "Короткий интригующий вброс с вопросом или зацепкой",
+  "follow_up_steps": ["строка 1 (мясо истории)", "строка 2 (финал)"],
   "reject_reply": "Короткий подкол",
-  "photo_prompt": "sitting in coffee shop with funny expression, holding cup, natural daylight"
-}`}`;
+  "photo_prompt": "candid shot sitting at desk, emotional reaction"
+}`)}`;
 
     const raw = await generateCompletion(systemPrompt, { temperature: 0.75 });
     const cleanJson = String(raw || '{}').replace(/^```json/i, '').replace(/```$/i, '').trim();
@@ -191,8 +201,9 @@ export async function createPendingStory({ topicId, userId = null, surface = 'DM
         mediaUrl: topicData.media_url
     });
 
-    const hookText = surface === 'DM' ? script.hook : script.steps?.[0] || topicData.title;
-    const storySteps = surface === 'DM' ? script.follow_up_steps : script.steps;
+    const format = script.format || (surface === 'DM' ? 'INTRIGUE_HOOK' : 'CHANNEL_LADDER');
+    const hookText = format === 'INTRIGUE_HOOK' ? (script.hook || topicData.title) : (script.steps?.[0] || topicData.title);
+    const storySteps = format === 'INTRIGUE_HOOK' ? (script.follow_up_steps || []) : (script.steps || []);
 
     const inserted = await query(`
         INSERT INTO pending_stories (
@@ -208,6 +219,7 @@ export async function createPendingStory({ topicId, userId = null, surface = 'DM
         JSON.stringify(storySteps || []),
         JSON.stringify(mood),
         JSON.stringify({
+            delivery_format: format,
             photo_prompt: script.photo_prompt || null,
             reject_reply: script.reject_reply || null,
             media_id: topicData.media_id || null,

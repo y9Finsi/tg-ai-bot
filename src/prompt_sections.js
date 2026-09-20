@@ -22,7 +22,8 @@ export const SYSTEM_CONTRACT_SECTIONS = {
     channel_rules: 'lera_channel_rules.txt',
     initiative_directive: 'lera_initiative.txt',
     group_chat: 'lera_group_chat.txt',
-    group_welcome: 'lera_group_welcome.txt'
+    group_welcome: 'lera_group_welcome.txt',
+    story_director: 'lera_story_director.txt'
 };
 
 export const ALL_PROMPT_SECTIONS = {
