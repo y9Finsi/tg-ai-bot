@@ -2,6 +2,8 @@ import { query, getActiveAiProvider } from '../db/database.js';
 import { getCachedOpenAIClient, generateCompletion } from '../ai/llm_client.js';
 import { evaluateTypeSafe, buildTypeSafeClassifierQuestions } from './typesafe_client.js';
 import { markTopicUsed } from './topic_harvester.js';
+import { generateLeraPhoto } from './image_generator.js';
+import { getRoutedSystemPrompt } from '../prompts.js';
 import fs from 'fs';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -104,51 +106,52 @@ export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL'
 export async function generateStoryScript({ topic, situation, mood, surface = 'CHANNEL', mediaUrl = null }) {
     const isChannel = surface === 'CHANNEL';
 
-    const systemPrompt = `Ты — Лера, 19 лет, учишься на 2 курсе СПбГИК (библиотечно-информационный / медиа), подрабатываешь в СММ, живёшь в Санкт-Петербурге.
-Твой характер: живая, тёплая, слегка рассеянная, дерзкая, ироничная, наблюдательная.
-Твоя речь: естественная, короткая, разговорная. Используешь: «ну», «блин», «короче», «типа», «хз», «чето», «ща», «кароч», «жиза», «рил», «рофл». Строчными буквами, без графических смайликов и без академизма.
+    // Получаем реальный системный промпт для CASUAL (из админки / профиля Леры)
+    let basePrompt = '';
+    try {
+        const routed = await getRoutedSystemPrompt('CASUAL', { surface: isChannel ? 'CHANNEL' : 'CHAT' });
+        basePrompt = String(routed?.prompt || routed || '').trim();
+    } catch (err) {
+        console.warn('[JEV STORY ENGINE] Failed to load routed prompt:', err.message);
+    }
 
-ЖЕСТКИЕ ПРАВИЛА И ЗАПРЕТЫ (АНТИ-ИИ ВАЙБ):
-- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ искусственные шутки, шаблонные метафоры и вымученные панчлайны (никаких «моему утреннему кофе светит пожизненное», «вызов системе», «терроризм в сторис», «пока получается только опаздывать»).
-- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ мемные штампы: «он: ... / также он: ...», «вайб главного героя», «пинтерест-девушки».
-- Не делай морализаторских выводов и назиданий в конце. Люди так не пишут.
-- Если тема про какой-то город или событие — подавай её через бытовой человеческий взгляд студентки из Питера, которая листает ленту за кофе или едет в метро.
+    const systemPrompt = `${basePrompt || `Ты — Лера, 19 лет, учишься на 2 курсе СПбГИК, подрабатываешь в СММ, живёшь в Санкт-Петербурге. Твоя речь естественная, разговорная («ну», «блин», «короче», «типа», «хз», «ща», «кароч», «жиза», «рил»).`}
 
-РЕЖИССУРА JEV ДЛЯ ЭТОГО ПОСТА:
+[РЕЖИССУРА JEV ДЛЯ ТЕКУЩЕЙ СЦЕНЫ]:
 - Эмоция: ${mood.emotion} (сила ${mood.intensity}/200)
 - Сарказм: ${mood.sarcasm}/200
 - Напор: ${mood.assertiveness}/200
-- Сообщений капсом: ${mood.caps_count} (только короткое эмоциональное восклицание, не весь текст!)
-- Всего сообщений в лесенке: ${mood.messages_count}
+- Сообщений капсом: ${mood.caps_count} (только короткое эмоциональное восклицание/реплика, не весь текст!)
+- Сообщений в лесенке: ${mood.messages_count}
+
+ЖЕСТКИЕ ПРАВИЛА (АНТИ-ИИ ВАЙБ):
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНЫ искусственные шутки, шаблонные метафоры («моему утреннему кофе светит пожизненное», «вызов системе», «терроризм в сторис»).
+- Никаких морализаторских выводов в конце.
+- Если тема про город или новость — подавай через бытовой взгляд студентки из Питера за кофе или в метро.
 
 ${isChannel ? `
 ФОРМАТ ДЛЯ КАНАЛА ЛЕРЫ (ЩИТПОСТ СТУДЕНТКИ):
-- Первые сообщения — живая лесенка (как в Telegram: 1-2 предложения на сообщение). Вброс + конкретная деталь ситуации.
+- Первые сообщения — живая лесенка (1-2 предложения на сообщение). Вброс + конкретная деталь ситуации.
 - Финальное сообщение — простая жизненная реплика или обрыв на эмоции («я просто выпала», «все, я больше не могу в этот город», «ну нафиг кароч»).
-- Пример хорошей подачи:
-  Шаг 1: «я щас просто выпала с новости»
-  Шаг 2: «подходит чел на избирательном участке и кладет на стол яблоко, а тетка из комиссии вызывает полицию за экстремизм ахаха»
-  Шаг 3: «Я ДУМАЛА ЭТО РОФЛ»
-  Шаг 4: «они реально составили протокол на яблоко, сижу в кофейне и просто не знаю как это развидеть кароч»
 ` : `
 ФОРМАТ ДЛЯ ЛС (ЖИВОЕ ОБЩЕНИЕ):
 - hook: ОДНО короткое спонтанное сообщение (например: «смотри че нашла ахаха», «прикинь что щас вычитала»).
-- follow_up_steps: 2-3 коротких реплики лесенкой с самой сутью без воды.
+- follow_up_steps: 2-3 коротких реплики лесенкой с сутью без воды.
 - reject_reply: «ой всё, сиди без приколов тогда)»
 `}
 
 ТЕМА: ${topic}
 СИТУАЦИЯ: ${situation}
 
-Верни СТРОГО один валидный JSON-объект:
+Верни СТРОГО один валидный JSON-объект (только описание ситуации/действия для фото без описания внешности Леры, так как лицо и стиль подставляются автоматически):
 ${isChannel ? `{
   "steps": ["строка 1 (лесенка)", "строка 2 (лесенка)", "строка 3 (финал)"],
-  "photo_prompt": "A candid realistic smartphone photo of a 19yo blonde girl Lera in Saint-Petersburg, casual clothes, natural light, reacting with emotion: ${mood.emotion}"
+  "photo_prompt": "sitting in coffee shop with funny expression, holding cup, natural daylight"
 }` : `{
   "hook": "Короткий вброс",
   "follow_up_steps": ["строка 1", "строка 2", "строка 3"],
   "reject_reply": "Короткий подкол",
-  "photo_prompt": "Candid photo prompt"
+  "photo_prompt": "sitting in coffee shop with funny expression, holding cup, natural daylight"
 }`}`;
 
     const raw = await generateCompletion(systemPrompt, { temperature: 0.75 });
@@ -234,25 +237,20 @@ export async function publishStoryToChannel(bot, channelId, storyId) {
         await sleep(1800);
     }
 
-    // Если есть фото-промпт и провайдер NEW IMAGE — генерируем фото
+    // Если требуется фото — используем единый генератор generateLeraPhoto со стилем из админки и мастер-референсом лица
     if (meta.photo_prompt) {
         try {
-            const provRes = await query('SELECT * FROM ai_providers WHERE name = $1 OR id = 11 LIMIT 1', ['NEW IMAGE']);
-            const provider = provRes.rows[0];
-            if (provider) {
-                const imgRes = await fetch('https://po.zapro.su/v1/images/generations', {
-                    method: 'POST',
-                    headers: { 'Authorization': 'Bearer ' + provider.api_key, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model: provider.model_name, prompt: meta.photo_prompt, n: 1, size: '1024x1024', response_format: 'b64_json' }),
-                    signal: AbortSignal.timeout(60000)
-                });
-                const data = await imgRes.json();
-                const b64 = data?.data?.[0]?.b64_json;
-                if (b64) {
-                    const buf = Buffer.from(b64, 'base64');
-                    await bot.telegram.sendPhoto(channelId, { source: buf });
-                    await sleep(2000);
-                }
+            console.log(`[JEV STORY ENGINE] Генерация фото Леры через единый generateLeraPhoto...`);
+            const photoResult = await generateLeraPhoto({
+                prompt: meta.photo_prompt,
+                bot,
+                source: 'channel_story',
+                saveToDb: true
+            });
+
+            if (photoResult?.buffer) {
+                await bot.telegram.sendPhoto(channelId, { source: photoResult.buffer });
+                await sleep(2000);
             }
         } catch (imgErr) {
             console.warn('[JEV STORY ENGINE] Photo gen warning:', imgErr.message);
@@ -269,7 +267,7 @@ export async function publishStoryToChannel(bot, channelId, storyId) {
 }
 
 /**
- * Классификация ответа пользователя на пендинг хук:
+ * Классификация ответа пользователя на пендинг хук через Jev TypeSafe:
  * Возвращает: 'ACCEPT' (интересно / продолжай) | 'REJECT' (не интересно / отказ) | 'TOPIC_CHANGE' (вопрос / другая тема)
  */
 export async function classifyPendingReply(userReplyText, hookText) {
@@ -286,32 +284,35 @@ export async function classifyPendingReply(userReplyText, hookText) {
         return 'REJECT';
     }
 
-    // Легковесный LLM-классификатор с таймаутом 2000 мс
+    // Официальный Jev TypeSafe провайдер (evaluateTypeSafe)
     try {
-        const prov = await getActiveAiProvider();
-        const client = getCachedOpenAIClient(prov.base_url, prov.api_key, 2500);
-        const model = prov.model_name;
-        const prompt = `Ты классификатор интента. Собеседник получил сообщение: "${hookText}".
-Его ответ: "${userReplyText}".
-Определи интент:
-- ACCEPT: собеседнику интересно, согласен послушать, смеется или просит рассказать.
-- REJECT: прямой отказ слушать или просьба отстать.
-- TOPIC_CHANGE: собеседник задал посторонний вопрос или переключился на другую тему.
-Ответь СТРОГО одним словом: ACCEPT, REJECT или TOPIC_CHANGE.`;
+        const typesafeRes = await query('SELECT * FROM ai_providers WHERE (name ILIKE $1 OR name ILIKE $2) AND is_enabled = true LIMIT 1', ['%typesafe%', '%jev%']);
+        const provider = typesafeRes.rows[0];
+        if (provider) {
+            const ev = await evaluateTypeSafe({
+                provider,
+                state: `Сообщение Леры: "${hookText}". Ответ собеседника: "${userReplyText}".`,
+                questions: {
+                    pending_intent: {
+                        type: 'choice',
+                        instructions: 'Определи реакцию и намерение собеседника на реплику Леры:',
+                        criteria: {
+                            ACCEPT: 'Собеседнику интересно, согласен послушать, смеется или просит рассказать дальше.',
+                            REJECT: 'Прямой отказ слушать, грубость или просьба отстать.',
+                            TOPIC_CHANGE: 'Собеседник задал посторонний вопрос или переключился на другую тему.'
+                        }
+                    }
+                },
+                timeoutMs: 3000
+            });
 
-        const resp = await client.chat.completions.create({
-            model,
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0,
-            max_tokens: 10
-        }, { timeout: 2000 });
-
-        const ans = resp.choices?.[0]?.message?.content?.trim()?.toUpperCase();
-        if (['ACCEPT', 'REJECT', 'TOPIC_CHANGE'].includes(ans)) {
-            return ans;
+            const chosen = ev?.answers?.pending_intent;
+            if (['ACCEPT', 'REJECT', 'TOPIC_CHANGE'].includes(chosen)) {
+                return chosen;
+            }
         }
     } catch (err) {
-        console.warn('[CLASSIFY PENDING FALLBACK]:', err.message);
+        console.warn('[CLASSIFY PENDING JEV WARNING]:', err.message);
     }
 
     // Безопасный дефолт: считаем что юзеру интересно
