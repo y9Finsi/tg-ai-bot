@@ -33,7 +33,7 @@ rsync -avz --delete \
   ./ "$SERVER:$REMOTE_DIR/"
 
 echo "📦 Rebuilding & restarting bot container on server..."
-ssh "$SERVER" "cd $REMOTE_DIR && docker compose up -d --build bot"
+ssh "$SERVER" "cd $REMOTE_DIR && docker compose build bot && docker compose up -d --no-deps bot"
 
 echo "✅ Deploy complete! Checking Docker container logs:"
 ssh "$SERVER" "cd $REMOTE_DIR && docker compose logs --tail=30 bot"

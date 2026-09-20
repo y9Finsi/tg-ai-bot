@@ -356,9 +356,11 @@ export async function generateCompletion(prompt, options = {}) {
         const client = getCachedOpenAIClient(prov.base_url, prov.api_key, prov.timeout_ms || 15000);
         return { client, model: prov.model_name };
     };
-    const res = await requestLlmCompletion({ roleplay_mode: 'flirt' }, messages, false, fallbackFn, {
+    const maxTokens = Number(options.max_tokens || options.maxTokens) || 1200;
+    const res = await requestLlmCompletion({ roleplay_mode: 'flirt', max_tokens: maxTokens }, messages, false, fallbackFn, {
         ...(options.trace || {}),
         temperature: options.temperature,
+        maxTokens,
         trace: true
     });
     return res.rawText || '';
