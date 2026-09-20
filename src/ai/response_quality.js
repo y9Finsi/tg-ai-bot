@@ -19,7 +19,18 @@ const STALE_STYLE_PATTERNS = [
 ];
 
 const REPEATED_SLEEP_PATTERN = /(?:^|[^\p{L}])ты\s+че\s+не\s+спишь(?=$|[^\p{L}])/iu;
-const RETRYABLE_VIOLATIONS = new Set(['nonEmpty', 'noRecentRepeat', 'format']);
+const RETRYABLE_VIOLATIONS = new Set(['nonEmpty', 'noRecentRepeat', 'format', 'noGhostDelivery']);
+
+const GHOST_DELIVERY_RE = /(?<![\p{L}\p{N}_])(?:вот\s+(?:держи|скинула|ссылка|лови)|скинула|держи(?:\s+(?:ссылку|статью|материал|в общем))?|лови(?:\s+(?:ссылку|статью))?)(?![\p{L}\p{N}_])/iu;
+const GHOST_DELIVERY_IDIOM_RE = /(?:держи\s+(?:в\s+курсе|удар|дистанцию|карман|себя|руку|нос|хвост)|держись)/iu;
+
+function checkGhostDelivery(reply, options = {}) {
+    if (!GHOST_DELIVERY_RE.test(reply) || GHOST_DELIVERY_IDIOM_RE.test(reply)) return true;
+    const hasUrl = /https?:\/\/|t\.me\//i.test(reply);
+    if (hasUrl) return true;
+    if (options.hasDeliveryTool || options.hasPhoto || options.hasVoice) return true;
+    return false;
+}
 
 const SEMANTIC_PATTERNS = {
     morning: [
@@ -76,6 +87,7 @@ export function evaluateLeraReply(text, userText = '', expected = null, options 
         staysInRole: !ROLE_BREAK_PATTERNS.some(pattern => pattern.test(reply)),
         noStaleStyle: !STALE_STYLE_PATTERNS.some(pattern => pattern.test(reply)),
         noRecentRepeat,
+        noGhostDelivery: checkGhostDelivery(reply, options),
         addressesUser: user.length === 0 || reply.length > 0,
         semanticFit: semanticCheck(reply, expected).passed
     };

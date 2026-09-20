@@ -31,7 +31,7 @@ export const TOOL_CATALOG = Object.freeze({
     web_search: { kind: 'READ', route: 'WEB', prefetchable: true, purpose: 'Свежие события, афиша, новости и расписания.' },
     send_photo: { kind: 'SIDE_EFFECT', route: 'MEDIA', prefetchable: false, purpose: 'Отправить реальную фотографию Леры.', triggers: ['скинь фото', 'дай фоточку', 'пришли селфи'] },
     send_voice: { kind: 'SIDE_EFFECT', route: 'MEDIA', prefetchable: false, purpose: 'Отправить голосовое сообщение Леры.' },
-    send_content: { kind: 'SIDE_EFFECT', route: 'CONTENT', prefetchable: false, purpose: 'Отправить сохранённый трек, мем, видео или материал.' },
+    send_content: { kind: 'SIDE_EFFECT', route: 'CONTENT', prefetchable: false, purpose: 'Отправить сохранённую ссылку, статью, трек, мем, видео или другой материал из закладок.', triggers: ['скинь трек', 'покажи мем', 'скинь ссылку', 'дай почитать', 'что за статья', 'скинь сайт'] },
     schedule_reminder: { kind: 'SIDE_EFFECT', route: 'REMINDER', prefetchable: false, purpose: 'Напомнить пользователю о его просьбе.', triggers: ['напомни', 'пни', 'через 10 минут'] },
     schedule_followup: { kind: 'SIDE_EFFECT', route: 'FOLLOWUP', prefetchable: false, purpose: 'Запланировать возвращение Леры по её обещанию.' },
     record_open_thread: { kind: 'SIDE_EFFECT', route: 'MEMORY_WRITE', prefetchable: false, purpose: 'Записать обещание пользователя.' },
@@ -41,9 +41,9 @@ export const TOOL_CATALOG = Object.freeze({
 });
 
 const PROMISE_PATTERNS = [
-    { name: 'send_photo', pattern: /(?:скину|пришлю|отправлю|покажу).{0,50}(?:фот|селфи|фоточку)/iu },
-    { name: 'send_voice', pattern: /(?:скину|запишу|пришлю|скажу).{0,50}(?:войс|голос|гс)/iu },
-    { name: 'send_content', pattern: /(?:скину|пришлю|покажу).{0,50}(?:трек|мем|видос|материал|видео)/iu },
+    { name: 'send_photo', pattern: /(?:(?:скину|пришлю|отправлю|покажу|кину).{0,50}(?:фот|селфи|фоточку)|(?:фот|селфи|фоточку).{0,50}(?:скину|пришлю|отправлю|покажу|кину))/iu },
+    { name: 'send_voice', pattern: /(?:(?:скину|запишу|пришлю|скажу|кину).{0,50}(?:войс|голос|гс)|(?:войс|голос|гс).{0,50}(?:скину|запишу|пришлю|скажу|кину))/iu },
+    { name: 'send_content', pattern: /(?:(?:скину|пришлю|покажу|отправлю|кину).{0,50}(?:трек|мем|видос|материал|видео|ссылк\w*|стать\w*|сайт|почитать|линк)|(?:трек|мем|видос|материал|видео|ссылк\w*|стать\w*|сайт|линк).{0,50}(?:скину|пришлю|покажу|отправлю|кину))/iu },
     { name: 'schedule_followup', pattern: /(?:напишу|вернусь|отпишусь|напомню|скину потом|зайду позже)/iu }
 ];
 

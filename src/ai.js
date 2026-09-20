@@ -359,8 +359,8 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     const productionIntentConfig = getModeIntentConfig(routingMode, productionRoutingSettings);
     const surface = isInitiative ? 'INITIATIVE' : (isPublic ? (chatId ? 'GROUP' : 'CHANNEL') : 'CHAT');
     const conversationEventsPromise = isPublic
-        ? getRecentScopeConversationEvents(chatId || userId, threadId, 10).catch(() => [])
-        : getRecentConversationEvents(userId, 10, user?.chat_history_cleared_at).catch(() => []);
+        ? getRecentScopeConversationEvents(chatId || userId, threadId, 25).catch(() => [])
+        : getRecentConversationEvents(userId, 25, user?.chat_history_cleared_at).catch(() => []);
 
     const conversationEvents = await conversationEventsPromise;
 
@@ -507,6 +507,8 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         channelSubscribers: detailedContext?.snapshot?.channelSubscribers,
         memories,
         memoryFacts: memories.length > 0 ? memories.map(m => `- ${m.text || m.fact || m.normalizedText || ''}`).join('\n') : 'Пока нет подтверждённых фактов о пользователе.',
+        bookmarks: Array.isArray(contentCandidates) && contentCandidates.length > 0 ? contentCandidates.slice(0, 3).map(c => `- ${c.description || c.title || 'Материал'}${c.url ? ` (${c.url})` : ''}`).join('\n') : '',
+        content_bookmarks: Array.isArray(contentCandidates) && contentCandidates.length > 0 ? contentCandidates.slice(0, 3).map(c => `- ${c.description || c.title || 'Материал'}${c.url ? ` (${c.url})` : ''}`).join('\n') : '',
         userName: user?.first_name || 'Собеседник',
         user_name: user?.first_name || 'Собеседник'
     };
@@ -523,7 +525,7 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     // Формируем историю предыдущих сообщений для multi-turn контекста (включая контент)
     const chatHistoryEvents = priorEvents.filter(ev =>
         ev.content && (ev.event_type === 'MESSAGE' || ev.event_type === 'INITIATIVE' || ev.event_type === 'CONTENT')
-    ).slice(-10);
+    ).slice(-20);
 
     function normalizeTextForComparison(text) {
         return String(text || '')
@@ -617,6 +619,20 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         } catch (memErr) {
             // silent catch
         }
+    }
+
+    if (!isPublic && Array.isArray(contentCandidates) && contentCandidates.length > 0) {
+        const bookmarksSummary = contentCandidates
+            .slice(0, 3)
+            .map(c => `- ${c.description || c.title || 'Материал'}${c.url ? ` (${c.url})` : ''}`)
+            .join('\n');
+        const customContentDirective = productionRoutingSettings?.contentPrompt
+            ? `\n${productionRoutingSettings.contentPrompt}`
+            : '\nЕсли заходит речь о чтиве, музыке, видео, сайтах или ты сама хочешь чем-то поделиться — можешь упомянуть эти материалы своими словами и вызвать инструмент send_content. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать в тексте вымышленные URL или говорить «держи / скинула», не вызывая инструмент.';
+        messages.push({
+            role: 'system',
+            content: `[ТВОИ СВЕЖИЕ ЗАКЛАДКИ И ССЫЛКИ]:\n${bookmarksSummary}${customContentDirective}`
+        });
     }
 
     function sanitizeHistoryContent(raw) {
@@ -1533,9 +1549,13 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     });
 
     const normalizeReply = value => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    const hasDeliveryTool = Array.isArray(toolsExecuted) && toolsExecuted.some(t => ['send_content', 'send_photo', 'send_voice'].includes(t.name) && t.status === 'success');
     const qualityIssues = evaluateLeraReply(text, userText, null, {
         mode: routingMode,
-        recentReplies: recentReplyTexts
+        recentReplies: recentReplyTexts,
+        hasDeliveryTool,
+        hasPhoto: Boolean(photo),
+        hasVoice: Boolean(voice)
     }).violations;
     const needsQualityRetry = !isInitiative && requiresReplyRetry(qualityIssues);
     const judgeNeedsRetry = activeJudgeMode === 'ENFORCE' && judgeResult.passed === false;
@@ -1548,7 +1568,7 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         const retryReason = judgeNeedsRetry
             ? `judge_${judgeResult.code || 'rejected'}`
             : needsQualityRetry
-            ? qualityIssues.includes('format') ? 'response_format' : 'recent_repeat'
+            ? qualityIssues.includes('format') ? 'response_format' : (qualityIssues.includes('noGhostDelivery') ? 'ghost_delivery' : (qualityIssues.includes('nonEmpty') ? 'empty_response' : 'recent_repeat'))
             : 'exact_repeat';
         const forbiddenPhrase = text || lastLeraText || '';
         const retryInstruction = qualityIssues.includes('format')
@@ -1558,7 +1578,9 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
                 ? `СТОП: проверка качества отклонила предыдущий ответ. Причина: ${judgeResult.reason}. Перепиши реплику живо, естественно и в характере Леры, исправив эту ошибку.`
                 : `СТОП: проверка качества отклонила предыдущий ответ (${judgeResult.code || 'REJECTED'}). Перепиши его живо и естественно именно по последней реплике пользователя, не повторяя прошлых ошибок.`
             : needsQualityRetry
-            ? qualityIssues.includes('nonEmpty')
+            ? qualityIssues.includes('noGhostDelivery')
+                ? 'СТОП: в ответе написано «держи / скинула», но ссылки или медиафайла в сообщении нет! Если нужной ссылки нет под рукой — скажи прямо, что потеряла или не нашла, либо вызови web_search. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать «держи», «вот ссылка», не отправляя реальный URL или медиа.'
+                : qualityIssues.includes('nonEmpty')
                 ? (isPhotoRequest && !isPublicContext && (!isModular || toolsEnabled)
                     ? 'СТОП: предыдущий ответ оказался пустым. ВАЖНО: либо вызови инструмент send_photo (взяв свой текущий лук из контекста), либо ответь собеседнику живым текстом от лица Леры без пустых рассуждений.'
                     : 'СТОП: предыдущий ответ оказался пустым. Напиши живой ответ собеседнику своими словами от лица Леры без пустых рассуждений, системных тегов и вызовов инструментов.')
@@ -1940,8 +1962,8 @@ export async function generateResponse(userId, text, envelope = {}) {
     let actionRouting = null;
 
     const events = isPublicContext
-        ? await getRecentScopeConversationEvents(scopeChatId, scopeThreadId, 6).catch(() => [])
-        : await getRecentConversationEvents(userId, 6).catch(() => []);
+        ? await getRecentScopeConversationEvents(scopeChatId, scopeThreadId, 20).catch(() => [])
+        : await getRecentConversationEvents(userId, 20).catch(() => []);
 
     const lastLeraEvent = events
         .filter(e => e.status === 'COMPLETED' && (e.role === 'lera' || e.role === 'assistant'))

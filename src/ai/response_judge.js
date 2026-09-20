@@ -327,8 +327,15 @@ export async function judgeLeraReply({
                 APOLOGY: 0.7
             }[relationshipType] ?? 0;
             const relationshipEvent = normalizeRelationshipEvent({ type: relationshipType, intensity: relationshipIntensity });
-            const emotionConsistency = Number(result.answers.emotion_consistency?.noul ?? 1);
-            const parsedVerdict = failed
+            const ghostDeliveryRe = /(?<![\p{L}\p{N}_])(?:вот\s+(?:держи|скинула|ссылка|лови)|скинула|держи(?:\s+(?:ссылку|статью|материал|в общем))?|лови(?:\s+(?:ссылку|статью))?)(?![\p{L}\p{N}_])/iu;
+            const idiomRe = /(?:держи\s+(?:в\s+курсе|удар|дистанцию|карман|себя|руку|нос|хвост)|держись)/iu;
+            const hasUrl = /https?:\/\/|t\.me\//i.test(reply);
+            const hasDeliveryTool = Array.isArray(toolTrace) && toolTrace.some(t => ['send_content', 'send_photo', 'send_voice'].includes(t.name) && t.status === 'success');
+            const isGhostDelivery = ghostDeliveryRe.test(reply) && !idiomRe.test(reply) && !hasUrl && !hasDeliveryTool;
+
+            const parsedVerdict = isGhostDelivery
+                ? { verdict: 'REJECT:BROKEN_LOGIC', passed: false, code: 'BROKEN_LOGIC', reason: 'Лера пишет «держи/скинула», но ссылка или медиа не отправлены' }
+                : failed
                 ? { verdict: 'REJECT:' + failed[1], passed: false, code: failed[1], reason: 'TypeSafe Jev flagged ' + failed[1] }
                 : { verdict: 'PASS', passed: true, code: null, reason: null };
             return {

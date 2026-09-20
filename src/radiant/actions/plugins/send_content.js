@@ -14,8 +14,8 @@ export const sendContentAction = {
         properties: {
             category: {
                 type: 'string',
-                enum: ['hentai', 'music', 'meme', 'video', 'any'],
-                description: 'Категория контента: hentai (хентай, манга), music (треки, Яндекс.Музыка), meme (мемы, гифки), video (ютуб, шортсы), any (любой подходящий)'
+                enum: ['hentai', 'music', 'meme', 'video', 'link', 'article', 'any'],
+                description: 'Категория контента: link (статьи, сайты, ссылки), article (статьи, лонгриды), music (треки, Яндекс.Музыка), meme (мемы, гифки), video (ютуб, шортсы), hentai (хентай, манга), any (любой подходящий)'
             },
             query: {
                 type: 'string',
@@ -85,6 +85,9 @@ export const sendContentAction = {
             } else if (category === 'video') {
                 const videoItems = candidates.filter(c => /youtube|shorts|видос|видео/i.test(c.description || '') || /youtube\.com|youtu\.be/i.test(c.url || ''));
                 if (videoItems.length > 0) candidates = videoItems;
+            } else if (category === 'link' || category === 'article') {
+                const linkItems = candidates.filter(c => c.telegram_type === 'link' || /стать|ссылк|сайт|чтиво|лонгрид|read|t\.me/i.test(c.description || '') || /https?:\/\//i.test(c.url || ''));
+                if (linkItems.length > 0) candidates = linkItems;
             }
 
             // Фильтрация по ключевым словам
@@ -128,6 +131,7 @@ export const sendContentAction = {
                 if (category === 'music' && (/music\.yandex|трек|песн|битлз|музык|саундтрек|рок/i.test(combined))) score += 30;
                 if (category === 'meme' && (c.telegram_type === 'animation' || /мем|гифк|котик|ржач/i.test(combined))) score += 30;
                 if (category === 'video' && (/youtube|shorts|видос|видео/i.test(combined) || /youtube\.com|youtu\.be/i.test(url))) score += 30;
+                if ((category === 'link' || category === 'article') && (c.telegram_type === 'link' || /стать|ссылк|сайт|чтиво|лонгрид/i.test(combined))) score += 30;
 
                 // Совпадение ключевых слов (+30)
                 if (searchKeywords && combined.includes(searchKeywords)) {
