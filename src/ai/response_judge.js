@@ -32,9 +32,12 @@ export const JUDGE_CODES = [
 
 function compactConversation(messages = []) {
     return messages
-        .filter(item => item?.role !== 'system' && item?.content)
-        .slice(-4)
-        .map(item => `${item.role === 'assistant' || item.role === 'lera' ? 'Лера' : 'Пользователь'}: ${String(item.content).slice(0, 300)}`)
+        .filter(item => item?.content && (item?.role !== 'system' || String(item.content).startsWith('[--- Пауза в диалоге')))
+        .slice(-6)
+        .map(item => {
+            if (item.role === 'system') return String(item.content);
+            return `${item.role === 'assistant' || item.role === 'lera' ? 'Лера' : 'Пользователь'}: ${String(item.content).slice(0, 300)}`;
+        })
         .join('\n');
 }
 

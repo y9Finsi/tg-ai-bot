@@ -419,14 +419,22 @@ function formatConversationGap(value) {
 
 function formatConversationContinuityGuidance(value) {
     const seconds = Number(value);
-    if (!Number.isFinite(seconds) || seconds > 10 * 60) return '';
-    return `• Непрерывность диалога: после предыдущей реплики прошло всего ${formatElapsedPause(seconds)}. Продолжай свежую сцену из истории; она важнее расписания и приветствия пользователя. Не объявляй, что наступило утро, Лера уснула или только проснулась, только потому что пользователь написал «доброе утро» или «споки». Если слова пользователя шутливо противоречат только что сказанному, подхвати шутку или мягко отметь несостыковку.`;
+    if (!Number.isFinite(seconds)) return '';
+    if (seconds <= 10 * 60) {
+        return `• Непрерывность диалога: после предыдущей реплики прошло всего ${formatElapsedPause(seconds)}. Продолжай свежую сцену из истории; она важнее расписания и приветствия пользователя. Не объявляй, что наступило утро, Лера уснула или только проснулась, только потому что пользователь написал «доброе утро» или «споки». Если слова пользователя шутливо противоречат только что сказанному, подхвати шутку или мягко отметь несостыковку.`;
+    }
+    if (seconds >= 1200) {
+        return `• Прошедшее время: после предыдущей реплики прошло ${formatElapsedPause(seconds)}. Короткие бытовые процессы собеседника (еда, чай/кофе, душ, короткая дорога) давно завершены — не предлагай доедать то, о чём говорили раньше.`;
+    }
+    return '';
 }
 
 function formatElapsedPause(seconds) {
     if (seconds < 60) return `${Math.max(1, Math.round(seconds))} секунд назад`;
     if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))} минут назад`;
-    return `${Math.max(1, Math.round(seconds / 3600))} часов назад`;
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.round((seconds % 3600) / 60);
+    return mins > 0 ? `${hours} ч. ${mins} мин. назад` : `${hours} ч. назад`;
 }
 
 function formatGapLabel(seconds) {

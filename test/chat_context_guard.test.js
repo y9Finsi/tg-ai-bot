@@ -101,3 +101,33 @@ test('newline-separated replies are split into Telegram bubbles', () => {
     assert.match(queue, /splitResponseMessages/);
     assert.match(queue, /utils\/response_text\.js/);
 });
+
+test('formatHumanGap correctly humanizes time pauses', async () => {
+    const { formatHumanGap } = await import('../src/ai.js');
+    assert.equal(formatHumanGap(45), 'меньше минуты');
+    assert.equal(formatHumanGap(600), '10 мин.');
+    assert.equal(formatHumanGap(3600), '1 ч.');
+    assert.equal(formatHumanGap(6660), '1 ч. 51 мин.');
+    assert.equal(formatHumanGap(7200), '2 ч.');
+    assert.equal(formatHumanGap(86400 + 7200), '1 дн. 2 ч.');
+});
+
+test('long pauses provide transient activity completion guidance', () => {
+    const prompt = ContextBuilder.toPrompt({
+        state: { needs: {}, physiology: {}, active_modifiers: [] },
+        location: { name: 'Квартира на Петроградке' },
+        activeTask: null,
+        transit: null,
+        inventory: [],
+        weather: { is_raining: false },
+        mood: 70,
+        facts: [],
+        commitments: [],
+        user: { first_name: 'Богдан' },
+        preMessageGapSeconds: 6660 // 1 hour 51 mins
+    });
+
+    assert.match(prompt, /Прошедшее время: после предыдущей реплики прошло 1 ч\. 51 мин\. назад/);
+    assert.match(prompt, /Короткие бытовые процессы собеседника \(еда, чай\/кофе, душ, короткая дорога\) давно завершены/);
+});
+

@@ -114,6 +114,21 @@ function getMoscowHour() {
     }).format(new Date()));
 }
 
+export function formatHumanGap(seconds) {
+    const s = Math.max(0, Math.floor(Number(seconds) || 0));
+    if (s < 60) return 'меньше минуты';
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m} мин.`;
+    const h = Math.floor(m / 60);
+    const remM = m % 60;
+    if (h < 24) {
+        return remM > 0 ? `${h} ч. ${remM} мин.` : `${h} ч.`;
+    }
+    const d = Math.floor(h / 24);
+    const remH = h % 24;
+    return remH > 0 ? `${d} дн. ${remH} ч.` : `${d} дн.`;
+}
+
 function isUsableTelegramPhotoId(value) {
     if (typeof value !== 'string') return false;
     const photoId = value.trim();
@@ -510,7 +525,9 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         bookmarks: Array.isArray(contentCandidates) && contentCandidates.length > 0 ? contentCandidates.slice(0, 3).map(c => `- ${c.description || c.title || 'Материал'}${c.url ? ` (${c.url})` : ''}`).join('\n') : '',
         content_bookmarks: Array.isArray(contentCandidates) && contentCandidates.length > 0 ? contentCandidates.slice(0, 3).map(c => `- ${c.description || c.title || 'Материал'}${c.url ? ` (${c.url})` : ''}`).join('\n') : '',
         userName: user?.first_name || 'Собеседник',
-        user_name: user?.first_name || 'Собеседник'
+        user_name: user?.first_name || 'Собеседник',
+        pause: formatHumanGap(gapSeconds),
+        pause_seconds: gapSeconds
     };
 
     const baseSystemPromptText = await getRoutedSystemPrompt(routingMode, {
@@ -656,10 +673,10 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     }
 
     // Нативный multi-turn контекст диалога с отслеживанием пауз и разделением сессий
+    let lastEventTime = null;
+    let lastEventDate = null;
     if (productionIntentConfig?.promptModules?.history !== false) {
         if (chatHistoryEvents.length > 0) {
-            let lastEventTime = null;
-            let lastEventDate = null;
             for (const ev of chatHistoryEvents) {
                 const evTime = ev.occurred_at ? new Date(ev.occurred_at).getTime() : null;
                 const evDate = toLocalDateString(ev.local_date || ev.occurred_at);
@@ -667,12 +684,15 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
                 if (lastEventTime && evTime) {
                     const gapSec = Math.max(0, Math.floor((evTime - lastEventTime) / 1000));
                     const isNewDay = lastEventDate && evDate && lastEventDate < evDate;
-                    if (gapSec >= 10800 || (isNewDay && gapSec >= 1800) || (ev.calendar_day_changed && gapSec >= 1800)) {
-                        const gapLabel = formatConversationGap(gapSec);
+                    if (gapSec >= 1200 || (isNewDay && gapSec >= 600) || (ev.calendar_day_changed && gapSec >= 600)) {
+                        const gapLabel = formatHumanGap(gapSec);
                         const dayLabel = isNewDay ? `Наступил новый день (${evDate}). ` : '';
+                        const timeRule = gapSec >= 1800
+                            ? ' Короткие бытовые действия (еда, душ, чай/кофе, короткая дорога) уже завершились!'
+                            : '';
                         messages.push({
                             role: 'system',
-                            content: `[--- Пауза в диалоге: ${gapLabel}. ${dayLabel}Новый сеанс общения ---]`.trim()
+                            content: `[--- Пауза в диалоге: прошло ${gapLabel}. ${dayLabel}${timeRule} ---]`.trim()
                         });
                     }
                 }
@@ -710,6 +730,27 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
                     });
                 }
             }
+        }
+    }
+
+    // Проверка паузы между последним событием диалога и текущим входящим сообщением
+    const referenceLastTime = lastEventTime || (lastEvent?.occurred_at ? new Date(lastEvent.occurred_at).getTime() : null);
+    if (referenceLastTime) {
+        const currentTurnTime = new Date(firstMessageAt || now || Date.now()).getTime();
+        const gapToCurrentSec = Math.max(0, Math.floor((currentTurnTime - referenceLastTime) / 1000));
+        const lastDateStr = lastEventDate || (lastEvent?.occurred_at ? toLocalDateString(lastEvent.occurred_at) : null);
+        const nowDateStr = toLocalDateString(currentTurnTime);
+        const isNewDay = lastDateStr && nowDateStr && lastDateStr < nowDateStr;
+        if (gapToCurrentSec >= 1200 || (isNewDay && gapToCurrentSec >= 600)) {
+            const gapLabel = formatHumanGap(gapToCurrentSec);
+            const dayLabel = isNewDay ? `Наступил новый день (${nowDateStr}). ` : '';
+            const timeRule = gapToCurrentSec >= 1800
+                ? ' Учитывай прошедшее время: короткие бытовые действия собеседника (еда, перекус, душ, чай/кофе, короткая дорога) уже завершились! Не предлагай собеседнику продолжать то, что он делал или собирался делать час назад (например, доедать еду).'
+                : '';
+            messages.push({
+                role: 'system',
+                content: `[--- Пауза в диалоге перед текущим сообщением: прошло ${gapLabel}. ${dayLabel}${timeRule} ---]`.trim()
+            });
         }
     }
 
