@@ -341,6 +341,13 @@ export async function judgeLeraReply({
                 : failed
                 ? { verdict: 'REJECT:' + failed[1], passed: false, code: failed[1], reason: 'TypeSafe Jev flagged ' + failed[1] }
                 : { verdict: 'PASS', passed: true, code: null, reason: null };
+            const emotionConsistency = result.answers?.emotion_consistency
+                ? {
+                    consistent: Number(result.answers.emotion_consistency.noul) >= 0.5,
+                    score: Number(result.answers.emotion_consistency.noul)
+                }
+                : null;
+
             return {
                 ...parsedVerdict,
                 rawText: JSON.stringify(result.answers),
