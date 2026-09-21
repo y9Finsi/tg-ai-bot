@@ -108,18 +108,17 @@ function toSettingKey(key) {
     return key.startsWith('prompt_') ? key : `prompt_${key}`;
 }
 
-        // Code-First синхронизация: файлы на диске являются источником правды
+        // Database-First: настройки и кастомные промпты из БД имеют приоритет над дефолтными файлами на диске
         const allSections = ALL_PROMPT_SECTIONS;
         for (const [key, filename] of Object.entries(allSections)) {
-            const diskContent = loadPromptFile(filename);
-            if (diskContent && diskContent.trim() !== '') {
-                promptsCache[key] = diskContent;
-                // Автоматически синхронизируем базу данных с файлами на диске
-                await setSetting(toSettingKey(key), diskContent).catch(() => {});
+            const dbVal = await getSetting(toSettingKey(key), null);
+            if (dbVal !== null && dbVal !== undefined && dbVal.trim() !== '') {
+                promptsCache[key] = dbVal;
             } else {
-                const dbVal = await getSetting(toSettingKey(key), null);
-                if (dbVal !== null && dbVal !== undefined && dbVal.trim() !== '') {
-                    promptsCache[key] = dbVal;
+                const diskContent = loadPromptFile(filename);
+                if (diskContent && diskContent.trim() !== '') {
+                    promptsCache[key] = diskContent;
+                    await setSetting(toSettingKey(key), diskContent).catch(() => {});
                 }
             }
         }
