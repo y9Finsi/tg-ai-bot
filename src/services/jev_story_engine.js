@@ -97,12 +97,33 @@ export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL'
     // Дефолтные безопасные значения при сбое Jev: в большинстве случаев (70-75%) — чистый текст без картинок!
     let mediaMode = 'none';
     const rand = Math.random();
-    if (hasSourceMedia && rand < 0.20) {
+    if (hasSourceMedia && rand < 0.45) {
         mediaMode = 'source_media';
     } else if (rand < 0.12 || (evaluation?.answers?.needs_photo === 'true' && rand < 0.25)) {
         mediaMode = 'ai_photo';
     } else {
         mediaMode = 'none';
+    }
+
+    // Способ подачи источника (link_delivery):
+    // Девочки в Telegram не вшивают гиперссылки в каждом посте.
+    // Если есть картинка из источника (source_media) -> ссылка не нужна, достаточно самой картинки!
+    // Если это чистый текст:
+    // - в 50% случаев вообще без ссылок (своими словами)
+    // - в 35% случаев отдельное короткое сообщение со ссылкой ("если че вот: https://...")
+    // - в 15% случаев аккуратная гиперссылка в 1 слове
+    let linkDelivery = 'none';
+    if (mediaMode === 'source_media') {
+        linkDelivery = 'none';
+    } else {
+        const linkRand = Math.random();
+        if (linkRand < 0.50) {
+            linkDelivery = 'none';
+        } else if (linkRand < 0.85) {
+            linkDelivery = 'separate_message';
+        } else {
+            linkDelivery = 'inline_hyperlink';
+        }
     }
 
     const mood = {
@@ -114,6 +135,7 @@ export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL'
         messages_count: parseInt(evaluation?.answers?.messages_count, 10) || 3,
         needs_photo: mediaMode === 'ai_photo',
         media_mode: mediaMode,
+        link_delivery: linkDelivery,
         delivery_format: evaluation?.answers?.delivery_format || (Math.random() < 0.25 ? 'INTRIGUE_HOOK' : 'DIRECT_SHARE')
     };
 
@@ -150,13 +172,36 @@ export async function generateStoryScript({ topic, situation, mood, surface = 'C
     const isDirectShare = surface === 'DM' && mood.delivery_format === 'DIRECT_SHARE';
     const isAiPhotoNeeded = mood.media_mode === 'ai_photo' || (mood.needs_photo === true && mood.media_mode !== 'source_media');
 
-    const sourceLinkHint = sourceUrl ? `
-[ССЫЛКА НА ИСТОЧНИК]:
-- URL новости/источника: ${sourceUrl}
-- ОПЦИОНАЛЬНО (в ~30-40% случаев): ты можешь естественно вшить гиперссылку в одно из сообщений лесенки через HTML-тег: <a href="${sourceUrl}">текст</a>.
-- Примеры: «<a href="${sourceUrl}">тут новость</a>», «<a href="${sourceUrl}">гляньте пруф</a>», «<a href="${sourceUrl}">в первоисточнике</a>».
-- Не делай ссылку на всю фразу, максимум 1-2 слова. Не пиши «Источник: ссылка», а встраивай ссылку в живую разговорную речь.
-` : '';
+    let sourceLinkHint = '';
+    if (sourceUrl) {
+        if (mood.link_delivery === 'separate_message') {
+            sourceLinkHint = `
+[ССЫЛКА НА ИСТОЧНИК — ОТДЕЛЬНЫМ СООБЩЕНИЕМ]:
+- URL: ${sourceUrl}
+- Добавь ссылку отдельным последним сообщением в массив steps!
+- Напиши непринужденно, как делятся ссылкой в телеграме (без канцелярита и слова «Источник»):
+  Примеры для последнего сообщения:
+  «если че вот: ${sourceUrl}»
+  «пруф тут: ${sourceUrl}»
+  «глянуть можно здесь: ${sourceUrl}»
+  «вот: ${sourceUrl}»
+- В предыдущих сообщениях лесенки никаких ссылок ставить не нужно!
+`;
+        } else if (mood.link_delivery === 'inline_hyperlink') {
+            sourceLinkHint = `
+[ССЫЛКА НА ИСТОЧНИК — АККУРАТНАЯ ГИПЕРССЫЛКА]:
+- URL: ${sourceUrl}
+- Можешь аккуратно вшить гиперссылку в 1-2 слова в теле одного из сообщений через HTML-тег: <a href="${sourceUrl}">текст</a>.
+- Примеры: «<a href="${sourceUrl}">тут новость</a>», «<a href="${sourceUrl}">в первоисточнике</a>».
+- Не делай ссылку длинной фразой, не пиши «Источник: ссылка».
+`;
+        } else {
+            sourceLinkHint = `
+[ССЫЛКА НА ИСТОЧНИК — НЕ ТРЕБУЕТСЯ]:
+- Для этой темы ссылку давать НЕ НУЖНО. Перескажи суть или поделись мнением исключительно своими словами. Никаких ссылок и тегов <a href>!
+`;
+        }
+    }
 
     const photoInstruction = isAiPhotoNeeded ? `
 [ПРАВИЛА ДЛЯ PHOTO_PROMPT]:
@@ -259,15 +304,19 @@ ${isChannel ? `{
 
     // Если парсинг не удался или шаги пусты, ни в коем случае не шлем сухой заголовок новости с описанием!
     // Формируем живую лесенку от лица Леры с реакцией на новость
-    const sourceLink = sourceUrl ? ` <a href="${sourceUrl}">гляньте</a>` : '';
-    const fallbackFirst = `я щас просто выпала с новости: ${topic.toLowerCase().replace(/[.!?]+$/, '')}${sourceLink}`;
+    const fallbackFirst = `я щас просто выпала с новости: ${topic.toLowerCase().replace(/[.!?]+$/, '')}`;
     const fallbackSecond = situation.length > 150 ? situation.slice(0, 150).trim() + '...' : situation;
     const fallbackThird = `сижу перевариваю это кароч`;
+    const fallbackSteps = [fallbackFirst, fallbackSecond, fallbackThird];
+
+    if (sourceUrl && mood.link_delivery === 'separate_message') {
+        fallbackSteps.push(`если че вот: ${sourceUrl}`);
+    }
 
     return {
-        steps: [fallbackFirst, fallbackSecond, fallbackThird],
+        steps: fallbackSteps,
         hook: fallbackFirst,
-        follow_up_steps: [fallbackSecond, fallbackThird],
+        follow_up_steps: fallbackSteps.slice(1),
         photo_prompt: null
     };
 }

@@ -36,6 +36,9 @@ function parseTelegram(html, sourceUrl) {
             category = 'hentai';
         }
 
+        const photoMatch = block.match(/tgme_widget_message_photo_wrap[^>]*style=["'][^"']*background-image:\s*url\(['"]?([^'"\)]+)['"]?\)/i);
+        const photoUrl = photoMatch ? photoMatch[1] : null;
+
         out.push({
             externalId: match[1],
             canonicalUrl: canonical,
@@ -44,6 +47,7 @@ function parseTelegram(html, sourceUrl) {
             category,
             metadata: {
                 sourceUrl,
+                thumbnail: photoUrl,
                 yandexMusicUrl: ymLinkMatch ? ymLinkMatch[1] : null,
                 mangaUrl: mangaLinkMatch ? mangaLinkMatch[1] : null
             }

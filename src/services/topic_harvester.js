@@ -94,9 +94,9 @@ ${discoveriesSnippet || 'Нет свежих постов.'}
   {
     "title": "Краткое цепкое название темы",
     "situation": "Подробная суть того, что произошло или что за новость/тренд (2-3 предложения, понятные для Леры)",
-    "category": "fact_of_the_day",
-    "source_url": "URL источника если есть или пустая строка",
-    "source_type": "web_search",
+    "category": "personal_life", // или "fact_of_the_day", "spb_life"
+    "source_url": "URL источника если это внешняя новость/пост из ТГ, ИЛИ null/пустая строка если это житейская/бытовая ситуация Леры",
+    "source_type": "web_search", // или "channel_digest", "manual"
     "expires_in_hours": 24
   }
 ]`;
@@ -169,16 +169,29 @@ ${discoveriesSnippet || 'Нет свежих постов.'}
                 }
                 if (isDuplicate) continue;
 
+                let mediaUrl = item.media_url || null;
+                // Если в LLM не было media_url, ищем совпадение среди находок по source_url или canonical_url
+                if (!mediaUrl && item.source_url) {
+                    const matchedDisc = recentDiscoveries.find(d => 
+                        d.canonical_url === item.source_url || 
+                        (d.metadata && d.metadata.thumbnail && d.canonical_url && item.source_url.includes(d.canonical_url))
+                    );
+                    if (matchedDisc?.metadata?.thumbnail) {
+                        mediaUrl = matchedDisc.metadata.thumbnail;
+                    }
+                }
+
                 const inserted = await query(`
                     INSERT INTO content_topics (
-                        title, situation, category, source_url, source_type,
+                        title, situation, category, media_url, source_url, source_type,
                         status, expires_at, created_at
-                    ) VALUES ($1, $2, $3, $4, $5, 'NEW', $6, NOW())
+                    ) VALUES ($1, $2, $3, $4, $5, $6, 'NEW', $7, NOW())
                     RETURNING *
                 `, [
                     cleanTitle.slice(0, 255),
                     item.situation,
                     item.category || 'spb_life',
+                    mediaUrl,
                     item.source_url || null,
                     item.source_type || 'web_search',
                     expiresAt
