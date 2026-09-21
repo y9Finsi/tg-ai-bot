@@ -290,7 +290,8 @@ export const sendPhotoAction = {
                     user,
                     bot: null,
                     saveToDb: true,
-                    source: isPublic ? 'group_chat' : 'chat'
+                    source: isPublic ? 'group_chat' : 'chat',
+                    timeoutMs: 35000
                 });
 
                 if (generated && (generated.buffer || generated.file_id)) {
@@ -354,7 +355,8 @@ export const sendPhotoAction = {
                 user,
                 bot: null,
                 saveToDb: true,
-                source: isPublic ? 'group_chat' : 'chat'
+                source: isPublic ? 'group_chat' : 'chat',
+                timeoutMs: 35000
             });
 
             if (generated && (generated.buffer || generated.file_id)) {

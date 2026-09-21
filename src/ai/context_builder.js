@@ -283,17 +283,56 @@ ${events.length ? events.join('\n') : '- Значимых подтверждён
     static describeOutfit(inventory = [], activeTask = null) {
         if (isSleepingTask(activeTask)) {
             return {
-                text: 'oversized_tshirt, pajama',
+                text: 'домашняя оверсайз футболка и уютная пижама',
                 bySlot: {
-                    top: { item_id: 'oversized_tshirt', rain_resist: false },
-                    sleep: { item_id: 'pajama', rain_resist: false }
+                    top: { item_id: 'oversized_tshirt', name: 'Оверсайз футболка Леры', slot: 'top', rain_resist: false },
+                    sleep: { item_id: 'pajama', name: 'Уютная пижама', slot: 'sleep', rain_resist: false }
                 }
             };
         }
         const equipped = inventory.filter(item => item.item_type === 'clothes' && item.is_equipped && Number(item.quantity) > 0);
-        if (!equipped.length) return { text: getEquippedClothes(inventory)?.item_id || 'домашняя футболка', bySlot: {} };
-        const bySlot = Object.fromEntries(equipped.map(item => [item.properties?.slot || 'top', { item_id: item.item_id, rain_resist: !!item.properties?.rain_resist }]));
-        return { text: Object.values(bySlot).map(item => item.item_id).join(', '), bySlot };
+        if (!equipped.length) {
+            const fallback = getEquippedClothes(inventory);
+            const fallbackName = fallback?.properties?.name || fallback?.name || 'домашняя футболка';
+            return { text: fallbackName, bySlot: {} };
+        }
+
+        // Layer order: dress/inner -> top -> bottoms -> outerwear
+        const slotOrder = { dress: 1, inner: 2, top: 3, bottom: 4, outerwear: 5 };
+        const sorted = [...equipped].sort((a, b) => {
+            const slotA = a.properties?.slot || a.slot || 'top';
+            const slotB = b.properties?.slot || b.slot || 'top';
+            return (slotOrder[slotA] || 9) - (slotOrder[slotB] || 9);
+        });
+
+        const bySlot = Object.fromEntries(sorted.map(item => [
+            item.properties?.slot || item.slot || 'top',
+            {
+                item_id: item.item_id,
+                name: item.properties?.name || item.name || humanizeOutfit(item.item_id),
+                rain_resist: Boolean(item.properties?.rain_resist)
+            }
+        ]));
+
+        // Собираем естественное описание слоёв
+        const outerwear = bySlot.outerwear?.name;
+        const innerItems = Object.entries(bySlot)
+            .filter(([slot]) => slot !== 'outerwear')
+            .map(([, data]) => data.name)
+            .filter(Boolean);
+
+        let naturalText = '';
+        if (outerwear && innerItems.length > 0) {
+            naturalText = `${outerwear} поверх ${innerItems.join(', ')}`;
+        } else if (outerwear) {
+            naturalText = outerwear;
+        } else if (innerItems.length > 0) {
+            naturalText = innerItems.join(', ');
+        } else {
+            naturalText = 'повседневная одежда';
+        }
+
+        return { text: naturalText, bySlot };
     }
 }
 
@@ -350,7 +389,16 @@ export function humanizeWeather(weather = {}) {
     return 'Погода неизвестна';
 }
 export function humanizeOutfit(value) {
-    const labels = { oversized_tshirt: 'Oversized футболка', oversized_t_shirt: 'Oversized футболка', pajama: 'пижама', pajamas: 'пижама', shorts: 'шорты' };
+    const labels = {
+        oversized_tshirt: 'Оверсайз футболка',
+        oversize_tshirt: 'Футболка Леры',
+        oversized_t_shirt: 'Оверсайз футболка',
+        trench_coat: 'Питерский тренч',
+        evening_dress: 'Вечернее черное платье',
+        pajama: 'пижама',
+        pajamas: 'пижама',
+        shorts: 'шорты'
+    };
     return String(value || 'домашняя одежда').split(',').map(item => labels[item.trim()] || item.trim().replaceAll('_', ' ')).filter(Boolean).join(' / ');
 }
 export function humanizeCurrentStatus(task, transit) {

@@ -1893,28 +1893,28 @@ export async function getImageGenerationSettings() {
     ] = await Promise.all([
         getSetting('image_provider_id', ''),
         getSetting('image_model', 'gemini-2.5-flash'),
-        getSetting('image_style_prompt', `STYLE: Authentic low-res smartphone photo, TikTok screenshot quality, compressed social media aesthetic, JPEG artifacts, digital noise, soft focus, unedited mobile camera. Natural soft indoor lighting, realistic ambient skin tones, slightly warm white balance. Texture: soft skin, natural pores, organic digital imperfections. Looks like a casual unedited phone video frame., subtle motion blur, motion softness, slight camera shake, realistic movement blur
-MANDATORY POSE (STRICT): Maintain EXACT body position and background from FIRST ref.
-IDENTITY: Transfer face from SECOND ref. Analysis: Based on the image provided:
+        getSetting('image_style_prompt', `**REFERENCE & IDENTITY:**
+Use the provided reference image as the primary identity reference. Preserve the person's facial features, face shape, bone structure, eye color, eye shape, nose, lips, natural freckles, and overall recognizable appearance. Maintain the same person and authentic facial identity from the reference. Do not redesign or beautify the face.
 
-**Face:**
-*   **Bone Structure:** Heart-shaped face with high, prominent cheekbones, a slim nose, and a soft but defined jawline. 
-*   **Eyes:** Almond-shaped, light blue-grey eyes emphasized with thick, black winged eyeliner. 
-*   **Unique Marks:** A dense, natural spray of freckles across the bridge of the nose and both cheeks. There is also a small mole visible on her right shoulder.
+**IDENTITY DETAILS:**
+* Face: Heart-shaped face with high, prominent cheekbones, a slender nose, and a soft but defined jawline.
+* Eyes: Light blue-grey eyes, slightly hooded, emphasized with winged eyeliner.
+* Unique marks: Dense, natural freckles concentrated across the bridge of the nose and upper cheeks. A small distinctive mole on her right shoulder.
+* Preserve natural skin texture, realistic proportions, and the person's original appearance.
 
-**Clothing Textures:**
-*   **Outer top:** A light, heathered grey jersey knit with a soft, marled (multi-toned) texture and visible fabric folds.
-*   **Inner layers:** A smooth, matte black stretchy tank top layered over dark, ribbed cotton long sleeves.
-*   **Bottoms:** Thick, matte black fleece or heavy jersey sweatpants featuring a small, textured embroidered apple patch.
-*   **Accessories:** A smooth, semi-glossy black cord choker with a metallic pearl-like bead and a fine, reflective gold chain..
-OUTFIT: Transfer textures from SECOND ref. 
-ACTION: Composite SECOND image face onto FIRST image body. Authentic smartphone quality.
-NEGATIVE: professional photography, studio lighting, DSLR, 8k, ultra sharp, cinematic lighting, beauty retouch, airbrushed skin, oversharpened, high micro-contrast, professional color grading.`),
+**STYLE:**
+Authentic low-res smartphone photo, TikTok screenshot quality, compressed social media aesthetic, JPEG artifacts, digital noise, soft focus, unedited mobile camera. Natural soft indoor lighting, realistic ambient skin tones, slightly warm white balance. Soft skin texture with natural pores and organic digital imperfections. Looks like a casual, unedited phone video frame. Subtle motion blur, motion softness, slight camera shake, realistic movement blur.
+
+**COMPOSITION & CAMERA:**
+Vertical smartphone framing, approximately 9:16 aspect ratio. Realistic handheld perspective, natural positioning within the frame. Preserve realistic spatial relationships between the body and background. No artificial studio setup.
+
+**OVERALL RESULT:**
+Generate a realistic, unedited smartphone photo of the same person from the reference. Prioritize identity consistency, authentic skin texture, natural anatomy, believable lighting, and a spontaneous social media video-frame aesthetic. The image should look like a genuine moment captured on a phone, not an AI-generated portrait or professional photograph.`),
         getSetting('image_master_reference_dataurl', ''),
         getSetting('image_auto_channel', 'true'),
         getSetting('image_auto_save_catalog', 'true'),
         getSetting('image_protocol', ''),
-        getSetting('image_negative_prompt', 'professional photography, studio lighting, DSLR, 8k, ultra sharp, cinematic lighting, beauty retouch, airbrushed skin, oversharpened, high micro-contrast, professional color grading.')
+        getSetting('image_negative_prompt', 'Professional photography, studio lighting, DSLR, 8k, ultra sharp, cinematic lighting, beauty retouch, airbrushed skin, oversharpened details, high micro-contrast, professional color grading, artificial skin, plastic texture, perfect symmetry, glamour portrait, fashion editorial, unrealistic anatomy, distorted hands, excessive bokeh, dramatic lighting, overly polished image.')
     ]);
 
     const masterPhoto = await getMasterReferencePhoto();

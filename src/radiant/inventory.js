@@ -5,7 +5,7 @@
 export const ITEM_CATALOG = {
     oversize_tshirt: {
         id: 'oversize_tshirt',
-        name: 'Футболка Богдана',
+        name: 'Футболка Леры',
         type: 'clothes',
         properties: { slot: 'top', warmth: 10, rain_resist: false, location_type: 'home' }
     },

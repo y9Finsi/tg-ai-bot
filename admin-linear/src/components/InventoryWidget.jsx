@@ -36,7 +36,7 @@ const DEFAULT_ITEMS = [
         is_equipped: true,
         quantity: 1,
         properties: {
-            name: 'Футболка Богдана',
+            name: 'Футболка Леры',
             slot: 'top',
             category: 'clothes',
             icon: '👕',
