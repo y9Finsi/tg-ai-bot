@@ -80,9 +80,39 @@ ${discoveriesSnippet || 'Нет свежих постов.'}
 ]`;
 
     try {
-        const raw = await generateCompletion(prompt, { temperature: 0.7 });
-        const cleanJson = String(raw || '[]').replace(/^```json/i, '').replace(/```$/i, '').trim();
-        const parsed = JSON.parse(cleanJson);
+        const raw = await generateCompletion(prompt, {
+            temperature: 0.7,
+            max_tokens: 3500,
+            trace: { kind: 'TOPIC_HARVEST', userId: 0 }
+        });
+        let cleanJson = String(raw || '[]')
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
+
+        // Extract JSON array block if surrounded by prose
+        const arrayMatch = cleanJson.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        if (arrayMatch) {
+            cleanJson = arrayMatch[0];
+        } else {
+            // Salvage truncated JSON array up to last valid object
+            const lastObjEnd = cleanJson.lastIndexOf('}');
+            if (lastObjEnd !== -1 && cleanJson.trim().startsWith('[')) {
+                cleanJson = cleanJson.slice(0, lastObjEnd + 1) + ']';
+            }
+        }
+
+        let parsed = [];
+        try {
+            parsed = JSON.parse(cleanJson);
+        } catch {
+            // Fallback: extract individual valid JSON objects
+            const objMatches = cleanJson.match(/\{[\s\S]*?\}(?=\s*,\s*\{|\s*\]|$)/g) || [];
+            for (const m of objMatches) {
+                try { parsed.push(JSON.parse(m)); } catch { }
+            }
+        }
 
         if (Array.isArray(parsed)) {
             for (const item of parsed) {

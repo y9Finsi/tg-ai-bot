@@ -187,9 +187,22 @@ ${isChannel ? `{
         max_tokens: ruleTokens,
         providerId: ruleProviderId
     });
-    const cleanJson = String(raw || '{}').replace(/^```json/i, '').replace(/```$/i, '').trim();
+    let cleanJson = String(raw || '{}')
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+    const objMatch = cleanJson.match(/\{[\s\S]*\}/);
+    if (objMatch) cleanJson = objMatch[0];
+
     try {
-        return JSON.parse(cleanJson);
+        const parsed = JSON.parse(cleanJson);
+        const steps = Array.isArray(parsed.steps) ? parsed.steps :
+                      Array.isArray(parsed.messages) ? parsed.messages :
+                      Array.isArray(parsed.story_steps) ? parsed.story_steps :
+                      Array.isArray(parsed.ladder) ? parsed.ladder : null;
+        if (steps) parsed.steps = steps;
+        return parsed;
     } catch {
         return { steps: [topic, situation], hook: topic, follow_up_steps: [situation] };
     }
@@ -224,8 +237,33 @@ export async function createPendingStory({ topicId, userId = null, surface = 'DM
     });
 
     const format = script.format || (surface === 'DM' ? 'INTRIGUE_HOOK' : 'CHANNEL_LADDER');
-    const hookText = format === 'INTRIGUE_HOOK' ? (script.hook || topicData.title) : (script.steps?.[0] || topicData.title);
-    const storySteps = format === 'INTRIGUE_HOOK' ? (script.follow_up_steps || []) : (script.steps || []);
+    const rawSteps = (Array.isArray(script.steps) && script.steps.length)
+        ? script.steps
+        : (Array.isArray(script.messages) && script.messages.length)
+            ? script.messages
+            : (Array.isArray(script.story_steps) && script.story_steps.length)
+                ? script.story_steps
+                : (Array.isArray(script.ladder) && script.ladder.length)
+                    ? script.ladder
+                    : [];
+
+    const filteredSteps = rawSteps
+        .map(s => String(s || '').trim())
+        .filter(s => s && !s.toLowerCase().includes('photo_prompt_placeholder'));
+
+    const effectiveSteps = filteredSteps.length > 0
+        ? filteredSteps
+        : [topicData.title, topicData.situation].filter(Boolean);
+
+    const hookText = format === 'INTRIGUE_HOOK'
+        ? (script.hook || effectiveSteps[0] || topicData.title)
+        : (effectiveSteps[0] || topicData.title);
+
+    const storySteps = format === 'INTRIGUE_HOOK'
+        ? ((Array.isArray(script.follow_up_steps) && script.follow_up_steps.length)
+            ? script.follow_up_steps
+            : effectiveSteps.slice(1))
+        : effectiveSteps;
 
     const inserted = await query(`
         INSERT INTO pending_stories (
@@ -260,7 +298,16 @@ export async function publishStoryToChannel(bot, channelId, storyId) {
     const story = res.rows[0];
     if (!story) throw new Error('История не найдена');
 
-    const steps = typeof story.story_steps === 'string' ? JSON.parse(story.story_steps) : (story.story_steps || []);
+    let steps = typeof story.story_steps === 'string' ? JSON.parse(story.story_steps) : (story.story_steps || []);
+    if (!Array.isArray(steps)) steps = [];
+    steps = steps
+        .map(s => String(s || '').trim())
+        .filter(s => s && !s.toLowerCase().includes('photo_prompt_placeholder'));
+
+    if (steps.length === 0 && story.hook_text) {
+        steps = [story.hook_text];
+    }
+
     const meta = typeof story.metadata === 'string' ? JSON.parse(story.metadata) : (story.metadata || {});
 
     console.log(`[JEV STORY ENGINE] Публикация истории #${story.id} в канал ${channelId}...`);
@@ -283,7 +330,8 @@ export async function publishStoryToChannel(bot, channelId, storyId) {
             });
 
             if (photoResult?.buffer) {
-                await bot.telegram.sendPhoto(channelId, { source: photoResult.buffer });
+                const fallbackCaption = steps.length === 0 ? (story.hook_text || '').slice(0, 1024) : undefined;
+                await bot.telegram.sendPhoto(channelId, { source: photoResult.buffer }, fallbackCaption ? { caption: fallbackCaption } : undefined);
                 await sleep(2000);
             }
         } catch (imgErr) {

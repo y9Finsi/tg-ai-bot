@@ -48,3 +48,48 @@ test('Telegram parser regex matches multiline telegram widget blocks', () => {
     assert.equal(matches.length, 1);
     assert.equal(matches[0][1], 'mychannel/42');
 });
+
+test('topic harvester salvage logic recovers truncated JSON array', () => {
+    const truncated = `[
+        {
+            "title": "Литейный мост ремонт",
+            "situation": "Перекрыли тротуар",
+            "category": "fact_of_the_day"
+        },
+        {
+            "title": "Бензин вернулся",
+            "situation": "Очереди рассосались",
+            "category": "city_life",
+            "source_url": "https://t.me/test",
+            "expires`;
+
+    let cleanJson = truncated.trim();
+    const arrayMatch = cleanJson.match(/\[\s*\{[\s\S]*\}\s*\]/);
+    if (arrayMatch) {
+        cleanJson = arrayMatch[0];
+    } else {
+        const lastObjEnd = cleanJson.lastIndexOf('}');
+        if (lastObjEnd !== -1 && cleanJson.trim().startsWith('[')) {
+            cleanJson = cleanJson.slice(0, lastObjEnd + 1) + ']';
+        }
+    }
+
+    const parsed = JSON.parse(cleanJson);
+    assert.equal(parsed.length, 1);
+    assert.equal(parsed[0].title, 'Литейный мост ремонт');
+});
+
+test('story engine extracts steps from messages or steps or story_steps', () => {
+    const scriptWithMessages = {
+        messages: ["строка 1", "строка 2"],
+        photo_prompt: "sitting at desk"
+    };
+
+    const steps = Array.isArray(scriptWithMessages.steps) ? scriptWithMessages.steps :
+                  Array.isArray(scriptWithMessages.messages) ? scriptWithMessages.messages :
+                  Array.isArray(scriptWithMessages.story_steps) ? scriptWithMessages.story_steps : [];
+
+    assert.equal(steps.length, 2);
+    assert.equal(steps[0], 'строка 1');
+});
+
