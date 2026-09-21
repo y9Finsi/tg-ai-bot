@@ -94,7 +94,17 @@ export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL'
         console.warn('[JEV STORY ENGINE] Fallback evaluation:', err.message);
     }
 
-    // Дефолтные безопасные значения при сбое Jev
+    // Дефолтные безопасные значения при сбое Jev: в большинстве случаев (70-75%) — чистый текст без картинок!
+    let mediaMode = 'none';
+    const rand = Math.random();
+    if (hasSourceMedia && rand < 0.20) {
+        mediaMode = 'source_media';
+    } else if (rand < 0.12 || (evaluation?.answers?.needs_photo === 'true' && rand < 0.25)) {
+        mediaMode = 'ai_photo';
+    } else {
+        mediaMode = 'none';
+    }
+
     const mood = {
         emotion: evaluation?.answers?.emotion || 'AMUSEMENT',
         intensity: Number(evaluation?.answers?.intensity) || 120,
@@ -102,7 +112,8 @@ export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL'
         assertiveness: Number(evaluation?.answers?.assertiveness) || 100,
         caps_count: parseInt(evaluation?.answers?.caps_count, 10) || (surface === 'CHANNEL' ? 1 : 0),
         messages_count: parseInt(evaluation?.answers?.messages_count, 10) || 3,
-        needs_photo: evaluation?.answers?.needs_photo === 'true' || surface === 'CHANNEL',
+        needs_photo: mediaMode === 'ai_photo',
+        media_mode: mediaMode,
         delivery_format: evaluation?.answers?.delivery_format || (Math.random() < 0.25 ? 'INTRIGUE_HOOK' : 'DIRECT_SHARE')
     };
 
@@ -112,7 +123,7 @@ export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL'
 /**
  * Генерация сценария истории (лесенка сообщений) на основе режиссуры Jev
  */
-export async function generateStoryScript({ topic, situation, mood, surface = 'CHANNEL', mediaUrl = null }) {
+export async function generateStoryScript({ topic, situation, mood, surface = 'CHANNEL', mediaUrl = null, sourceUrl = null }) {
     const isChannel = surface === 'CHANNEL';
 
     // Получаем реальный системный промпт режиссёра из админки (Story Director)
@@ -124,9 +135,44 @@ export async function generateStoryScript({ topic, situation, mood, surface = 'C
         console.warn('[JEV STORY ENGINE] Failed to load story director prompt:', err.message);
     }
 
+    // Подтягиваем правила речи и характера Леры из базы
+    let leraSpeechRules = '';
+    try {
+        const { getLeraProfile, getLeraProfileProjection } = await import('../db/database.js');
+        const prof = await getLeraProfile();
+        if (prof?.profile) {
+            leraSpeechRules = getLeraProfileProjection(prof.profile, surface === 'CHANNEL' ? 'CHANNEL' : 'DM');
+        }
+    } catch (e) {
+        console.warn('[JEV STORY ENGINE] Warning loading speech rules:', e.message);
+    }
+
     const isDirectShare = surface === 'DM' && mood.delivery_format === 'DIRECT_SHARE';
+    const isAiPhotoNeeded = mood.media_mode === 'ai_photo' || (mood.needs_photo === true && mood.media_mode !== 'source_media');
+
+    const sourceLinkHint = sourceUrl ? `
+[ССЫЛКА НА ИСТОЧНИК]:
+- URL новости/источника: ${sourceUrl}
+- ОПЦИОНАЛЬНО (в ~30-40% случаев): ты можешь естественно вшить гиперссылку в одно из сообщений лесенки через HTML-тег: <a href="${sourceUrl}">текст</a>.
+- Примеры: «<a href="${sourceUrl}">тут новость</a>», «<a href="${sourceUrl}">гляньте пруф</a>», «<a href="${sourceUrl}">в первоисточнике</a>».
+- Не делай ссылку на всю фразу, максимум 1-2 слова. Не пиши «Источник: ссылка», а встраивай ссылку в живую разговорную речь.
+` : '';
+
+    const photoInstruction = isAiPhotoNeeded ? `
+[ПРАВИЛА ДЛЯ PHOTO_PROMPT]:
+- ТРЕБОВАНИЕ: Живой, динамичный, реалистичный кадр (POV от первого лица, вид на кофе/ноутбук/конспект, отражение в стекле вагона метро или мокром асфальте, шаг по улице, легкий смаз в движении, питерская атмосфера).
+- КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО: "standing in room looking at phone", "holding phone looking at camera", "sitting at desk looking at smartphone" и любые статичные позы манекена.
+- Описывай позу, действие, свет и обстановку на английском без упоминания внешности, лица или имени Леры.
+- Поле "photo_prompt": "cinematic candid mobile photo, [детали сцены и ракурса]"
+` : `
+[ФОТО НЕ ТРЕБУЕТСЯ]:
+- Для этой темы публикация будет чисто текстовой (щитпост / живые мысли).
+- Поле "photo_prompt" верни строго как null.
+`;
 
     const systemPrompt = `${directorPrompt || `Ты — режиссёр сценариев для Леры (19 лет, студентка СПбГИК в Питере).`}
+
+${leraSpeechRules ? `[ПРАВИЛА РЕЧИ И ХАРАКТЕРА ЛЕРЫ]:\n${leraSpeechRules}\n` : ''}
 
 [РЕЖИССУРА JEV ДЛЯ ТЕКУЩЕЙ СЦЕНЫ]:
 - Эмоция: ${mood.emotion} (сила ${mood.intensity}/200)
@@ -135,19 +181,21 @@ export async function generateStoryScript({ topic, situation, mood, surface = 'C
 - Сообщений капсом: ${mood.caps_count} (только короткое эмоциональное восклицание/акцент, не весь текст!)
 - Сообщений в лесенке: ${mood.messages_count}
 - Формат подачи: ${isChannel ? 'CHANNEL_LADDER' : mood.delivery_format}
+- Формат медиа: ${isAiPhotoNeeded ? 'AI_PHOTO' : (mood.media_mode === 'source_media' ? 'SOURCE_MEDIA' : 'TEXT_ONLY')}
+${sourceLinkHint}
+${photoInstruction}
 
 ТЕМА: ${topic}
 СИТУАЦИЯ: ${situation}
 
 Верни СТРОГО один валидный JSON-объект.
-Внимание к photo_prompt: напиши ТОЛЬКО краткое описание позы/действия и окружения под тему (на английском), БЕЗ описания внешности, лица или имени Леры (они подставляются автоматически):
 ${isChannel ? `{
   "steps": [
     "строка 1 (вброс/реакция: я щас просто выпала с новости)",
     "строка 2 (конкретная деталь ситуации)",
     "строка 3 (финал/приземление)"
   ],
-  "photo_prompt": "candid shot holding phone, emotional reaction, urban background"
+  "photo_prompt": ${isAiPhotoNeeded ? '"cinematic candid mobile photo, dynamic angle of scene"' : 'null'}
 }` : (isDirectShare ? `{
   "format": "DIRECT_SHARE",
   "steps": [
@@ -155,13 +203,13 @@ ${isChannel ? `{
     "строка 2 (само мясо новости или ситуации)",
     "строка 3 (реакция или финал)"
   ],
-  "photo_prompt": "candid shot sitting at desk, emotional reaction"
+  "photo_prompt": ${isAiPhotoNeeded ? '"cinematic candid mobile photo, dynamic angle of scene"' : 'null'}
 }` : `{
   "format": "INTRIGUE_HOOK",
   "hook": "Короткий интригующий вброс с вопросом или зацепкой",
   "follow_up_steps": ["строка 1 (мясо истории)", "строка 2 (финал)"],
   "reject_reply": "Короткий подкол",
-  "photo_prompt": "candid shot sitting at desk, emotional reaction"
+  "photo_prompt": ${isAiPhotoNeeded ? '"cinematic candid mobile photo, dynamic angle of scene"' : 'null'}
 }`)}`;
 
     let ruleTemp = 0.75;
@@ -225,7 +273,8 @@ export async function createPendingStory({ topicId, userId = null, surface = 'DM
     const mood = await directStoryWithJev({
         topic: topicData.title,
         situation: topicData.situation,
-        surface
+        surface,
+        hasSourceMedia: Boolean(topicData.media_url)
     });
 
     const script = await generateStoryScript({
@@ -233,7 +282,8 @@ export async function createPendingStory({ topicId, userId = null, surface = 'DM
         situation: topicData.situation,
         mood,
         surface,
-        mediaUrl: topicData.media_url
+        mediaUrl: topicData.media_url,
+        sourceUrl: topicData.source_url
     });
 
     const format = script.format || (surface === 'DM' ? 'INTRIGUE_HOOK' : 'CHANNEL_LADDER');
@@ -265,6 +315,8 @@ export async function createPendingStory({ topicId, userId = null, surface = 'DM
             : effectiveSteps.slice(1))
         : effectiveSteps;
 
+    const finalMediaMode = mood.media_mode || (script.photo_prompt ? 'ai_photo' : 'none');
+
     const inserted = await query(`
         INSERT INTO pending_stories (
             topic_id, surface, user_id, hook_text, story_steps,
@@ -280,10 +332,12 @@ export async function createPendingStory({ topicId, userId = null, surface = 'DM
         JSON.stringify(mood),
         JSON.stringify({
             delivery_format: format,
+            media_mode: finalMediaMode,
             photo_prompt: script.photo_prompt || null,
             reject_reply: script.reject_reply || null,
             media_id: topicData.media_id || null,
-            media_url: topicData.media_url || null
+            media_url: topicData.media_url || null,
+            source_url: topicData.source_url || null
         })
     ]);
 
@@ -314,14 +368,34 @@ export async function publishStoryToChannel(bot, channelId, storyId) {
 
     for (let i = 0; i < steps.length; i++) {
         const text = steps[i];
-        await bot.telegram.sendMessage(channelId, text);
+        try {
+            await bot.telegram.sendMessage(channelId, text, {
+                parse_mode: 'HTML',
+                link_preview_options: { is_disabled: true }
+            });
+        } catch (htmlErr) {
+            console.warn('[JEV STORY ENGINE] HTML parse failed, falling back to plain text:', htmlErr.message);
+            await bot.telegram.sendMessage(channelId, text);
+        }
         await sleep(1800);
     }
 
-    // Если требуется фото — используем единый генератор generateLeraPhoto со стилем из админки и мастер-референсом лица
-    if (meta.photo_prompt) {
+    const mediaMode = meta.media_mode || (meta.photo_prompt ? 'ai_photo' : (meta.media_url ? 'source_media' : 'none'));
+
+    // 1. Отправка оригинальной картинки из источника (если выбран source_media)
+    if (mediaMode === 'source_media' && meta.media_url) {
         try {
-            console.log(`[JEV STORY ENGINE] Генерация фото Леры через единый generateLeraPhoto...`);
+            console.log(`[JEV STORY ENGINE] Отправка оригинального медиа из источника в канал ${channelId}:`, meta.media_url);
+            await bot.telegram.sendPhoto(channelId, meta.media_url);
+            await sleep(2000);
+        } catch (srcErr) {
+            console.warn('[JEV STORY ENGINE] Ошибка отправки source_media:', srcErr.message);
+        }
+    }
+    // 2. Генерация ИИ-фото Леры (только если реально выбран ai_photo)
+    else if (mediaMode === 'ai_photo' && meta.photo_prompt) {
+        try {
+            console.log(`[JEV STORY ENGINE] Генерация живого фото Леры через единый generateLeraPhoto...`);
             const photoResult = await generateLeraPhoto({
                 prompt: meta.photo_prompt,
                 bot,

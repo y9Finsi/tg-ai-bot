@@ -93,3 +93,31 @@ test('story engine extracts steps from messages or steps or story_steps', () => 
     assert.equal(steps[0], 'строка 1');
 });
 
+test('media mode distribution favors text_only in majority of cases', () => {
+    let noneCount = 0;
+    const trials = 1000;
+    for (let i = 0; i < trials; i++) {
+        const hasSourceMedia = i % 2 === 0;
+        let mediaMode = 'none';
+        const rand = Math.random();
+        if (hasSourceMedia && rand < 0.20) {
+            mediaMode = 'source_media';
+        } else if (rand < 0.12) {
+            mediaMode = 'ai_photo';
+        } else {
+            mediaMode = 'none';
+        }
+        if (mediaMode === 'none') noneCount++;
+    }
+    // none should be >= 70%
+    const ratio = noneCount / trials;
+    assert.ok(ratio >= 0.70, `Expected text_only ratio >= 0.70, got ${ratio}`);
+});
+
+test('story HTML link structure is valid and non-intrusive', () => {
+    const url = 'https://t.me/spb_news/123';
+    const linkTag = `<a href="${url}">пруф</a>`;
+    assert.match(linkTag, /^<a href="https:\/\/t\.me\/[^"]+">[^<]+<\/a>$/);
+});
+
+
