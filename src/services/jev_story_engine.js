@@ -128,10 +128,10 @@ export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL'
         // Если медиа из источника, в 80% случаев без ссылок, в 20% — ссылку можно кинуть в комментарии
         linkDelivery = Math.random() < 0.20 ? 'comments' : 'none';
     } else if (evaluation?.answers?.source_delivery) {
-        const sd = evaluation.answers.source_delivery.toUpperCase();
-        if (sd === 'COMMENTS') linkDelivery = 'comments';
-        else if (sd === 'SEPARATE_MSG') linkDelivery = 'separate_message';
-        else if (sd === 'INLINE_LINK') linkDelivery = 'inline_hyperlink';
+        const sd = String(evaluation.answers.source_delivery || '').toUpperCase();
+        if (sd.includes('COMMENT')) linkDelivery = 'comments';
+        else if (sd.includes('SEPARATE') || sd.includes('MSG')) linkDelivery = 'separate_message';
+        else if (sd.includes('INLINE') || sd.includes('LINK')) linkDelivery = 'inline_hyperlink';
         else linkDelivery = 'none';
     } else {
         const linkRand = Math.random();
