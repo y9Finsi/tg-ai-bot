@@ -160,9 +160,37 @@ export const sendContentAction = {
             });
 
             scoredCandidates.sort((a, b) => b.score - a.score);
-            const topScore = scoredCandidates[0].score;
-            const topCandidates = scoredCandidates.filter(c => c.score === topScore);
-            const chosen = topCandidates[Math.floor(Math.random() * topCandidates.length)].item;
+
+            // 1. Попытка выбрать наиболее подходящий материал через семантику Jev TypeSafe
+            let chosen = null;
+            if (!exactContentId && candidates.length > 1) {
+                try {
+                    const { getOrderedAiProviders } = await import('../../../db/database.js');
+                    const { selectContentWithJev, isTypeSafeProvider } = await import('../../../services/typesafe_client.js');
+                    const allProviders = await getOrderedAiProviders().catch(() => []);
+                    const jevProvider = allProviders.find(isTypeSafeProvider);
+                    if (jevProvider) {
+                        const jevSelection = await selectContentWithJev({
+                            provider: jevProvider,
+                            candidates: scoredCandidates.map(sc => sc.item),
+                            userText: context.userText || searchKeywords || '',
+                            requestedCategory: category,
+                            timeoutMs: 3000
+                        });
+                        if (jevSelection) {
+                            chosen = jevSelection;
+                        }
+                    }
+                } catch (jevErr) {
+                    // fallback to heuristic
+                }
+            }
+
+            if (!chosen) {
+                const topScore = scoredCandidates[0].score;
+                const topCandidates = scoredCandidates.filter(c => c.score === topScore);
+                chosen = topCandidates[Math.floor(Math.random() * topCandidates.length)].item;
+            }
 
             // Фиксация использования контента
             if (chosen?.id) {

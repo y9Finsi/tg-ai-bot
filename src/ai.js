@@ -359,8 +359,8 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
     const productionIntentConfig = getModeIntentConfig(routingMode, productionRoutingSettings);
     const surface = isInitiative ? 'INITIATIVE' : (isPublic ? (chatId ? 'GROUP' : 'CHANNEL') : 'CHAT');
     const conversationEventsPromise = isPublic
-        ? getRecentScopeConversationEvents(chatId || userId, threadId, 25).catch(() => [])
-        : getRecentConversationEvents(userId, 25, user?.chat_history_cleared_at).catch(() => []);
+        ? getRecentScopeConversationEvents(chatId || userId, threadId, 60).catch(() => [])
+        : getRecentConversationEvents(userId, 60, user?.chat_history_cleared_at).catch(() => []);
 
     const conversationEvents = await conversationEventsPromise;
 
@@ -522,10 +522,22 @@ async function buildMessagePayload(user, userId, { userText, photoUrls = [], isI
         systemOverlay
     });
 
-    // Формируем историю предыдущих сообщений для multi-turn контекста (включая контент)
-    const chatHistoryEvents = priorEvents.filter(ev =>
+    // Формируем историю предыдущих сообщений для multi-turn контекста (включая контент).
+    // Берем до 50 последних реплик, контролируя общий объем символов (~12,000 символов ~= 3,000-4,000 токенов).
+    const rawHistoryCandidates = priorEvents.filter(ev =>
         ev.content && (ev.event_type === 'MESSAGE' || ev.event_type === 'INITIATIVE' || ev.event_type === 'CONTENT')
-    ).slice(-20);
+    );
+    let historyCharBudget = 14000;
+    const chatHistoryEvents = [];
+    for (let i = rawHistoryCandidates.length - 1; i >= 0 && chatHistoryEvents.length < 50; i--) {
+        const ev = rawHistoryCandidates[i];
+        const len = String(ev.content || '').length;
+        if (chatHistoryEvents.length >= 10 && historyCharBudget - len < 0) {
+            break;
+        }
+        historyCharBudget -= len;
+        chatHistoryEvents.unshift(ev);
+    }
 
     function normalizeTextForComparison(text) {
         return String(text || '')
@@ -1962,8 +1974,8 @@ export async function generateResponse(userId, text, envelope = {}) {
     let actionRouting = null;
 
     const events = isPublicContext
-        ? await getRecentScopeConversationEvents(scopeChatId, scopeThreadId, 20).catch(() => [])
-        : await getRecentConversationEvents(userId, 20).catch(() => []);
+        ? await getRecentScopeConversationEvents(scopeChatId, scopeThreadId, 50).catch(() => [])
+        : await getRecentConversationEvents(userId, 50).catch(() => []);
 
     const lastLeraEvent = events
         .filter(e => e.status === 'COMPLETED' && (e.role === 'lera' || e.role === 'assistant'))

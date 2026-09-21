@@ -141,3 +141,47 @@ export function buildTypeSafeJudgeQuestions() {
         ,emotion_consistency: { type: 'noul', instructions: 'Кандидат-ответ соответствует текущей эмоциональной реакции Леры и её причине?', criteria: { true: 'Тон, резкость, теплота и длина соответствуют эмоциям.', false: 'Ответ эмоционально неуместен или противоречит причине.' } }
     };
 }
+
+export async function selectContentWithJev({ provider, candidates = [], userText = '', requestedCategory = 'any', timeoutMs = 3500 } = {}) {
+    if (!provider || !candidates || candidates.length <= 1) return null;
+    const choices = {};
+    candidates.slice(0, 15).forEach(c => {
+        const desc = (c.description || c.title || '').slice(0, 80);
+        const type = c.telegram_type || 'link';
+        choices[String(c.id)] = `[${type}] ${desc}`;
+    });
+    choices['NONE'] = 'Ни один из предложенных материалов не подходит к разговору.';
+
+    try {
+        const res = await evaluateTypeSafe({
+            provider,
+            model: provider.model_name || 'jev-latest',
+            timeoutMs,
+            state: {
+                userMessage: String(userText || '').slice(0, 1000),
+                requestedCategory,
+                availableBookmarks: candidates.slice(0, 15).map(c => ({
+                    id: c.id,
+                    title: c.title || c.description,
+                    type: c.telegram_type,
+                    category: c.category
+                }))
+            },
+            questions: {
+                selected_content_id: {
+                    type: 'choice',
+                    instructions: 'Выбери ID материала из закладок, который наиболее точно и органично подходит под последнюю просьбу или фразу пользователя. Если подходящего нет — выбери NONE.',
+                    criteria: choices
+                }
+            }
+        });
+        const choice = res?.answers?.selected_content_id?.choice;
+        if (choice && choice !== 'NONE') {
+            const found = candidates.find(c => String(c.id) === String(choice));
+            if (found) return found;
+        }
+    } catch (err) {
+        // silent fallback to heuristic
+    }
+    return null;
+}

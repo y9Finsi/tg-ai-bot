@@ -20,7 +20,8 @@ import {
     ArrowRightLeft,
     Image,
     Sparkles,
-    Upload
+    Upload,
+    Wrench
 } from 'lucide-react';
 import { api } from '@/lib/api.js';
 
@@ -126,6 +127,7 @@ export function AiSettingsTab({ toast }) {
     // Prompt edit modal
     const [editingPrompt, setEditingPrompt] = useState(null);
     const [promptModalOpen, setPromptModalOpen] = useState(false);
+    const [promptModalContent, setPromptModalContent] = useState('');
 
     // Rule edit modal
     const [editingRule, setEditingRule] = useState(null);
@@ -143,6 +145,38 @@ export function AiSettingsTab({ toast }) {
     const [rawPromptLoading, setRawPromptLoading] = useState(false);
     const [rawPromptCopied, setRawPromptCopied] = useState(false);
     const [rawPromptTab, setRawPromptTab] = useState('full'); // 'full' | 'system' | 'radiant' | 'history'
+
+    // Tools state
+    const [toolsList, setToolsList] = useState([]);
+    const [togglingTool, setTogglingTool] = useState(null);
+
+    // Load tools list
+    const loadTools = useCallback(async () => {
+        try {
+            const res = await api('/api/admin/tools');
+            if (res && Array.isArray(res.tools)) {
+                setToolsList(res.tools);
+            }
+        } catch (err) {
+            console.error('[TOOLS LOAD ERROR]', err);
+        }
+    }, []);
+
+    // Toggle tool enabled state
+    const handleToggleTool = async (toolName) => {
+        setTogglingTool(toolName);
+        try {
+            const res = await api(`/api/admin/tools/${encodeURIComponent(toolName)}/toggle`, { method: 'POST' });
+            if (res && res.tool) {
+                setToolsList(prev => prev.map(t => t.name === toolName ? { ...t, enabled: res.tool.enabled } : t));
+                if (toast) toast(`Инструмент ${toolName} ${res.tool.enabled ? 'включен' : 'выключен'}`, 'success');
+            }
+        } catch (err) {
+            if (toast) toast(`Ошибка переключения: ${err.message}`, 'error');
+        } finally {
+            setTogglingTool(null);
+        }
+    };
 
     // Load active providers list
     const loadProviders = useCallback(async () => {
@@ -170,7 +204,8 @@ export function AiSettingsTab({ toast }) {
                     console.warn('[IMAGE SETTINGS FETCH WARN]', e);
                     return null;
                 }),
-                loadProviders()
+                loadProviders(),
+                loadTools()
             ]);
             const rawProfile = profileData?.profile || {};
             const p = (rawProfile.profile && typeof rawProfile.profile === 'object') ? rawProfile.profile : rawProfile;
@@ -1294,7 +1329,7 @@ export function AiSettingsTab({ toast }) {
                                 onClick={() => setLeftMenuOpen(prev => !prev)}
                                 className="flex items-center gap-1.5 text-[16px] font-medium text-white tracking-normal select-none cursor-pointer hover:text-white/80 transition-colors py-1 px-2 -ml-2 rounded-xl hover:bg-white/5"
                             >
-                                <span>{leftTab === 'prompts' ? 'Промпты' : leftTab === 'emotions' ? 'Эмоции' : leftTab === 'images' ? 'Картинки / Фото' : 'Провайдеры'}</span>
+                                <span>{leftTab === 'prompts' ? 'Промпты' : leftTab === 'tools' ? 'Инструменты' : leftTab === 'emotions' ? 'Эмоции' : leftTab === 'images' ? 'Картинки / Фото' : 'Провайдеры'}</span>
                                 <ChevronDown className={`w-4 h-4 text-white/60 transition-transform duration-200 ${leftMenuOpen ? 'rotate-180' : ''}`} />
                             </button>
 
@@ -1313,6 +1348,19 @@ export function AiSettingsTab({ toast }) {
                                     >
                                         <span>Промпты</span>
                                         {leftTab === 'prompts' && <Check className="w-4 h-4 text-white stroke-[2.5]" />}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setLeftTab('tools');
+                                            setLeftMenuOpen(false);
+                                        }}
+                                        className={`w-full px-3 py-2 text-left text-[14px] rounded-xl flex items-center justify-between cursor-pointer transition-colors ${
+                                            leftTab === 'tools' ? 'bg-[#292e5e] text-white font-medium' : 'text-white/70 hover:bg-white/5 hover:text-white'
+                                        }`}
+                                    >
+                                        <span>Инструменты</span>
+                                        {leftTab === 'tools' && <Check className="w-4 h-4 text-white stroke-[2.5]" />}
                                     </button>
                                     <button
                                         type="button"
@@ -1359,6 +1407,15 @@ export function AiSettingsTab({ toast }) {
                             >
                                 <span>Новый промпт</span>
                                 <Plus className="w-4 h-4 text-white stroke-[1.5]" />
+                            </button>
+                        ) : leftTab === 'tools' ? (
+                            <button
+                                type="button"
+                                onClick={() => loadTools()}
+                                className="h-[38px] px-4 rounded-full bg-[#292e5e] hover:bg-[#343b75] text-white text-[14px] font-medium flex items-center gap-1.5 cursor-pointer transition-all active:scale-98 shadow-sm"
+                            >
+                                <Wrench className="w-4 h-4 text-white stroke-[1.5]" />
+                                <span>Обновить</span>
                             </button>
                         ) : leftTab === 'images' ? (
                             <button
@@ -1771,6 +1828,67 @@ export function AiSettingsTab({ toast }) {
                                 {savingImageSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 stroke-[2.5]" />}
                                 <span>Сохранить настройки фото</span>
                             </button>
+                        </div>
+                    ) : leftTab === 'tools' ? (
+                        /* Tools Stack (Linear UI 377px cards with toggles) */
+                        <div className="w-[377px] flex flex-col gap-[12px]">
+                            <div className="text-[12px] text-white/50 px-1 leading-snug">
+                                Действия и навыки Леры (Native Tool Calling & Radiant). Отключенные инструменты не предлагаются модели и не вызываются.
+                            </div>
+                            {toolsList.length > 0 ? (
+                                <div className="flex flex-col gap-[10px]">
+                                    {toolsList.map(tool => {
+                                        const isBusy = togglingTool === tool.name;
+                                        return (
+                                            <div
+                                                key={tool.name}
+                                                className="rounded-[20px] p-3.5 flex flex-col gap-2 bg-gradient-to-b from-[#171717] to-[#232425]/0 border border-white/10 hover:border-white/20 transition-all"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2 overflow-hidden">
+                                                        <span className="text-[14px] font-mono font-medium text-white truncate">
+                                                            {tool.name}
+                                                        </span>
+                                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 uppercase tracking-wider">
+                                                            {tool.type || 'SYSTEM'}
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        disabled={isBusy}
+                                                        onClick={() => handleToggleTool(tool.name)}
+                                                        className={`px-3 py-1 text-[11px] font-medium rounded-full transition-colors cursor-pointer flex items-center gap-1 ${
+                                                            tool.enabled
+                                                                ? 'bg-[#8693ff]/20 text-[#8693ff] border border-[#8693ff]/40 hover:bg-[#8693ff]/30'
+                                                                : 'bg-white/5 text-white/40 border border-white/10 hover:bg-white/10 hover:text-white'
+                                                        }`}
+                                                    >
+                                                        {isBusy ? (
+                                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                                        ) : tool.enabled ? (
+                                                            <Check className="w-3 h-3 stroke-[2.5]" />
+                                                        ) : (
+                                                            <X className="w-3 h-3" />
+                                                        )}
+                                                        <span>{tool.enabled ? 'Активен' : 'Отключен'}</span>
+                                                    </button>
+                                                </div>
+                                                <p className="text-[12px] text-white/60 leading-relaxed line-clamp-2">
+                                                    {tool.description || 'Описание инструмента отсутствует'}
+                                                </p>
+                                                <div className="flex items-center justify-between text-[10px] text-white/40 pt-1 border-t border-white/5 font-mono">
+                                                    <span>{tool.timeoutMs ? `${Math.round(tool.timeoutMs / 1000)}с таймаут` : '10с таймаут'}</span>
+                                                    <span>{tool.title || tool.name}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="p-4 rounded-[20px] bg-white/[0.03] border border-white/10 text-center text-xs text-white/40">
+                                    Инструменты не найдены
+                                </div>
+                            )}
                         </div>
                     ) : (
                         /* Providers Stack (Figma 377px width cards) */
@@ -2529,12 +2647,39 @@ export function AiSettingsTab({ toast }) {
                             <div className="flex flex-col gap-1.5">
                                 <div className="flex items-center justify-between">
                                     <label className="text-xs text-white/60 font-medium">Текст системной инструкции</label>
-                                    {editingPrompt?.id === 'prompt_radiant' && (
-                                        <span className="text-[10px] text-[#8693ff]/80 font-mono">
-                                            Шаблоны: &#123;&#123;user_name&#125;&#125;, &#123;&#123;relationship&#125;&#125;, &#123;&#123;time&#125;&#125;, &#123;&#123;channel_stats&#125;&#125;, &#123;&#123;day_events&#125;&#125;
-                                        </span>
-                                    )}
+                                    <span className="text-[10px] text-white/40">Нажми, чтобы скопировать</span>
                                 </div>
+
+                                {/* Template Variables Quick Picker */}
+                                <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-black/25 border border-white/5">
+                                    {[
+                                        { tag: '{{bookmarks}}', label: 'Закладки/Ссылки', desc: 'Свежие ссылки и материалы из lera_content' },
+                                        { tag: '{{user_name}}', label: 'Имя юзера', desc: 'Имя текущего собеседника' },
+                                        { tag: '{{day_events}}', label: 'События дня', desc: 'События и планы Леры на сегодня' },
+                                        { tag: '{{time}}', label: 'Время МСК', desc: 'Текущее московское время' },
+                                        { tag: '{{relationship}}', label: 'Отношения', desc: 'Уровень близости и стадия отношений' },
+                                        { tag: '{{radiant_context}}', label: 'Radiant AI', desc: 'Локация, погода, занятие и виталы' },
+                                        { tag: '{{channel_stats}}', label: 'Статистика ТГК', desc: 'Подписчики и статус канала' },
+                                        { tag: '{{memoryFacts}}', label: 'Память/Факты', desc: 'Факты о пользователе из БД' }
+                                    ].map(v => (
+                                        <button
+                                            key={v.tag}
+                                            type="button"
+                                            title={`${v.desc} (клик — скопировать ${v.tag})`}
+                                            onClick={() => {
+                                                if (navigator.clipboard) {
+                                                    navigator.clipboard.writeText(v.tag);
+                                                    if (toast) toast(`Скопировано: ${v.tag}`, 'info');
+                                                }
+                                            }}
+                                            className="px-2 py-0.5 rounded-lg bg-[#8693ff]/10 hover:bg-[#8693ff]/25 border border-[#8693ff]/20 text-[#8693ff] text-[11px] font-mono transition-colors cursor-pointer flex items-center gap-1"
+                                        >
+                                            <span>{v.tag}</span>
+                                            <span className="text-[9px] text-white/40 font-sans">{v.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+
                                 <textarea
                                     name="content"
                                     defaultValue={editingPrompt?.content || ''}
