@@ -18,6 +18,7 @@ import { getOpenAIClientAndModel } from './ai.js';
 import { getCachedOpenAIClient, logLlmTrace } from './ai/llm_client.js';
 import { selectWeightedTopic } from './channel_topics.js';
 import { buildChannelSystemPrompt } from './channel_prompt.js';
+import { getStoryDirectorPrompt } from './prompts.js';
 import { judgeLeraReply } from './ai/response_judge.js';
 import { generateLeraPhoto } from './services/image_generator.js';
 import { cleanResponseText } from './utils/response_text.js';
@@ -229,6 +230,7 @@ export async function generateChannelPostDraft(overrideSettings = null) {
         baseProvenance.media_content_id = `photo:${selectedPhoto.id}`;
         baseProvenance.media_type = 'photo';
     }
+    const directorPrompt = await getStoryDirectorPrompt().catch(() => '');
     const systemPrompt = buildChannelSystemPrompt({
         time, timeOfDay, topic, topicDescription, recentPosts, messagesCount: '1', promptBlocks: settings.prompt_blocks,
         leraPrompt: settings.public_profile_enabled === false ? '' : getLeraProfileProjection(profile.profile, 'CHANNEL'),
@@ -236,7 +238,8 @@ export async function generateChannelPostDraft(overrideSettings = null) {
         creativity: settings.creativity,
         ctaStyle: settings.cta_style,
         contentFormat,
-        editorialMode
+        editorialMode,
+        directorPrompt
     });
     let generated = await requestDraftText({ systemPrompt, topicDescription, temperature: settings.temperature });
     let text = cleanResponseText(generated.text);
@@ -269,7 +272,8 @@ export async function generateChannelPostDraft(overrideSettings = null) {
             creativity: settings.creativity,
             ctaStyle: settings.cta_style,
             contentFormat: retryFormat,
-            editorialMode
+            editorialMode,
+            directorPrompt
         });
         generated = await requestDraftText({
             systemPrompt: retryPrompt,

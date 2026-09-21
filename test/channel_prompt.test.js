@@ -46,3 +46,14 @@ test('channel prompt accepts editor blocks but excludes secret-looking values', 
     assert.match(prompt, /в конце задай один вопрос/);
     assert.doesNotMatch(prompt, /super-secret/);
 });
+
+test('channel prompt includes story director prompt when provided', () => {
+    const prompt = buildChannelSystemPrompt({
+        topic: 'life',
+        directorPrompt: 'АНТИ-ИИ ВАЙБ: никаких вымученных метафор про кофе'
+    });
+
+    assert.match(prompt, /РЕЖИССУРА И СТИЛЬ \(STORY DIRECTOR\)/);
+    assert.match(prompt, /никаких вымученных метафор про кофе/);
+});
+

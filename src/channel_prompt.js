@@ -57,7 +57,8 @@ export function buildChannelSystemPrompt({
     leraPrompt = '', dayContext = '', publicFacts = [], creativity = 0.6, ctaStyle = '', contentFormat = 'life_observation',
     editorialMode = 'reference_short',
     channelPersona = '',
-    channelRules = ''
+    channelRules = '',
+    directorPrompt = ''
 } = {}) {
     const history = recentPosts
         .map(post => cleanResponseText(post.text).replace(/\s+/g, ' '))
@@ -75,6 +76,7 @@ export function buildChannelSystemPrompt({
 
     const personaText = (channelPersona || getPromptSection('channel_persona') || DEFAULT_CHANNEL_PERSONA).trim();
     const rulesText = (channelRules || getPromptSection('channel_rules') || DEFAULT_CHANNEL_RULES).trim();
+    const directorText = (directorPrompt || getPromptSection('story_director') || '').trim();
 
     return `${personaText}
 ${facts}
@@ -91,7 +93,7 @@ ${ctaStyle && mode !== 'reference_short' ? `- Стиль CTA: ${String(ctaStyle)
 ПОСЛЕДНИЕ ПУБЛИЧНЫЕ ПОСТЫ:
 ${history}
 ${publicPromptBlocks(promptBlocks)}
-
+${directorText ? `\n[РЕЖИССУРА И СТИЛЬ (STORY DIRECTOR)]:\n${directorText}\n` : ''}
 ${rulesText}
 `;
 }

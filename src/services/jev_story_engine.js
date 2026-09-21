@@ -11,7 +11,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /**
  * Оценка темы через Jev: определяет эмоциональный вектор, сарказм, капс и формат
  */
-export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL' }) {
+export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL', hasSourceMedia = false }) {
     console.log(`[JEV STORY ENGINE] Режиссура темы для ${surface}: "${topic}"`);
 
     // Вопросы для Jev режиссуры
