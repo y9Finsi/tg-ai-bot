@@ -65,6 +65,20 @@ export function ContentTopicsView({ toast }) {
         }
     };
 
+    const handleDeleteTopic = async (topic) => {
+        if (!confirm(`Удалить тему "${topic.title}"?`)) return;
+        setActionLoadingId(topic.id);
+        try {
+            await api(`/api/admin/content/topics/${topic.id}`, { method: 'DELETE' });
+            toast?.('Тема удалена', 'success');
+            await loadTopics();
+        } catch (err) {
+            toast?.('Ошибка удаления: ' + err.message, 'error');
+        } finally {
+            setActionLoadingId(null);
+        }
+    };
+
     const filteredTopics = topics.filter(t => {
         if (filter === 'available') return !t.used_in_channel_at && !t.used_in_dm_at;
         if (filter === 'used') return t.used_in_channel_at || t.used_in_dm_at;
@@ -209,6 +223,15 @@ export function ContentTopicsView({ toast }) {
                                     >
                                         <Send className="w-3.5 h-3.5" />
                                         {isUsedInChannel ? 'Опубликовано' : 'В канал (Jev)'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={isLoading}
+                                        onClick={() => handleDeleteTopic(topic)}
+                                        title="Удалить тему"
+                                        className="h-[34px] w-[34px] rounded-[8px] bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 flex items-center justify-center transition-all cursor-pointer disabled:opacity-40"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
                                     </button>
                                 </div>
                             </div>

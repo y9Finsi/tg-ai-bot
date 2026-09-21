@@ -42,7 +42,26 @@ export async function harvestDailyTopics({ force = false } = {}) {
         console.warn('[TOPIC HARVESTER] Ошибка web_search:', searchErr.message);
     }
 
-    // 3. Формируем контекст для LLM-редактора тем
+    // 3. Подтягиваем ранее собранные темы за последние 7 дней для строгого исключения дубликатов
+    let recentExistingTopics = [];
+    try {
+        const existRes = await query(`
+            SELECT title FROM content_topics
+            WHERE created_at > NOW() - INTERVAL '7 days'
+            ORDER BY id DESC
+            LIMIT 40
+        `);
+        recentExistingTopics = (existRes.rows || []).map(r => r.title.trim()).filter(Boolean);
+    } catch (existErr) {
+        console.warn('[TOPIC HARVESTER] Ошибка чтения существующих тем:', existErr.message);
+    }
+
+    const existingTopicsBlock = recentExistingTopics.length > 0
+        ? `[УЖЕ ИСПОЛЬЗОВАННЫЕ ИЛИ СУЩЕСТВУЮЩИЕ ТЕМЫ (СТРОГО ЗАПРЕЩЕНО ПОВТОРЯТЬ ИЛИ ПЕРЕФРАЗИРОВАТЬ ИХ!)]:
+${recentExistingTopics.map(t => `- ${t}`).join('\n')}`
+        : '';
+
+    // 4. Формируем контекст для LLM-редактора тем
     const discoveriesSnippet = recentDiscoveries.map(d => 
         `- [${d.source_name || 'ТГ-канал'}]: ${d.title || ''} (${d.canonical_url})\n  ${(d.raw_text || '').slice(0, 250)}`
     ).join('\n\n');
@@ -51,13 +70,16 @@ export async function harvestDailyTopics({ force = false } = {}) {
 Твоя задача: на основе свежих новостей Петербурга и постов из Telegram отобрать 3–5 САМЫХ СОЧНЫХ, ЖИВЫХ И АКТУАЛЬНЫХ ТЕМ на сегодня.
 
 МЫ ИЩЕМ:
-- Реальные факты дня (погода, шторм, перекрытие моста/метро, выборы, городские курьезы, события на Невском/Марсовом поле, праздники).
+- Реальные факты дня (погода, шторм, перекрытие моста/метро, городские курьезы, события на Невском/Марсовом поле, праздники).
 - Смешные или абсурдные посты/мемы из соцсетей, тренды, над которыми можно поугорать или повозмущаться.
 - Житейские ситуации студентки в СПб (учёба, дедлайны клиентов, транспорт, кофейни).
 
 СТРОГО ЗАПРЕЩЕНО:
+- ПОВТОРЯТЬ ТЕМЫ ИЗ СПИСКА УЖЕ СУЩЕСТВУЮЩИХ (даже другими словами).
 - Сухие протокольные криминальные сводки или тяжелый негатив (ДТП с жертвами, жесть).
 - Политические агитки (если выборы — то с бытовой стороны: буфет на участке, пирожки, странные плакаты на столбах).
+
+${existingTopicsBlock}
 
 ВОТ СВЕЖИЕ ДАННЫЕ ИЗ ПОИСКА И ТЕЛЕГРАМА:
 
@@ -120,8 +142,32 @@ ${discoveriesSnippet || 'Нет свежих постов.'}
                 const hours = Number(item.expires_in_hours) || 24;
                 const expiresAt = new Date(Date.now() + hours * 3600 * 1000);
 
-                const existing = await query('SELECT id FROM content_topics WHERE title = $1 LIMIT 1', [item.title]);
-                if (existing.rows[0]) continue;
+                const cleanTitle = item.title.trim();
+                const titleWords = cleanTitle.toLowerCase().replace(/[^a-zа-я0-9\s]/gi, '').split(/\s+/).filter(w => w.length > 3);
+                
+                // Проверка на точный дубликат или сильное сходство ключевых слов
+                const existing = await query(`
+                    SELECT id, title FROM content_topics 
+                    WHERE title = $1 
+                       OR created_at > NOW() - INTERVAL '7 days'
+                `, [cleanTitle]);
+
+                let isDuplicate = false;
+                for (const row of existing.rows) {
+                    if (row.title.trim().toLowerCase() === cleanTitle.toLowerCase()) {
+                        isDuplicate = true;
+                        break;
+                    }
+                    const rowWords = row.title.toLowerCase().replace(/[^a-zа-я0-9\s]/gi, '').split(/\s+/).filter(w => w.length > 3);
+                    const commonWords = titleWords.filter(w => rowWords.includes(w));
+                    // Если больше половины значимых слов совпадают — считаем дублем
+                    if (titleWords.length >= 3 && commonWords.length >= Math.ceil(titleWords.length * 0.6)) {
+                        isDuplicate = true;
+                        console.log(`[TOPIC HARVESTER] Пропуск похожей темы: "${cleanTitle}" ~ "${row.title}"`);
+                        break;
+                    }
+                }
+                if (isDuplicate) continue;
 
                 const inserted = await query(`
                     INSERT INTO content_topics (
@@ -130,7 +176,7 @@ ${discoveriesSnippet || 'Нет свежих постов.'}
                     ) VALUES ($1, $2, $3, $4, $5, 'NEW', $6, NOW())
                     RETURNING *
                 `, [
-                    item.title.slice(0, 255),
+                    cleanTitle.slice(0, 255),
                     item.situation,
                     item.category || 'spb_life',
                     item.source_url || null,
@@ -176,9 +222,16 @@ export async function getActiveTopics({ category = null, limit = 10 } = {}) {
  * Отметка темы как использованной
  */
 export async function markTopicUsed(topicId, surface = 'channel') {
+    const isChannel = String(surface).toLowerCase().includes('channel');
+    const isDm = String(surface).toLowerCase().includes('dm');
+
     await query(`
         UPDATE content_topics
-        SET status = 'USED', used_at = NOW(), used_in_surface = $2
+        SET status = 'USED',
+            used_at = NOW(),
+            used_in_surface = $2,
+            used_in_channel_at = CASE WHEN $3 = TRUE THEN NOW() ELSE used_in_channel_at END,
+            used_in_dm_at = CASE WHEN $4 = TRUE THEN NOW() ELSE used_in_dm_at END
         WHERE id = $1
-    `, [topicId, surface]);
+    `, [topicId, surface, isChannel, isDm]);
 }

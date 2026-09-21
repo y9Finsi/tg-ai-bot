@@ -213,7 +213,7 @@ ${isChannel ? `{
 }`)}`;
 
     let ruleTemp = 0.75;
-    let ruleTokens = 1200;
+    let ruleTokens = 2500;
     let ruleProviderId = null;
     try {
         const { getLeraProfile } = await import('../db/database.js');
@@ -223,7 +223,7 @@ ${isChannel ? `{
         );
         if (directorRule) {
             if (directorRule.temperature !== undefined) ruleTemp = Number(directorRule.temperature);
-            if (directorRule.max_tokens !== undefined) ruleTokens = Number(directorRule.max_tokens);
+            if (directorRule.max_tokens !== undefined) ruleTokens = Math.max(1500, Number(directorRule.max_tokens));
             if (directorRule.provider_id) ruleProviderId = Number(directorRule.provider_id);
         }
     } catch (ruleErr) {
@@ -249,11 +249,27 @@ ${isChannel ? `{
                       Array.isArray(parsed.messages) ? parsed.messages :
                       Array.isArray(parsed.story_steps) ? parsed.story_steps :
                       Array.isArray(parsed.ladder) ? parsed.ladder : null;
-        if (steps) parsed.steps = steps;
-        return parsed;
-    } catch {
-        return { steps: [topic, situation], hook: topic, follow_up_steps: [situation] };
+        if (steps && steps.length > 0) {
+            parsed.steps = steps;
+            return parsed;
+        }
+    } catch (jsonErr) {
+        console.error('[JEV STORY ENGINE PARSE ERROR]:', jsonErr.message, 'Raw length:', String(raw || '').length, 'Snippet:', String(raw || '').slice(0, 300));
     }
+
+    // Если парсинг не удался или шаги пусты, ни в коем случае не шлем сухой заголовок новости с описанием!
+    // Формируем живую лесенку от лица Леры с реакцией на новость
+    const sourceLink = sourceUrl ? ` <a href="${sourceUrl}">гляньте</a>` : '';
+    const fallbackFirst = `я щас просто выпала с новости: ${topic.toLowerCase().replace(/[.!?]+$/, '')}${sourceLink}`;
+    const fallbackSecond = situation.length > 150 ? situation.slice(0, 150).trim() + '...' : situation;
+    const fallbackThird = `сижу перевариваю это кароч`;
+
+    return {
+        steps: [fallbackFirst, fallbackSecond, fallbackThird],
+        hook: fallbackFirst,
+        follow_up_steps: [fallbackSecond, fallbackThird],
+        photo_prompt: null
+    };
 }
 
 /**
