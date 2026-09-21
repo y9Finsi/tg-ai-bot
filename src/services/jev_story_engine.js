@@ -69,6 +69,16 @@ export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL'
                 'false': 'Текста достаточно, фото не нужно.'
             }
         },
+        source_delivery: {
+            type: 'choice',
+            instructions: 'Как подать источник новости (если он есть)?',
+            criteria: {
+                NONE: 'Вообще без ссылок, пересказать своими словами (натурально, 40% случаев).',
+                COMMENTS: 'Написать ссылку в комментариях под постом/реакцией (25% случаев).',
+                SEPARATE_MSG: 'Скинуть ссылку отдельным коротким сообщением в конце лесенки (20% случаев).',
+                INLINE_LINK: 'Вшить гиперссылку в одно слово в тексте (15% случаев).'
+            }
+        },
         delivery_format: {
             type: 'choice',
             instructions: 'В каком формате подать историю в личном сообщении?',
@@ -107,18 +117,28 @@ export async function directStoryWithJev({ topic, situation, surface = 'CHANNEL'
 
     // Способ подачи источника (link_delivery):
     // Девочки в Telegram не вшивают гиперссылки в каждом посте.
-    // Если есть картинка из источника (source_media) -> ссылка не нужна, достаточно самой картинки!
-    // Если это чистый текст:
-    // - в 50% случаев вообще без ссылок (своими словами)
-    // - в 35% случаев отдельное короткое сообщение со ссылкой ("если че вот: https://...")
-    // - в 15% случаев аккуратная гиперссылка в 1 слове
+    // Если есть картинка/видео из источника (source_media) -> ссылка не нужна, достаточно самого медиа!
+    // Варианты подачи:
+    // - 'none': вообще без ссылок (пересказать своими словами)
+    // - 'comments': скинуть ссылку в комментарии под постом
+    // - 'separate_message': отдельное короткое сообщение со ссылкой ("если че вот: https://...")
+    // - 'inline_hyperlink': аккуратная гиперссылка в 1 слове
     let linkDelivery = 'none';
     if (mediaMode === 'source_media') {
-        linkDelivery = 'none';
+        // Если медиа из источника, в 80% случаев без ссылок, в 20% — ссылку можно кинуть в комментарии
+        linkDelivery = Math.random() < 0.20 ? 'comments' : 'none';
+    } else if (evaluation?.answers?.source_delivery) {
+        const sd = evaluation.answers.source_delivery.toUpperCase();
+        if (sd === 'COMMENTS') linkDelivery = 'comments';
+        else if (sd === 'SEPARATE_MSG') linkDelivery = 'separate_message';
+        else if (sd === 'INLINE_LINK') linkDelivery = 'inline_hyperlink';
+        else linkDelivery = 'none';
     } else {
         const linkRand = Math.random();
-        if (linkRand < 0.50) {
+        if (linkRand < 0.40) {
             linkDelivery = 'none';
+        } else if (linkRand < 0.65) {
+            linkDelivery = 'comments';
         } else if (linkRand < 0.85) {
             linkDelivery = 'separate_message';
         } else {
@@ -382,6 +402,9 @@ export async function createPendingStory({ topicId, userId = null, surface = 'DM
 
     const finalMediaMode = mood.media_mode || (script.photo_prompt ? 'ai_photo' : 'none');
 
+    const topicMeta = typeof topicData.metadata === 'string' ? JSON.parse(topicData.metadata) : (topicData.metadata || {});
+    const mediaType = topicMeta.media_type || (topicData.media_url?.includes('.mp4') ? 'video' : 'photo');
+
     const inserted = await query(`
         INSERT INTO pending_stories (
             topic_id, surface, user_id, hook_text, story_steps,
@@ -398,6 +421,8 @@ export async function createPendingStory({ topicId, userId = null, surface = 'DM
         JSON.stringify({
             delivery_format: format,
             media_mode: finalMediaMode,
+            media_type: mediaType,
+            link_delivery: mood.link_delivery || 'none',
             photo_prompt: script.photo_prompt || null,
             reject_reply: script.reject_reply || null,
             media_id: topicData.media_id || null,
@@ -431,27 +456,38 @@ export async function publishStoryToChannel(bot, channelId, storyId) {
 
     console.log(`[JEV STORY ENGINE] Публикация истории #${story.id} в канал ${channelId}...`);
 
+    let lastSentMessageId = null;
+
     for (let i = 0; i < steps.length; i++) {
         const text = steps[i];
         try {
-            await bot.telegram.sendMessage(channelId, text, {
+            const sent = await bot.telegram.sendMessage(channelId, text, {
                 parse_mode: 'HTML',
                 link_preview_options: { is_disabled: true }
             });
+            if (sent?.message_id) lastSentMessageId = sent.message_id;
         } catch (htmlErr) {
             console.warn('[JEV STORY ENGINE] HTML parse failed, falling back to plain text:', htmlErr.message);
-            await bot.telegram.sendMessage(channelId, text);
+            const sent = await bot.telegram.sendMessage(channelId, text);
+            if (sent?.message_id) lastSentMessageId = sent.message_id;
         }
         await sleep(1800);
     }
 
     const mediaMode = meta.media_mode || (meta.photo_prompt ? 'ai_photo' : (meta.media_url ? 'source_media' : 'none'));
+    const isVideo = meta.media_type === 'video' || (meta.media_url && String(meta.media_url).includes('.mp4'));
 
-    // 1. Отправка оригинальной картинки из источника (если выбран source_media)
+    // 1. Отправка оригинального медиа из источника (видео или фото)
     if (mediaMode === 'source_media' && meta.media_url) {
         try {
-            console.log(`[JEV STORY ENGINE] Отправка оригинального медиа из источника в канал ${channelId}:`, meta.media_url);
-            await bot.telegram.sendPhoto(channelId, meta.media_url);
+            console.log(`[JEV STORY ENGINE] Отправка оригинального медиа (${isVideo ? 'video' : 'photo'}) из источника в канал ${channelId}:`, meta.media_url);
+            let sentMedia = null;
+            if (isVideo) {
+                sentMedia = await bot.telegram.sendVideo(channelId, meta.media_url);
+            } else {
+                sentMedia = await bot.telegram.sendPhoto(channelId, meta.media_url);
+            }
+            if (sentMedia?.message_id) lastSentMessageId = sentMedia.message_id;
             await sleep(2000);
         } catch (srcErr) {
             console.warn('[JEV STORY ENGINE] Ошибка отправки source_media:', srcErr.message);
@@ -470,11 +506,41 @@ export async function publishStoryToChannel(bot, channelId, storyId) {
 
             if (photoResult?.buffer) {
                 const fallbackCaption = steps.length === 0 ? (story.hook_text || '').slice(0, 1024) : undefined;
-                await bot.telegram.sendPhoto(channelId, { source: photoResult.buffer }, fallbackCaption ? { caption: fallbackCaption } : undefined);
+                const sentPhoto = await bot.telegram.sendPhoto(channelId, { source: photoResult.buffer }, fallbackCaption ? { caption: fallbackCaption } : undefined);
+                if (sentPhoto?.message_id) lastSentMessageId = sentPhoto.message_id;
                 await sleep(2000);
             }
         } catch (imgErr) {
             console.warn('[JEV STORY ENGINE] Photo gen warning:', imgErr.message);
+        }
+    }
+
+    // 3. Если Jev выбрал подачу ссылки в комментарии (link_delivery === 'comments')
+    if (meta.source_url && meta.link_delivery === 'comments') {
+        try {
+            // Узнаем связанный чат комментариев канала через getChat
+            const chatInfo = await bot.telegram.getChat(channelId);
+            const linkedChatId = chatInfo?.linked_chat_id;
+            if (linkedChatId) {
+                // Небольшая задержка перед комментом, как живой человек
+                await sleep(3000);
+                const commentVariants = [
+                    `если че вот: ${meta.source_url}`,
+                    `источник тут: ${meta.source_url}`,
+                    `глянуть можно здесь: ${meta.source_url}`,
+                    `пруф: ${meta.source_url}`,
+                    `вот: ${meta.source_url}`
+                ];
+                const commentText = commentVariants[Math.floor(Math.random() * commentVariants.length)];
+                console.log(`[JEV STORY ENGINE] Отправка ссылки в комментарии (чат ${linkedChatId}) к посту ${lastSentMessageId}...`);
+                await bot.telegram.sendMessage(linkedChatId, commentText, {
+                    link_preview_options: { is_disabled: false }
+                });
+            } else {
+                console.log(`[JEV STORY ENGINE] linked_chat_id для канала ${channelId} не найден (комментарии не привязаны)`);
+            }
+        } catch (commentErr) {
+            console.warn('[JEV STORY ENGINE] Ошибка отправки ссылки в комментарии:', commentErr.message);
         }
     }
 

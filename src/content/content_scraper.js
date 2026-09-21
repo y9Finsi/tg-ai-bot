@@ -39,6 +39,15 @@ function parseTelegram(html, sourceUrl) {
         const photoMatch = block.match(/tgme_widget_message_photo_wrap[^>]*style=["'][^"']*background-image:\s*url\(['"]?([^'"\)]+)['"]?\)/i);
         const photoUrl = photoMatch ? photoMatch[1] : null;
 
+        const videoMatch = block.match(/<video[^>]+src=["']([^"']+)["']/i);
+        const videoThumbMatch = block.match(/tgme_widget_message_video_thumb[^>]*style=["'][^"']*background-image:\s*url\(['"]?([^'"\)]+)['"]?\)/i);
+        const videoUrl = videoMatch ? videoMatch[1] : null;
+        const videoThumb = videoThumbMatch ? videoThumbMatch[1] : null;
+
+        if (videoUrl) {
+            category = 'video';
+        }
+
         out.push({
             externalId: match[1],
             canonicalUrl: canonical,
@@ -47,7 +56,8 @@ function parseTelegram(html, sourceUrl) {
             category,
             metadata: {
                 sourceUrl,
-                thumbnail: photoUrl,
+                thumbnail: photoUrl || videoThumb,
+                videoUrl: videoUrl,
                 yandexMusicUrl: ymLinkMatch ? ymLinkMatch[1] : null,
                 mangaUrl: mangaLinkMatch ? mangaLinkMatch[1] : null
             }

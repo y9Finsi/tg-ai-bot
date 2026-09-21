@@ -170,22 +170,32 @@ ${discoveriesSnippet || 'Нет свежих постов.'}
                 if (isDuplicate) continue;
 
                 let mediaUrl = item.media_url || null;
+                let mediaType = item.media_type || (mediaUrl ? 'photo' : null);
+
                 // Если в LLM не было media_url, ищем совпадение среди находок по source_url или canonical_url
-                if (!mediaUrl && item.source_url) {
+                if (item.source_url) {
                     const matchedDisc = recentDiscoveries.find(d => 
                         d.canonical_url === item.source_url || 
-                        (d.metadata && d.metadata.thumbnail && d.canonical_url && item.source_url.includes(d.canonical_url))
+                        (d.canonical_url && item.source_url.includes(d.canonical_url))
                     );
-                    if (matchedDisc?.metadata?.thumbnail) {
+                    if (matchedDisc?.metadata?.videoUrl) {
+                        mediaUrl = matchedDisc.metadata.videoUrl;
+                        mediaType = 'video';
+                    } else if (!mediaUrl && matchedDisc?.metadata?.thumbnail) {
                         mediaUrl = matchedDisc.metadata.thumbnail;
+                        mediaType = 'photo';
                     }
                 }
+
+                const metadata = {
+                    media_type: mediaType || 'photo'
+                };
 
                 const inserted = await query(`
                     INSERT INTO content_topics (
                         title, situation, category, media_url, source_url, source_type,
-                        status, expires_at, created_at
-                    ) VALUES ($1, $2, $3, $4, $5, $6, 'NEW', $7, NOW())
+                        status, expires_at, metadata, created_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, 'NEW', $7, $8, NOW())
                     RETURNING *
                 `, [
                     cleanTitle.slice(0, 255),
@@ -194,7 +204,8 @@ ${discoveriesSnippet || 'Нет свежих постов.'}
                     mediaUrl,
                     item.source_url || null,
                     item.source_type || 'web_search',
-                    expiresAt
+                    expiresAt,
+                    JSON.stringify(metadata)
                 ]);
 
                 results.push(inserted.rows[0]);
