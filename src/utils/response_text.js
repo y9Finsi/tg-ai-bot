@@ -4,6 +4,21 @@ export function cleanResponseText(rawText) {
     if (!rawText) return '';
     let text = String(rawText);
 
+    // Если на вход пришел JSON (например, от Story Director с полями text/steps/messages)
+    const trimmed = text.trim();
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('```json') && trimmed.endsWith('```')) || (trimmed.startsWith('```') && trimmed.endsWith('```'))) {
+        try {
+            const cleanJson = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+            const parsed = JSON.parse(cleanJson);
+            const candidate = parsed.text ||
+                (Array.isArray(parsed.steps) ? parsed.steps.join('\n\n') : null) ||
+                (Array.isArray(parsed.messages) ? parsed.messages.join('\n\n') : null);
+            if (candidate && typeof candidate === 'string') {
+                text = candidate;
+            }
+        } catch (_) {}
+    }
+
     // Удаляем любые блоки мыслей модели: <think>...</think>, </think> и всё до него
     text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
     text = text.replace(/^[\s\S]*?<\/think>/gi, '').trim();

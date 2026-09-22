@@ -28,6 +28,8 @@ import {
     normalizeChannelEditorialMode,
     normalizeChannelFormatSequence
 } from './channel_content.js';
+import { getActiveTopics, harvestDailyTopics } from './services/topic_harvester.js';
+import { createPendingStory, publishStoryToChannel } from './services/jev_story_engine.js';
 
 const TOPIC_DESCRIPTIONS = {
     thoughts: 'Мысли вслух о людях, Питере, музыке и неожиданных наблюдениях',
@@ -340,6 +342,25 @@ export async function generateChannelPostDraft(overrideSettings = null) {
         delete baseProvenance.media_type;
     }
 
+    let extractedPhotoPrompt = null;
+    try {
+        const cleanRaw = String(generated.text || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        if (cleanRaw.startsWith('{') && cleanRaw.endsWith('}')) {
+            const p = JSON.parse(cleanRaw);
+            extractedPhotoPrompt = p.photoprompt || p.photo_prompt || null;
+        }
+    } catch (_) {}
+
+    if (extractedPhotoPrompt && !media) {
+        media = {
+            type: 'ai_photo',
+            description: extractedPhotoPrompt,
+            prompt: extractedPhotoPrompt
+        };
+        baseProvenance.media_prompt = extractedPhotoPrompt;
+        baseProvenance.media_type = 'ai_photo';
+    }
+
     const provenance = {
         ...baseProvenance,
         model: generated.model || null,
@@ -620,8 +641,51 @@ export async function generateAndPublishChannelPost(bot, overrideSettings = null
     if (channelPostInFlight) throw new Error('Публикация уже выполняется');
     channelPostInFlight = true;
     try {
-        const draft = await generateChannelPostDraft(overrideSettings);
         const settings = overrideSettings || await getChannelPosterSettings();
+        const channelId = String(settings.channel_id || '').trim();
+        if (!channelId) {
+            throw new Error('Юзернейм или ID канала не указан в настройках.');
+        }
+
+        // В первую очередь запускаем публикацию через Режиссёра (Jev Story Engine)
+        let topics = await getActiveTopics({ limit: 5 }).catch(() => []);
+        if (!topics || topics.length === 0) {
+            console.log('[CHANNEL POSTER] Нет активных тем для Режиссёра, пробуем собрать через harvestDailyTopics...');
+            await harvestDailyTopics().catch(err => console.warn('[CHANNEL POSTER] Ошибка сбора тем:', err.message));
+            topics = await getActiveTopics({ limit: 5 }).catch(() => []);
+        }
+
+        if (topics && topics.length > 0) {
+            const chosenTopic = topics[0];
+            console.log(`[CHANNEL POSTER] Публикуем пост через Режиссёра (Jev Story Engine) по теме #${chosenTopic.id}: "${chosenTopic.title}"`);
+            const story = await createPendingStory({
+                topicId: chosenTopic.id,
+                surface: 'CHANNEL'
+            });
+
+            await publishStoryToChannel(bot, channelId, story.id);
+
+            let steps = typeof story.story_steps === 'string' ? JSON.parse(story.story_steps) : (story.story_steps || []);
+            if (!Array.isArray(steps)) steps = [];
+            const postText = steps.join('\n\n') || story.hook_text || chosenTopic.title;
+            const meta = typeof story.metadata === 'string' ? JSON.parse(story.metadata) : (story.metadata || {});
+
+            const log = await saveChannelPostLog({
+                channel_id: channelId,
+                topic: chosenTopic.title,
+                text: postText,
+                photo_url: meta.media_url || null,
+                media_mode: meta.media_mode || 'story_engine',
+                provenance: { engine: 'jev_story_engine', story_id: story.id, topic_id: chosenTopic.id, published: true },
+                status: 'PUBLISHED'
+            }).catch(() => null);
+
+            return { success: true, count: 1, text: postText, channel_id: channelId, story_id: story.id, log };
+        }
+
+        // Фоллбек: если актуальных тем вообще нет даже после сбора
+        console.warn('[CHANNEL POSTER] Темы для Режиссёра не найдены, используем фоллбек через generateChannelPostDraft');
+        const draft = await generateChannelPostDraft(overrideSettings);
         const parsedFrequencyHours = Number(settings.frequency_hours);
         const frequencyHours = Number.isFinite(parsedFrequencyHours) && parsedFrequencyHours > 0
             ? parsedFrequencyHours

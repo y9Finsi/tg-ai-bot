@@ -47,6 +47,8 @@ test('channel prompt accepts editor blocks but excludes secret-looking values', 
     assert.doesNotMatch(prompt, /super-secret/);
 });
 
+import { cleanResponseText } from '../src/utils/response_text.js';
+
 test('channel prompt includes story director prompt when provided', () => {
     const prompt = buildChannelSystemPrompt({
         topic: 'life',
@@ -55,5 +57,17 @@ test('channel prompt includes story director prompt when provided', () => {
 
     assert.match(prompt, /РЕЖИССУРА И СТИЛЬ \(STORY DIRECTOR\)/);
     assert.match(prompt, /никаких вымученных метафор про кофе/);
+});
+
+test('cleanResponseText correctly unpacks JSON payload from story director', () => {
+    const rawJson = '{"text": "вторник, 11 утра, а питер все еще не проснулся", "photoprompt": "walking along a wet empty street"}';
+    const cleaned = cleanResponseText(rawJson);
+    assert.equal(cleaned, 'вторник, 11 утра, а питер все еще не проснулся');
+});
+
+test('cleanResponseText unpacks markdown-wrapped JSON with steps array', () => {
+    const rawJson = '```json\n{"steps": ["первое сообщение", "второе сообщение"], "photo_prompt": "some prompt"}\n```';
+    const cleaned = cleanResponseText(rawJson);
+    assert.equal(cleaned, 'первое сообщение\nвторое сообщение');
 });
 
