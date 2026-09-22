@@ -331,24 +331,18 @@ export async function judgeLeraReply({
                 APOLOGY: 0.7
             }[relationshipType] ?? 0;
             const relationshipEvent = normalizeRelationshipEvent({ type: relationshipType, intensity: relationshipIntensity });
-            const ghostDeliveryRe = /(?<![\p{L}\p{N}_])(?:вот\s+(?:держи|скинула|скину|ссылка|лови)|скинула|скину(?:\s+тебе)?|пришлю|отправлю|кину|держи(?:\s+(?:ссылку|статью|материал|в общем))?|лови(?:\s+(?:ссылку|статью))?)(?![\p{L}\p{N}_])/iu;
-            const idiomRe = /(?:держи\s+(?:в\s+курсе|удар|дистанцию|карман|себя|руку|нос|хвост)|держись)/iu;
+            const unfulfilledToolChoice = String(result.answers.unfulfilled_tool?.choice || 'NONE');
             const hasUrl = /https?:\/\/|t\.me\//i.test(reply);
             const hasDeliveryTool = Array.isArray(toolTrace) && toolTrace.some(t => ['send_content', 'send_photo', 'send_voice'].includes(t.name) && t.status === 'success');
-            const isGhostDelivery = (ghostDeliveryRe.test(reply) && !idiomRe.test(reply) && !hasUrl && !hasDeliveryTool);
+            const isGhostDelivery = unfulfilledToolChoice !== 'NONE' && !hasUrl && !hasDeliveryTool;
 
-            const unfulfilledToolChoice = String(result.answers.unfulfilled_tool?.choice || 'NONE');
-            const isJevGhostDelivery = unfulfilledToolChoice !== 'NONE' && !hasUrl && !hasDeliveryTool;
-
-            const effectiveUnfulfilledTool = isJevGhostDelivery ? unfulfilledToolChoice : (isGhostDelivery ? 'send_content' : null);
-
-            const parsedVerdict = (isJevGhostDelivery || isGhostDelivery)
+            const parsedVerdict = isGhostDelivery
                 ? {
                     verdict: 'REJECT:GHOST_DELIVERY',
                     passed: false,
                     code: 'GHOST_DELIVERY',
-                    unfulfilledTool: effectiveUnfulfilledTool,
-                    reason: `Лера пообещала скинуть/показать материал или медиа, но инструмент ${effectiveUnfulfilledTool || 'отправки'} не был вызван`
+                    unfulfilledTool: unfulfilledToolChoice,
+                    reason: `Лера пообещала скинуть/показать материал или медиа, но инструмент ${unfulfilledToolChoice} не был вызван`
                 }
                 : failed
                 ? { verdict: 'REJECT:' + failed[1], passed: false, code: failed[1], reason: 'TypeSafe Jev flagged ' + failed[1] }
