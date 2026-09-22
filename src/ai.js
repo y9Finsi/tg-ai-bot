@@ -1252,8 +1252,10 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
 
     // 1.6. Формирование динамических схем инструментов для Native Tool Calling
     let formattedTools = [];
+    let allActiveSchemas = [];
     try {
-        const activeSchemas = actionRegistry.getSchemas({ userId, surface, isInitiative, isPublicContext: Boolean(isPublicContext), chatId, mode: 'production' });
+        allActiveSchemas = actionRegistry.getSchemas({ userId, surface, isInitiative, isPublicContext: Boolean(isPublicContext), chatId, mode: 'production' });
+        const activeSchemas = allActiveSchemas;
         const plannedSchemas = classifierResult?.toolPlan
             ? filterToolSchemas(activeSchemas, classifierResult.toolPlan)
             : activeSchemas;
@@ -1602,15 +1604,71 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
     });
 
     const normalizeReply = value => String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-    const hasDeliveryTool = Array.isArray(toolsExecuted) && toolsExecuted.some(t => ['send_content', 'send_photo', 'send_voice'].includes(t.name) && t.status === 'success');
-    const qualityIssues = evaluateLeraReply(text, userText, null, {
+    let hasDeliveryTool = Array.isArray(toolsExecuted) && toolsExecuted.some(t => ['send_content', 'send_photo', 'send_voice'].includes(t.name) && t.status === 'success');
+    let qualityIssues = evaluateLeraReply(text, userText, null, {
         mode: routingMode,
         recentReplies: recentReplyTexts,
         hasDeliveryTool,
         hasPhoto: Boolean(photo),
         hasVoice: Boolean(voice)
     }).violations;
-    const isGhostViolation = qualityIssues.includes('noGhostDelivery') && !hasDeliveryTool;
+    let isGhostViolation = qualityIssues.includes('noGhostDelivery') && !hasDeliveryTool;
+
+    // Семантический авто-подхват тула по тексту ответа:
+    // Если Лера пообещала скинуть трек/ссылку («щас сижу слушаю одну... скину тебе»), а тул не вызвался
+    const targetToolToAutoRecover = judgeResult?.unfulfilledTool || (isGhostViolation ? 'send_content' : null);
+    if (targetToolToAutoRecover === 'send_content' && !hasDeliveryTool && !toolContentId) {
+        try {
+            console.log(`⚡ [AUTO TOOL RECOVERY] Обнаружено обещание контента («${text.slice(0, 80)}...»). Автоматически вызываем send_content для user ${userId}...`);
+            const autoExecRes = await executeAction({
+                name: 'send_content',
+                args: { category: /трек|песн|музык|слушаю/i.test(text) ? 'music' : 'any', query: text },
+                context: {
+                    userId,
+                    userText: text,
+                    currentContext: leraState,
+                    radiantContext,
+                    routingMode,
+                    surface,
+                    mode: 'production',
+                    isPublicContext: Boolean(isPublicContext),
+                    chatId: chatId || null,
+                    threadId: threadId || null,
+                    anchorEventId: anchorEventId || null,
+                    bot: bot || null
+                }
+            });
+            if (autoExecRes?.status === 'success' && autoExecRes.data?.content_id) {
+                toolContentId = Number(autoExecRes.data.content_id);
+                contentId = toolContentId;
+                finalRecPost = {
+                    id: autoExecRes.data.content_id,
+                    title: autoExecRes.data.title,
+                    url: autoExecRes.data.url,
+                    telegram_type: autoExecRes.data.telegram_type,
+                    telegram_file_id: autoExecRes.data.telegram_file_id,
+                    description: autoExecRes.data.title
+                };
+                toolsExecuted.push({
+                    name: 'send_content',
+                    args: { auto_recovered: true, query: text.slice(0, 100) },
+                    status: 'success',
+                    summary: `Автоматически прикреплен контент: ${autoExecRes.data.title || autoExecRes.data.url}`
+                });
+                hasDeliveryTool = true;
+                isGhostViolation = false;
+                if (judgeResult?.code === 'GHOST_DELIVERY') {
+                    judgeResult.passed = true;
+                    judgeResult.verdict = 'PASS';
+                    judgeResult.code = null;
+                }
+                console.log(`✅ [AUTO TOOL RECOVERY] Успешно прикреплен контент id=${toolContentId} к сообщению Леры!`);
+            }
+        } catch (autoErr) {
+            console.warn('[AUTO TOOL RECOVERY WARN]:', autoErr.message);
+        }
+    }
+
     const needsQualityRetry = requiresReplyRetry(qualityIssues);
     const judgeNeedsRetry = activeJudgeMode === 'ENFORCE' && judgeResult.passed === false;
     let blockedByJudge = false;
@@ -1651,12 +1709,26 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             const hasSuccessfulSideEffectTool = toolsExecuted.some(tool =>
                 tool.status === 'success' && ['send_content', 'send_photo', 'send_voice', 'schedule_followup'].includes(tool.name)
             );
+            let retryParams = hasSuccessfulSideEffectTool ? { ...generationParams, tools: null } : { ...generationParams };
+            if ((isGhostViolation || judgeResult?.code === 'GHOST_DELIVERY') && (!retryParams.tools || retryParams.tools.length === 0)) {
+                const deliverySchemas = allActiveSchemas.filter(s => ['send_content', 'send_photo'].includes(s.name));
+                if (deliverySchemas.length > 0) {
+                    retryParams.tools = deliverySchemas.map(s => ({
+                        type: 'function',
+                        function: {
+                            name: s.name,
+                            description: `${s.title ? s.title + ': ' : ''}${s.description}`,
+                            parameters: s.inputSchema || { type: 'object', properties: {} }
+                        }
+                    }));
+                }
+            }
             retry = await requestLlmCompletion(
                 user,
                 retryMessages,
                 isPhotoRequest,
                 getOpenAIClientAndModel,
-                hasSuccessfulSideEffectTool ? { ...generationParams, tools: null } : generationParams
+                retryParams
             );
         } catch (retryErr) {
             generationTrace.push({
@@ -2165,11 +2237,17 @@ export async function generateResponse(userId, text, envelope = {}) {
 
 export async function generateAiInitiativeResponse(userId, reason = null, options = {}) {
     const initiativeKind = options.initiativeKind || 'open';
-    const contentCandidates = options.contentCandidates || [];
+    let contentCandidates = options.contentCandidates || [];
     const sendPhoto = Boolean(options.sendPhoto);
 
+    if (contentCandidates.length === 0) {
+        try {
+            contentCandidates = await getContentCandidates(userId, 'dialogue', 4).catch(() => []);
+        } catch {}
+    }
+
     let initiativeToolPlan = null;
-    if (initiativeKind === 'content_4h' || (contentCandidates.length > 0 && initiativeKind !== 'open')) {
+    if (initiativeKind === 'content_4h' || (contentCandidates.length > 0 && initiativeKind !== 'open' && initiativeKind !== 'idle_4h')) {
         initiativeToolPlan = {
             needed: true,
             name: 'send_content',
@@ -2185,7 +2263,7 @@ export async function generateAiInitiativeResponse(userId, reason = null, option
         };
     }
 
-    const classifierResult = initiativeToolPlan ? {
+    let classifierResult = initiativeToolPlan ? {
         mode: 'CASUAL',
         confidence: 0.95,
         toolPlan: initiativeToolPlan,
@@ -2193,6 +2271,37 @@ export async function generateAiInitiativeResponse(userId, reason = null, option
         providerName: 'initiative_planner',
         model: 'jev_router'
     } : null;
+
+    if (!classifierResult) {
+        try {
+            const events = await getRecentConversationEvents(userId, 30).catch(() => []);
+            const history = events
+                .filter(event => event.status === 'COMPLETED'
+                    && event.content
+                    && (event.event_type === 'MESSAGE' || event.event_type === 'INITIATIVE' || event.event_type === 'REACTION'))
+                .map(event => ({
+                    role: event.role === 'lera' || event.role === 'assistant' ? 'assistant' : 'user',
+                    content: event.content,
+                    event_type: event.event_type,
+                    metadata: event.metadata || {}
+                }));
+            const recentToolEvents = events.filter(event => ['PHOTO', 'VOICE', 'CONTENT', 'TOOL', 'REACTION'].includes(String(event.event_type || '').toUpperCase()));
+            const pendingPromises = detectPendingPromises(history, recentToolEvents);
+
+            const promptForRouter = reason ? `[Контекст инициативы Леры: ${reason}]` : 'Инициатива Леры';
+            classifierResult = await classifyIntent({
+                userId,
+                userText: promptForRouter,
+                history,
+                activeMode: 'CASUAL',
+                allowReaction: false,
+                pendingPromises,
+                toolCatalog: Object.entries(TOOL_CATALOG).map(([name, meta]) => ({ name, ...meta }))
+            });
+        } catch (e) {
+            console.warn('[INITIATIVE JEV CLASSIFIER WARN]:', e.message);
+        }
+    }
 
     return await runAiEngine(userId, {
         isInitiative: true,

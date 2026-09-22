@@ -48,27 +48,33 @@ const PROMISE_PATTERNS = [
 ];
 
 export function detectPendingPromises(history = [], toolEvents = []) {
-    const lastAssistant = [...history].reverse().find(item => item?.role === 'assistant' || item?.role === 'lera');
-    if (!lastAssistant?.content) return [];
-    const promise = PROMISE_PATTERNS.find(item => item.pattern.test(String(lastAssistant.content)));
-    if (!promise) return [];
-    const expectedTypes = {
-        send_photo: ['PHOTO'],
-        send_voice: ['VOICE'],
-        send_content: ['CONTENT'],
-        schedule_followup: ['FOLLOWUP', 'INITIATIVE']
-    }[promise.name] || [];
-    const fulfilled = toolEvents.some(event => {
-        const type = String(event?.event_type || event?.metadata?.tool_name || '').toUpperCase();
-        return expectedTypes.some(expected => type.includes(expected));
-    });
-    if (fulfilled) return [];
-    return [{
-        tool: promise.name,
-        source: 'PREVIOUS_PROMISE',
-        promiseText: String(lastAssistant.content).slice(0, 500),
-        status: 'UNFULFILLED'
-    }];
+    const recentAssistant = [...history].reverse().filter(item => item?.role === 'assistant' || item?.role === 'lera').slice(0, 3);
+    for (const assistantMsg of recentAssistant) {
+        if (!assistantMsg?.content) continue;
+        const promise = PROMISE_PATTERNS.find(item => item.pattern.test(String(assistantMsg.content)));
+        if (!promise) continue;
+        const expectedTypes = {
+            send_photo: ['PHOTO'],
+            send_voice: ['VOICE'],
+            send_content: ['CONTENT'],
+            schedule_followup: ['FOLLOWUP', 'INITIATIVE']
+        }[promise.name] || [];
+        const assistantTime = assistantMsg.occurred_at ? new Date(assistantMsg.occurred_at).getTime() : 0;
+        const fulfilled = toolEvents.some(event => {
+            const type = String(event?.event_type || event?.metadata?.tool_name || '').toUpperCase();
+            const eventTime = event?.occurred_at ? new Date(event.occurred_at).getTime() : Infinity;
+            return expectedTypes.some(expected => type.includes(expected)) && (assistantTime === 0 || eventTime >= assistantTime);
+        });
+        if (!fulfilled) {
+            return [{
+                tool: promise.name,
+                source: 'PREVIOUS_PROMISE',
+                promiseText: String(assistantMsg.content).slice(0, 500),
+                status: 'UNFULFILLED'
+            }];
+        }
+    }
+    return [];
 }
 
 export function buildToolArgs(name, userText = '') {

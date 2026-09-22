@@ -478,10 +478,13 @@ export async function classifyIntent({ userId = 0, userText = '', history = [], 
                 model: typeSafeProvider.model_name || 'jev-latest',
                 timeoutMs: settings.classifierTimeoutMs,
                 state: {
-                    history: history.slice(-4).map(item => ({
+                    history: history.slice(-5).map(item => ({
                         role: item.role === 'assistant' || item.role === 'lera' ? 'assistant' : 'user',
                         content: String(item.content || '').slice(0, 600),
-                        event_type: item.event_type || undefined
+                        event_type: item.event_type || undefined,
+                        toolsExecuted: Array.isArray(item.metadata?.tools_executed)
+                            ? item.metadata.tools_executed
+                            : (item.event_type && !['MESSAGE', 'INITIATIVE'].includes(item.event_type) ? [item.event_type] : [])
                     })),
                     activeMode,
                     allowReaction: canReact,

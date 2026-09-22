@@ -264,11 +264,16 @@ async function processInitiativeJob(bot, job) {
     }
 
     let candidates = [];
-    if (!['ignore_1', 'ignore_2', 'ignore_4d', 'open_thread', 'idle_4h', 'cold_start'].includes(initiativeKind) && counts.content < 3) {
-        const rows = await Promise.all(contentCandidateIds.map(id => getLeraContent(id)));
-        candidates = rows.filter(item => item?.enabled && item.allow_initiative);
-        const sentFlags = await Promise.all(candidates.map(item => wasContentSent(userId, item.id)));
-        candidates = candidates.filter((_, index) => !sentFlags[index]);
+    if (counts.content < 3) {
+        if (contentCandidateIds.length > 0) {
+            const rows = await Promise.all(contentCandidateIds.map(id => getLeraContent(id)));
+            candidates = rows.filter(item => item?.enabled && item.allow_initiative);
+            const sentFlags = await Promise.all(candidates.map(item => wasContentSent(userId, item.id)));
+            candidates = candidates.filter((_, index) => !sentFlags[index]);
+        }
+        if (candidates.length === 0 && !['ignore_1', 'ignore_2', 'ignore_4d', 'cold_start'].includes(initiativeKind)) {
+            candidates = await getContentCandidates(userId, 'dialogue', 4).catch(() => []);
+        }
     }
     if (initiativeKind === 'content_4h' && candidates.length === 0) return;
 
