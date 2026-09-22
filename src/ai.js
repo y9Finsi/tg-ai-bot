@@ -1610,17 +1610,18 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
         hasPhoto: Boolean(photo),
         hasVoice: Boolean(voice)
     }).violations;
-    const needsQualityRetry = !isInitiative && requiresReplyRetry(qualityIssues);
+    const isGhostViolation = qualityIssues.includes('noGhostDelivery') && !hasDeliveryTool;
+    const needsQualityRetry = requiresReplyRetry(qualityIssues);
     const judgeNeedsRetry = activeJudgeMode === 'ENFORCE' && judgeResult.passed === false;
     let blockedByJudge = false;
-    if ((isInitiative && judgeNeedsRetry) || (!isInitiative && userText && (
+    if ((isInitiative && (judgeNeedsRetry || isGhostViolation)) || (!isInitiative && userText && (
         (lastLeraText && normalizeReply(text) === normalizeReply(lastLeraText))
         || needsQualityRetry
         || judgeNeedsRetry
     ))) {
         const retryReason = judgeNeedsRetry
             ? `judge_${judgeResult.code || 'rejected'}`
-            : needsQualityRetry
+            : (needsQualityRetry || isGhostViolation)
             ? qualityIssues.includes('format') ? 'response_format' : (qualityIssues.includes('noGhostDelivery') ? 'ghost_delivery' : (qualityIssues.includes('nonEmpty') ? 'empty_response' : 'recent_repeat'))
             : 'exact_repeat';
         const forbiddenPhrase = text || lastLeraText || '';
@@ -1630,9 +1631,9 @@ async function runAiEngine(userId, { userText = null, photoUrls = [], isInitiati
             ? judgeResult.reason
                 ? `СТОП: проверка качества отклонила предыдущий ответ. Причина: ${judgeResult.reason}. Перепиши реплику живо, естественно и в характере Леры, исправив эту ошибку.`
                 : `СТОП: проверка качества отклонила предыдущий ответ (${judgeResult.code || 'REJECTED'}). Перепиши его живо и естественно именно по последней реплике пользователя, не повторяя прошлых ошибок.`
-            : needsQualityRetry
+            : (needsQualityRetry || isGhostViolation)
             ? qualityIssues.includes('noGhostDelivery')
-                ? 'СТОП: в ответе написано «держи / скинула», но ссылки или медиафайла в сообщении нет! Если нужной ссылки нет под рукой — скажи прямо, что потеряла или не нашла, либо вызови web_search. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать «держи», «вот ссылка», не отправляя реальный URL или медиа.'
+                ? 'СТОП: в твоём сообщении есть обещание или слова «скину / держи / скинула / пришлю», но инструмент отправки (send_content для треков/мемов/видео или send_photo для фото) НЕ был вызван, и ссылки в тексте нет! Если ты обещаешь отправить трек, видео, мем или фото — ОБЯЗАТЕЛЬНО вызови соответствующий инструмент (send_content или send_photo) прямо сейчас! Либо скажи прямо своими словами, что пока не можешь найти/отправить.'
                 : qualityIssues.includes('nonEmpty')
                 ? (isPhotoRequest && !isPublicContext && (!isModular || toolsEnabled)
                     ? 'СТОП: предыдущий ответ оказался пустым. ВАЖНО: либо вызови инструмент send_photo (взяв свой текущий лук из контекста), либо ответь собеседнику живым текстом от лица Леры без пустых рассуждений.'
@@ -2163,14 +2164,45 @@ export async function generateResponse(userId, text, envelope = {}) {
 }
 
 export async function generateAiInitiativeResponse(userId, reason = null, options = {}) {
+    const initiativeKind = options.initiativeKind || 'open';
+    const contentCandidates = options.contentCandidates || [];
+    const sendPhoto = Boolean(options.sendPhoto);
+
+    let initiativeToolPlan = null;
+    if (initiativeKind === 'content_4h' || (contentCandidates.length > 0 && initiativeKind !== 'open')) {
+        initiativeToolPlan = {
+            needed: true,
+            name: 'send_content',
+            tools: [{ name: 'send_content', args: {}, kind: 'SIDE_EFFECT' }],
+            confidence: 0.95
+        };
+    } else if (sendPhoto) {
+        initiativeToolPlan = {
+            needed: true,
+            name: 'send_photo',
+            tools: [{ name: 'send_photo', args: {}, kind: 'SIDE_EFFECT' }],
+            confidence: 0.95
+        };
+    }
+
+    const classifierResult = initiativeToolPlan ? {
+        mode: 'CASUAL',
+        confidence: 0.95,
+        toolPlan: initiativeToolPlan,
+        toolPlanTrace: { rawPrimary: initiativeToolPlan.name, normalized: initiativeToolPlan },
+        providerName: 'initiative_planner',
+        model: 'jev_router'
+    } : null;
+
     return await runAiEngine(userId, {
         isInitiative: true,
         routingMode: 'CASUAL',
         initiativeReason: reason,
-        initiativeKind: options.initiativeKind || 'open',
+        initiativeKind,
+        classifierResult,
         anchorEventId: options.anchorEventId || null,
-        contentCandidates: options.contentCandidates || [],
-        sendPhoto: Boolean(options.sendPhoto),
+        contentCandidates,
+        sendPhoto,
         followupTopic: options.followupTopic || null
     });
 }

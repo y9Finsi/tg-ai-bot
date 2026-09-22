@@ -71,3 +71,17 @@ test('cleanResponseText unpacks markdown-wrapped JSON with steps array', () => {
     assert.equal(cleaned, 'первое сообщение\nвторое сообщение');
 });
 
+test('cleanResponseText cuts leaked first-person CoT meta planning line', () => {
+    const leaked = 'Пишу первой после дневной паузы. Надо сменить тему, поделиться моментом, спросить как день. Можно скинуть трек. Настроение обиженное, но не продолжать конфликт.\n\nвыползла за кофе наконец';
+    const cleaned = cleanResponseText(leaked);
+    assert.equal(cleaned, 'выползла за кофе наконец');
+});
+
+import { evaluateLeraReply } from '../src/ai/response_quality.js';
+
+test('evaluateLeraReply catches ghost delivery with future promise verbs', () => {
+    const text = 'щас сижу слушаю одну и залипла чёт ||| скину тебе кажется зайдет';
+    const res = evaluateLeraReply(text, 'привет', null, { hasDeliveryTool: false, hasPhoto: false, hasVoice: false });
+    assert.equal(res.checks.noGhostDelivery, false);
+});
+
